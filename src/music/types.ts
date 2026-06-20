@@ -1,10 +1,13 @@
 export type StepName = 'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B';
 
+/** Accidental offset in semitones: double-flat .. double-sharp. */
+export type Alter = -2 | -1 | 0 | 1 | 2;
+
 /** A pitch in scientific notation (C4 = middle C). `alter` is the accidental. */
 export interface Pitch {
   step: StepName;
   octave: number;
-  alter: -1 | 0 | 1; // flat / natural / sharp
+  alter: Alter; // bb / b / natural / # / x
 }
 
 export type DurationValue = 1 | 2 | 4 | 8 | 16 | 32; // whole .. 32nd

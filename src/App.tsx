@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { Duration, DurationValue } from './music/types';
+import { Duration, DurationValue, Pitch } from './music/types';
 import { LayoutMode } from './music/layout';
 import { TICKS_PER_QUARTER } from './music/constants';
-import { Player } from './music/audio';
+import { Player, playPreview } from './music/audio';
+import { LIBRARY } from './music/library';
 import { initialScore, scoreReducer } from './state/scoreReducer';
+import { Tool, NOTE_TOOL } from './state/tool';
 import { Toolbar } from './components/Toolbar';
 import { Score } from './components/Score';
 
 export default function App() {
   const [score, dispatch] = useReducer(scoreReducer, undefined, () => initialScore(4));
 
-  const [tool, setTool] = useState<'note' | 'rest'>('note');
+  const [tool, setTool] = useState<Tool>(NOTE_TOOL);
   const [duration, setDuration] = useState<Duration>({ value: 4, dots: 0 });
-  const [accidental, setAccidental] = useState<-1 | 0 | 1>(0);
+  const [previewOnCreate, setPreviewOnCreate] = useState(false);
   const [mode, setMode] = useState<LayoutMode>('horizontal');
   const [bpm, setBpm] = useState(96);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -39,6 +41,25 @@ export default function App() {
     setIsPlaying(true);
   }, [bpm, score]);
 
+  // After a one-shot accidental/eraser is applied, revert to the note tool.
+  const handleAfterApply = useCallback(() => {
+    setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser') && !t.sticky ? NOTE_TOOL : t));
+  }, []);
+
+  const handlePreviewNote = useCallback((pitches: Pitch[]) => playPreview(pitches), []);
+
+  const handleLoadPiece = useCallback(
+    (id: string) => {
+      const piece = LIBRARY.find((p) => p.id === id);
+      if (!piece) return;
+      handleStop();
+      // deep-clone so editing never mutates the library constant
+      dispatch({ type: 'LOAD', score: JSON.parse(JSON.stringify(piece.score)) });
+      setBpm(piece.bpm);
+    },
+    [handleStop],
+  );
+
   // stop audio when the component unmounts
   useEffect(() => () => playerRef.current?.stop(), []);
 
@@ -56,7 +77,11 @@ export default function App() {
       } else if (e.key === '.') {
         setDuration((d) => ({ ...d, dots: ((d.dots + 1) % 3) as 0 | 1 | 2 }));
       } else if (e.key.toLowerCase() === 'r') {
-        setTool((t) => (t === 'rest' ? 'note' : 'rest'));
+        setTool((t) => (t.kind === 'rest' ? NOTE_TOOL : { kind: 'rest' }));
+      } else if (e.key.toLowerCase() === 'e') {
+        setTool((t) => (t.kind === 'eraser' ? NOTE_TOOL : { kind: 'eraser', sticky: false }));
+      } else if (e.key === 'Escape') {
+        setTool(NOTE_TOOL);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -75,8 +100,8 @@ export default function App() {
         setTool={setTool}
         duration={duration}
         setDuration={setDuration}
-        accidental={accidental}
-        setAccidental={setAccidental}
+        previewOnCreate={previewOnCreate}
+        setPreviewOnCreate={setPreviewOnCreate}
         timeSignature={score.timeSignature}
         setTimeSignature={(ts) => dispatch({ type: 'SET_TIME_SIGNATURE', timeSignature: ts })}
         mode={mode}
@@ -89,6 +114,7 @@ export default function App() {
         onAddMeasure={() => dispatch({ type: 'ADD_MEASURE' })}
         onRemoveMeasure={() => dispatch({ type: 'REMOVE_LAST_MEASURE' })}
         onClear={() => dispatch({ type: 'CLEAR' })}
+        onLoadPiece={handleLoadPiece}
       />
 
       <Score
@@ -96,15 +122,19 @@ export default function App() {
         mode={mode}
         tool={tool}
         duration={duration}
-        accidental={accidental}
+        previewOnCreate={previewOnCreate}
         playheadTick={playheadTick}
         onAction={dispatch}
+        onAfterApply={handleAfterApply}
+        onPreviewNote={handlePreviewNote}
       />
 
       <footer className="hint">
         Scegli una durata, poi muovi il mouse sul pentagramma: appare l'anteprima in grigio. Clicca per inserire una nota
-        (in uno spazio libero) o per aggiungerla come accordo (su una nota esistente). Clicca su una nota già presente per
-        cancellarla. <kbd>1-6</kbd> durata · <kbd>.</kbd> punto · <kbd>R</kbd> note/pause · <kbd>Spazio</kbd> play/stop.
+        (in uno spazio libero) o per aggiungerla come accordo (su una nota esistente). Le <strong>alterazioni</strong> e la{' '}
+        <strong>gomma</strong> si applicano cliccando su una nota esistente (1 click = una volta, doppio click = modalità
+        fissa). <kbd>1-6</kbd> durata · <kbd>.</kbd> punto · <kbd>R</kbd> note/pause · <kbd>E</kbd> gomma · <kbd>Esc</kbd>{' '}
+        note · <kbd>Spazio</kbd> play/stop.
       </footer>
     </div>
   );

@@ -1,4 +1,4 @@
-import { Duration, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, ScoreState, TimeSignature } from '../music/types';
+import { Alter, Duration, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, ScoreState, TimeSignature } from '../music/types';
 import { durationTicks, measureTicks, pitchEquals, pitchToDiatonic } from '../music/theory';
 import { classifyNote, classifyRest } from '../music/placement';
 
@@ -19,6 +19,8 @@ export function initialScore(measureCount = 4): ScoreState {
 export type ScoreAction =
   | { type: 'CLICK_NOTE'; measureIndex: number; tick: number; pitch: Pitch; duration: Duration }
   | { type: 'CLICK_REST'; measureIndex: number; tick: number; duration: Duration }
+  | { type: 'SET_ACCIDENTAL'; measureIndex: number; eventId: string; diatonic: number; alter: Alter }
+  | { type: 'ERASE'; measureIndex: number; eventId: string; diatonic: number | null }
   | { type: 'SET_TIME_SIGNATURE'; timeSignature: TimeSignature }
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
@@ -92,6 +94,42 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
 
       const rest: RestEvent = { id: uid('r'), kind: 'rest', startTick: action.tick, duration: action.duration };
       return withMeasureEvents(state, action.measureIndex, [...m.events, rest]);
+    }
+
+    case 'SET_ACCIDENTAL': {
+      const m = state.measures[action.measureIndex];
+      if (!m) return state;
+      const target = m.events.find((e) => e.id === action.eventId);
+      if (!target || target.kind !== 'note') return state;
+      let changed = false;
+      const pitches = target.pitches.map((p) =>
+        pitchToDiatonic(p) === action.diatonic && p.alter !== action.alter
+          ? ((changed = true), { ...p, alter: action.alter })
+          : p,
+      );
+      if (!changed) return state;
+      const events = m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));
+      return withMeasureEvents(state, action.measureIndex, events);
+    }
+
+    case 'ERASE': {
+      const m = state.measures[action.measureIndex];
+      if (!m) return state;
+      const target = m.events.find((e) => e.id === action.eventId);
+      if (!target) return state;
+
+      // Erasing a single notehead of a chord removes only that pitch; the last
+      // pitch (or any rest) removes the whole event.
+      if (target.kind === 'note' && action.diatonic !== null) {
+        const pitches = target.pitches.filter((p) => pitchToDiatonic(p) !== action.diatonic);
+        if (pitches.length === target.pitches.length) return state; // nothing matched
+        const events =
+          pitches.length === 0
+            ? m.events.filter((e) => e.id !== target.id)
+            : m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));
+        return withMeasureEvents(state, action.measureIndex, events);
+      }
+      return withMeasureEvents(state, action.measureIndex, m.events.filter((e) => e.id !== target.id));
     }
 
     case 'SET_TIME_SIGNATURE': {

@@ -1,7 +1,9 @@
-import { Duration, DurationValue, TimeSignature } from '../music/types';
+import { Duration, DurationValue, Alter, TimeSignature } from '../music/types';
 import { durationLabel } from '../music/theory';
 import { SMUFL } from '../music/smufl';
 import { LayoutMode } from '../music/layout';
+import { Tool } from '../state/tool';
+import { LIBRARY } from '../music/library';
 
 const DURATIONS: DurationValue[] = [1, 2, 4, 8, 16, 32];
 
@@ -17,13 +19,21 @@ const TIME_PRESETS: TimeSignature[] = [
   { numerator: 2, denominator: 2 },
 ];
 
+const ACCIDENTALS: { alter: Alter; title: string }[] = [
+  { alter: -2, title: 'Doppio bemolle' },
+  { alter: -1, title: 'Bemolle' },
+  { alter: 0, title: 'Bequadro' },
+  { alter: 1, title: 'Diesis' },
+  { alter: 2, title: 'Doppio diesis' },
+];
+
 interface ToolbarProps {
-  tool: 'note' | 'rest';
-  setTool: (t: 'note' | 'rest') => void;
+  tool: Tool;
+  setTool: (t: Tool) => void;
   duration: Duration;
   setDuration: (d: Duration) => void;
-  accidental: -1 | 0 | 1;
-  setAccidental: (a: -1 | 0 | 1) => void;
+  previewOnCreate: boolean;
+  setPreviewOnCreate: (v: boolean) => void;
   timeSignature: TimeSignature;
   setTimeSignature: (ts: TimeSignature) => void;
   mode: LayoutMode;
@@ -36,6 +46,7 @@ interface ToolbarProps {
   onAddMeasure: () => void;
   onRemoveMeasure: () => void;
   onClear: () => void;
+  onLoadPiece: (id: string) => void;
 }
 
 export function Toolbar(props: ToolbarProps) {
@@ -44,8 +55,8 @@ export function Toolbar(props: ToolbarProps) {
     setTool,
     duration,
     setDuration,
-    accidental,
-    setAccidental,
+    previewOnCreate,
+    setPreviewOnCreate,
     timeSignature,
     setTimeSignature,
     mode,
@@ -58,18 +69,49 @@ export function Toolbar(props: ToolbarProps) {
     onAddMeasure,
     onRemoveMeasure,
     onClear,
+    onLoadPiece,
   } = props;
+
+  // Single click arms a modal tool for one use; double click makes it sticky.
+  // (onClick fires for both, with e.detail telling us the click count.)
+  function clickAccidental(alter: Alter, detail: number) {
+    if (detail >= 2) {
+      setTool({ kind: 'accidental', alter, sticky: true });
+    } else if (tool.kind === 'accidental' && tool.alter === alter) {
+      setTool({ kind: 'note' }); // toggle off
+    } else {
+      setTool({ kind: 'accidental', alter, sticky: false });
+    }
+  }
+  function clickEraser(detail: number) {
+    if (detail >= 2) {
+      setTool({ kind: 'eraser', sticky: true });
+    } else if (tool.kind === 'eraser') {
+      setTool({ kind: 'note' });
+    } else {
+      setTool({ kind: 'eraser', sticky: false });
+    }
+  }
+
+  const eraserClass = tool.kind === 'eraser' ? (tool.sticky ? 'on sticky' : 'on') : '';
 
   return (
     <div className="toolbar">
       <fieldset className="group">
         <legend>Strumento</legend>
         <div className="btn-row">
-          <button className={tool === 'note' ? 'on' : ''} onClick={() => setTool('note')} title="Inserisci note">
+          <button className={tool.kind === 'note' ? 'on' : ''} onClick={() => setTool({ kind: 'note' })} title="Inserisci note">
             Note
           </button>
-          <button className={tool === 'rest' ? 'on' : ''} onClick={() => setTool('rest')} title="Inserisci pause">
+          <button className={tool.kind === 'rest' ? 'on' : ''} onClick={() => setTool({ kind: 'rest' })} title="Inserisci pause">
             Pause
+          </button>
+          <button
+            className={eraserClass}
+            onClick={(e) => clickEraser(e.detail)}
+            title="Gomma — 1 click: una volta · doppio click: modalità fissa. Clicca sulla testa della nota."
+          >
+            ⌫ Gomma
           </button>
         </div>
       </fieldset>
@@ -109,14 +151,32 @@ export function Toolbar(props: ToolbarProps) {
       <fieldset className="group">
         <legend>Alterazione</legend>
         <div className="btn-row">
-          <button className={accidental === 0 ? 'on' : ''} onClick={() => setAccidental(0)} title="Nessuna alterazione">
-            ♮
-          </button>
-          <button className={accidental === 1 ? 'on' : ''} onClick={() => setAccidental(1)} title="Diesis">
-            ♯
-          </button>
-          <button className={accidental === -1 ? 'on' : ''} onClick={() => setAccidental(-1)} title="Bemolle">
-            ♭
+          {ACCIDENTALS.map(({ alter, title }) => {
+            const active = tool.kind === 'accidental' && tool.alter === alter;
+            const cls = active ? (tool.sticky ? 'on sticky' : 'on') : '';
+            return (
+              <button
+                key={alter}
+                className={`glyph-btn ${cls}`}
+                onClick={(e) => clickAccidental(alter, e.detail)}
+                title={`${title} — 1 click: una volta · doppio click: modalità fissa`}
+              >
+                <span className="bravura acc">{SMUFL.accidentals[String(alter)]}</span>
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>Audio</legend>
+        <div className="btn-row">
+          <button
+            className={previewOnCreate ? 'on' : ''}
+            onClick={() => setPreviewOnCreate(!previewOnCreate)}
+            title="Suona la nota appena creata (durata fissa)"
+          >
+            ♪ Suona nota
           </button>
         </div>
       </fieldset>
@@ -151,6 +211,25 @@ export function Toolbar(props: ToolbarProps) {
             Pagina
           </button>
         </div>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>Libreria</legend>
+        <select
+          value=""
+          onChange={(e) => {
+            if (e.target.value) onLoadPiece(e.target.value);
+            e.target.value = '';
+          }}
+          title="Carica un brano pronto da suonare"
+        >
+          <option value="">— scegli un brano —</option>
+          {LIBRARY.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title} · {p.subtitle}
+            </option>
+          ))}
+        </select>
       </fieldset>
 
       <fieldset className="group">

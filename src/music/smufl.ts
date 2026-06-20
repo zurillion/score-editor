@@ -26,9 +26,11 @@ export const SMUFL = {
   flagsDown: { 8: g(0xe241), 16: g(0xe243), 32: g(0xe245) } as Record<number, string>,
 
   accidentals: {
+    '-2': g(0xe264), // double flat
     '-1': g(0xe260), // flat
     '0': g(0xe261), // natural
     '1': g(0xe262), // sharp
+    '2': g(0xe263), // double sharp
   } as Record<string, string>,
 
   // Combined note glyphs (stem up) for the palette buttons.

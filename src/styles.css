@@ -104,6 +104,11 @@ button.on {
   border-color: var(--accent);
   color: #fff;
 }
+/* persistent ("sticky") modal tools use a distinct colour */
+button.on.sticky {
+  background: #7c3aed;
+  border-color: #7c3aed;
+}
 
 .glyph-btn {
   padding: 4px 8px;
@@ -116,6 +121,9 @@ button.on {
   font-family: 'Bravura';
   font-size: 26px;
   line-height: 1;
+}
+.glyph-btn .bravura.acc {
+  font-size: 30px;
 }
 
 select,
@@ -180,6 +188,10 @@ input[type='number'] {
   user-select: none;
   cursor: crosshair;
   background: #fff;
+}
+.system[data-tool='eraser'],
+.system[data-tool='accidental'] {
+  cursor: pointer;
 }
 
 /* ---- Hint ---- */

@@ -1,22 +1,35 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Duration, ScoreState } from '../music/types';
+import { Duration, Pitch, ScoreState } from '../music/types';
 import { measureTicks } from '../music/theory';
 import { LayoutMode, layoutSystems, tickToX, clamp } from '../music/layout';
 import { SYSTEM_HEIGHT, SYSTEM_GAP } from '../music/constants';
 import type { ScoreAction } from '../state/scoreReducer';
+import { Tool } from '../state/tool';
 import { System } from './System';
 
 interface ScoreProps {
   state: ScoreState;
   mode: LayoutMode;
-  tool: 'note' | 'rest';
+  tool: Tool;
   duration: Duration;
-  accidental: -1 | 0 | 1;
+  previewOnCreate: boolean;
   playheadTick: number | null;
   onAction: (action: ScoreAction) => void;
+  onAfterApply: () => void;
+  onPreviewNote: (pitches: Pitch[]) => void;
 }
 
-export function Score({ state, mode, tool, duration, accidental, playheadTick, onAction }: ScoreProps) {
+export function Score({
+  state,
+  mode,
+  tool,
+  duration,
+  previewOnCreate,
+  playheadTick,
+  onAction,
+  onAfterApply,
+  onPreviewNote,
+}: ScoreProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
 
@@ -71,9 +84,11 @@ export function Score({ state, mode, tool, duration, accidental, playheadTick, o
             showTimeSig={i === 0}
             tool={tool}
             duration={duration}
-            accidental={accidental}
+            previewOnCreate={previewOnCreate}
             playheadX={i === phSystem ? phX : null}
             onAction={onAction}
+            onAfterApply={onAfterApply}
+            onPreviewNote={onPreviewNote}
           />
         ))}
       </div>

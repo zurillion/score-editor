@@ -1,6 +1,45 @@
-import { ScoreState } from './types';
+import { Pitch, ScoreState } from './types';
 import { durationTicks, measureTicks, pitchToFrequency } from './theory';
 import { TICKS_PER_QUARTER } from './constants';
+
+// ---- One-shot audio preview ----
+// Used by the "play note on creation" option. Keeps a single shared
+// AudioContext alive so we don't spawn one per click.
+let previewCtx: AudioContext | null = null;
+
+/** Play the given pitches immediately with a short, fixed-length envelope. */
+export function playPreview(pitches: Pitch[], durSec = 0.5): void {
+  if (pitches.length === 0) return;
+  const AudioCtx: typeof AudioContext =
+    window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!previewCtx) previewCtx = new AudioCtx();
+  const ctx = previewCtx;
+  if (ctx.state === 'suspended') void ctx.resume();
+
+  const t0 = ctx.currentTime + 0.005;
+  const end = t0 + durSec;
+  const master = ctx.createGain();
+  master.gain.value = 0.8;
+  master.connect(ctx.destination);
+
+  for (const p of pitches) {
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = pitchToFrequency(p);
+    const gain = ctx.createGain();
+    const attack = 0.006;
+    const release = Math.min(0.14, durSec * 0.4);
+    const peak = 0.3;
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(peak, t0 + attack);
+    gain.gain.setValueAtTime(peak, Math.max(t0 + attack, end - release));
+    gain.gain.linearRampToValueAtTime(0, end);
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start(t0);
+    osc.stop(end + 0.03);
+  }
+}
 
 export interface ScheduledNote {
   startSec: number;

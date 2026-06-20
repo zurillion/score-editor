@@ -1,6 +1,6 @@
 import { Fragment, useRef, useState } from 'react';
-import { Duration, TimeSignature } from '../music/types';
-import { diatonicToPitch, durationTicks, measureTicks } from '../music/theory';
+import { Duration, Pitch, TimeSignature } from '../music/types';
+import { diatonicToPitch, durationTicks, measureTicks, pitchToDiatonic } from '../music/theory';
 import {
   SystemLayout,
   diatonicToY,
@@ -10,6 +10,7 @@ import {
   clamp,
   TREBLE_LINES,
   BASS_LINES,
+  TREBLE_MIDDLE,
 } from '../music/layout';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { SMUFL, timeSigString } from '../music/smufl';
@@ -22,8 +23,11 @@ import {
   STAFF_LINE_WIDTH,
   BAR_LINE_WIDTH,
   GLYPH_FONT_SIZE,
+  NOTEHEAD_RX,
+  NOTEHEAD_RY,
 } from '../music/constants';
 import type { ScoreAction } from '../state/scoreReducer';
+import { Tool } from '../state/tool';
 import { NoteView } from './Note';
 import { RestView } from './Rest';
 
@@ -43,40 +47,65 @@ const GHOST_OPACITY: Record<PlaceAction, number> = {
   blocked: 0.25,
 };
 
-interface Hover {
+interface PlaceHover {
+  mode: 'place';
   measureIndex: number;
   tick: number;
   diatonic: number;
   action: PlaceAction;
 }
+interface TargetHover {
+  mode: 'target';
+  measureIndex: number;
+  eventId: string;
+  diatonic: number | null; // null = a rest (eraser only)
+  hx: number;
+  hy: number;
+}
+type Hover = PlaceHover | TargetHover;
 
 interface SystemProps {
   layout: SystemLayout;
   ts: TimeSignature;
   showTimeSig: boolean;
-  tool: 'note' | 'rest';
+  tool: Tool;
   duration: Duration;
-  accidental: -1 | 0 | 1;
+  previewOnCreate: boolean;
   playheadX: number | null;
   onAction: (action: ScoreAction) => void;
+  onAfterApply: () => void;
+  onPreviewNote: (pitches: Pitch[]) => void;
 }
 
-export function System({ layout, ts, showTimeSig, tool, duration, accidental, playheadX, onAction }: SystemProps) {
+export function System({
+  layout,
+  ts,
+  showTimeSig,
+  tool,
+  duration,
+  previewOnCreate,
+  playheadX,
+  onAction,
+  onAfterApply,
+  onPreviewNote,
+}: SystemProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const total = measureTicks(ts);
+  const modal = tool.kind === 'accidental' || tool.kind === 'eraser';
 
-  function computeTarget(clientX: number, clientY: number): Hover | null {
+  function localPoint(clientX: number, clientY: number): { x: number; y: number } | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
 
+  // ---- placement tools (note / rest): snap to a grid slot ----
+  function computePlace(x: number, y: number): PlaceHover | null {
     const pm = layout.measures.find((p) => x >= p.leftX && x < p.leftX + p.contentW);
     if (!pm) return null;
 
-    // Snap to an existing event when the pointer is close to its head...
     let tick: number | null = null;
     for (const e of pm.measure.events) {
       const ex = tickToX(pm.leftX, pm.contentW, e.startTick, total);
@@ -85,7 +114,6 @@ export function System({ layout, ts, showTimeSig, tool, duration, accidental, pl
         break;
       }
     }
-    // ...otherwise snap to the grid defined by the selected duration.
     if (tick === null) {
       const grid = durationTicks(duration);
       const raw = xToTickRaw(pm.leftX, pm.contentW, x, total);
@@ -93,49 +121,138 @@ export function System({ layout, ts, showTimeSig, tool, duration, accidental, pl
     }
 
     const d = clamp(yToDiatonic(y), 5, 50);
-    const pitch = diatonicToPitch(d, accidental);
+    const pitch = diatonicToPitch(d, 0);
     const action =
-      tool === 'note'
-        ? classifyNote(pm.measure.events, tick, pitch, duration, total)
-        : classifyRest(pm.measure.events, tick, duration, total);
+      tool.kind === 'rest'
+        ? classifyRest(pm.measure.events, tick, duration, total)
+        : classifyNote(pm.measure.events, tick, pitch, duration, total);
+    return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, action };
+  }
 
-    return { measureIndex: pm.index, tick, diatonic: d, action };
+  // ---- modal tools (accidental / eraser): hit-test an existing notehead ----
+  function computeTarget(x: number, y: number): TargetHover | null {
+    const leftPad = tool.kind === 'accidental' ? 20 : 0; // accidentals sit left of the head
+    const allowRests = tool.kind === 'eraser';
+    let best: (TargetHover & { dist: number }) | null = null;
+
+    for (const pm of layout.measures) {
+      for (const ev of pm.measure.events) {
+        const ex = tickToX(pm.leftX, pm.contentW, ev.startTick, total);
+        if (ev.kind === 'note') {
+          for (const p of ev.pitches) {
+            const d = pitchToDiatonic(p);
+            const ey = diatonicToY(d);
+            const dx = x - ex;
+            const dy = y - ey;
+            const inX = dx <= NOTEHEAD_RX + 4 && dx >= -(NOTEHEAD_RX + 4 + leftPad);
+            if (inX && Math.abs(dy) <= NOTEHEAD_RY + 4) {
+              const dist = Math.hypot(dx, dy);
+              if (!best || dist < best.dist) {
+                best = { mode: 'target', measureIndex: pm.index, eventId: ev.id, diatonic: d, hx: ex, hy: ey, dist };
+              }
+            }
+          }
+        } else if (allowRests) {
+          const ey = diatonicToY(TREBLE_MIDDLE);
+          const dx = x - ex;
+          const dy = y - ey;
+          if (Math.abs(dx) <= 11 && Math.abs(dy) <= 20) {
+            const dist = Math.hypot(dx, dy);
+            if (!best || dist < best.dist) {
+              best = { mode: 'target', measureIndex: pm.index, eventId: ev.id, diatonic: null, hx: ex, hy: ey, dist };
+            }
+          }
+        }
+      }
+    }
+    if (!best) return null;
+    return {
+      mode: 'target',
+      measureIndex: best.measureIndex,
+      eventId: best.eventId,
+      diatonic: best.diatonic,
+      hx: best.hx,
+      hy: best.hy,
+    };
   }
 
   function handleMove(e: React.MouseEvent) {
-    setHover(computeTarget(e.clientX, e.clientY));
-  }
-  function handleClick(e: React.MouseEvent) {
-    const target = computeTarget(e.clientX, e.clientY);
-    if (!target || target.action === 'blocked') return;
-    if (tool === 'note') {
-      onAction({
-        type: 'CLICK_NOTE',
-        measureIndex: target.measureIndex,
-        tick: target.tick,
-        pitch: diatonicToPitch(target.diatonic, accidental),
-        duration,
-      });
-    } else {
-      onAction({ type: 'CLICK_REST', measureIndex: target.measureIndex, tick: target.tick, duration });
-    }
+    const pt = localPoint(e.clientX, e.clientY);
+    if (!pt) return setHover(null);
+    setHover(modal ? computeTarget(pt.x, pt.y) : computePlace(pt.x, pt.y));
   }
 
-  // ---- ghost ----
-  let ghost: JSX.Element | null = null;
-  if (hover) {
+  function handleClick(e: React.MouseEvent) {
+    const pt = localPoint(e.clientX, e.clientY);
+    if (!pt) return;
+
+    if (tool.kind === 'note' || tool.kind === 'rest') {
+      const target = computePlace(pt.x, pt.y);
+      if (!target || target.action === 'blocked') return;
+      if (tool.kind === 'note') {
+        const pitch = diatonicToPitch(target.diatonic, 0);
+        onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration });
+        if (previewOnCreate && (target.action === 'create' || target.action === 'chord')) onPreviewNote([pitch]);
+      } else {
+        onAction({ type: 'CLICK_REST', measureIndex: target.measureIndex, tick: target.tick, duration });
+      }
+      return;
+    }
+
+    // accidental / eraser
+    const hit = computeTarget(pt.x, pt.y);
+    if (!hit) return;
+    if (tool.kind === 'accidental') {
+      if (hit.diatonic === null) return;
+      onAction({
+        type: 'SET_ACCIDENTAL',
+        measureIndex: hit.measureIndex,
+        eventId: hit.eventId,
+        diatonic: hit.diatonic,
+        alter: tool.alter,
+      });
+    } else {
+      onAction({ type: 'ERASE', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic });
+    }
+    onAfterApply();
+  }
+
+  // ---- ghost / highlight ----
+  let overlay: JSX.Element | null = null;
+  if (hover?.mode === 'place') {
     const pm = layout.measures.find((p) => p.index === hover.measureIndex);
     if (pm) {
       const gx = tickToX(pm.leftX, pm.contentW, hover.tick, total);
       const color = GHOST_COLOR[hover.action];
       const op = GHOST_OPACITY[hover.action];
-      ghost =
-        tool === 'note' ? (
-          <NoteView pitches={[diatonicToPitch(hover.diatonic, accidental)]} duration={duration} x={gx} color={color} opacity={op} />
-        ) : (
+      overlay =
+        tool.kind === 'rest' ? (
           <RestView duration={duration} x={gx} color={color} opacity={op} />
+        ) : (
+          <NoteView pitches={[diatonicToPitch(hover.diatonic, 0)]} duration={duration} x={gx} color={color} opacity={op} />
         );
     }
+  } else if (hover?.mode === 'target') {
+    const isAcc = tool.kind === 'accidental';
+    const color = isAcc ? '#2563eb' : '#dc2626';
+    overlay = (
+      <g pointerEvents="none">
+        <circle cx={hover.hx} cy={hover.hy} r={NOTEHEAD_RX + 3} fill={`${color}22`} stroke={color} strokeWidth={1.4} />
+        {isAcc && tool.kind === 'accidental' && (
+          <text
+            x={hover.hx - NOTEHEAD_RX - 3}
+            y={hover.hy}
+            textAnchor="end"
+            fontFamily="Bravura"
+            fontSize={GLYPH_FONT_SIZE}
+            fill={color}
+            opacity={0.85}
+          >
+            {SMUFL.accidentals[String(tool.alter)]}
+          </text>
+        )}
+      </g>
+    );
   }
 
   const braceMid = (TOP_Y + BOTTOM_Y) / 2;
@@ -145,6 +262,7 @@ export function System({ layout, ts, showTimeSig, tool, duration, accidental, pl
     <svg
       ref={svgRef}
       className="system"
+      data-tool={tool.kind}
       width={layout.width}
       height={SYSTEM_HEIGHT}
       onMouseMove={handleMove}
@@ -200,8 +318,8 @@ export function System({ layout, ts, showTimeSig, tool, duration, accidental, pl
         </Fragment>
       ))}
 
-      {/* ghost preview */}
-      {ghost}
+      {/* ghost / highlight */}
+      {overlay}
 
       {/* playhead */}
       {playheadX !== null && (

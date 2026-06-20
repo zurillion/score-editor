@@ -1,4 +1,4 @@
-import { Duration, Pitch, StepName, TimeSignature } from './types';
+import { Alter, Duration, Pitch, StepName, TimeSignature } from './types';
 import { TICKS_PER_WHOLE } from './constants';
 
 export const STEP_NAMES: StepName[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
@@ -13,7 +13,7 @@ export function pitchToDiatonic(p: Pitch): number {
   return p.octave * 7 + STEP_INDEX[p.step];
 }
 
-export function diatonicToPitch(d: number, alter: -1 | 0 | 1 = 0): Pitch {
+export function diatonicToPitch(d: number, alter: Alter = 0): Pitch {
   const octave = Math.floor(d / 7);
   const idx = ((d % 7) + 7) % 7;
   return { step: STEP_NAMES[idx], octave, alter };
@@ -44,7 +44,8 @@ export function pitchEquals(a: Pitch, b: Pitch): boolean {
 }
 
 export function pitchName(p: Pitch): string {
-  const acc = p.alter === 1 ? '♯' : p.alter === -1 ? '♭' : '';
+  const acc =
+    p.alter === 2 ? '𝄪' : p.alter === 1 ? '♯' : p.alter === -1 ? '♭' : p.alter === -2 ? '𝄫' : '';
   return `${p.step}${acc}${p.octave}`;
 }
 
