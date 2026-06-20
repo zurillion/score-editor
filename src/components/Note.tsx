@@ -81,10 +81,10 @@ export function NoteView({ pitches, duration, x, color, opacity = 1 }: NoteViewP
               cy={y}
               rx={rx}
               ry={ry}
-              transform={`rotate(-20 ${x} ${y})`}
+              transform={isOpen ? undefined : `rotate(-20 ${x} ${y})`}
               fill={isOpen ? 'white' : color}
               stroke={isOpen ? color : 'none'}
-              strokeWidth={isOpen ? 1.8 : 0}
+              strokeWidth={isOpen ? 1.6 : 0}
             />
             {p.alter !== 0 && (
               <text x={x - rx - 3} y={y} textAnchor="end" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>

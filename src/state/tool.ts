@@ -3,7 +3,8 @@ import { Alter } from '../music/types';
 /**
  * The currently active editing tool.
  *
- * `note` / `rest` are the placement tools (hover + click on the staff).
+ * `note` is the placement tool (hover + click on the staff). Rests are derived
+ * automatically, so there is no manual rest tool.
  * `accidental` / `eraser` are "modal" tools that act on existing notes:
  *  - a single click on their toolbar button arms them for one use (`sticky:false`),
  *    after which the tool reverts to `note`;
@@ -11,7 +12,6 @@ import { Alter } from '../music/types';
  */
 export type Tool =
   | { kind: 'note' }
-  | { kind: 'rest' }
   | { kind: 'accidental'; alter: Alter; sticky: boolean }
   | { kind: 'eraser'; sticky: boolean };
 

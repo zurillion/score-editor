@@ -76,8 +76,6 @@ export default function App() {
         setDuration((d) => ({ ...d, value: map[Number(e.key) - 1] }));
       } else if (e.key === '.') {
         setDuration((d) => ({ ...d, dots: ((d.dots + 1) % 3) as 0 | 1 | 2 }));
-      } else if (e.key.toLowerCase() === 'r') {
-        setTool((t) => (t.kind === 'rest' ? NOTE_TOOL : { kind: 'rest' }));
       } else if (e.key.toLowerCase() === 'e') {
         setTool((t) => (t.kind === 'eraser' ? NOTE_TOOL : { kind: 'eraser', sticky: false }));
       } else if (e.key === 'Escape') {
@@ -131,10 +129,10 @@ export default function App() {
 
       <footer className="hint">
         Scegli una durata, poi muovi il mouse sul pentagramma: appare l'anteprima in grigio. Clicca per inserire una nota
-        (in uno spazio libero) o per aggiungerla come accordo (su una nota esistente). Le <strong>alterazioni</strong> e la{' '}
-        <strong>gomma</strong> si applicano cliccando su una nota esistente (1 click = una volta, doppio click = modalità
-        fissa). <kbd>1-6</kbd> durata · <kbd>.</kbd> punto · <kbd>R</kbd> note/pause · <kbd>E</kbd> gomma · <kbd>Esc</kbd>{' '}
-        note · <kbd>Spazio</kbd> play/stop.
+        (in uno spazio libero) o per aggiungerla come accordo (su una nota esistente). Le <strong>pause</strong> riempiono
+        automaticamente lo spazio libero di ogni battuta. Le <strong>alterazioni</strong> e la <strong>gomma</strong> si
+        applicano cliccando su una nota esistente (1 click = una volta, doppio click = modalità fissa). <kbd>1-6</kbd>{' '}
+        durata · <kbd>.</kbd> punto · <kbd>E</kbd> gomma · <kbd>Esc</kbd> note · <kbd>Spazio</kbd> play/stop.
       </footer>
     </div>
   );

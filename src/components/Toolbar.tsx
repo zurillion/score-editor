@@ -103,9 +103,6 @@ export function Toolbar(props: ToolbarProps) {
           <button className={tool.kind === 'note' ? 'on' : ''} onClick={() => setTool({ kind: 'note' })} title="Inserisci note">
             Note
           </button>
-          <button className={tool.kind === 'rest' ? 'on' : ''} onClick={() => setTool({ kind: 'rest' })} title="Inserisci pause">
-            Pause
-          </button>
           <button
             className={eraserClass}
             onClick={(e) => clickEraser(e.detail)}

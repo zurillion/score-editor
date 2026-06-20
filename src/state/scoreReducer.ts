@@ -1,6 +1,6 @@
-import { Alter, Duration, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, ScoreState, TimeSignature } from '../music/types';
+import { Alter, Duration, Measure, NoteEvent, Pitch, ScoreEvent, ScoreState, TimeSignature } from '../music/types';
 import { durationTicks, measureTicks, pitchEquals, pitchToDiatonic } from '../music/theory';
-import { classifyNote, classifyRest } from '../music/placement';
+import { classifyNote } from '../music/placement';
 
 let idCounter = 0;
 const uid = (prefix: string): string => `${prefix}${++idCounter}`;
@@ -18,7 +18,6 @@ export function initialScore(measureCount = 4): ScoreState {
 
 export type ScoreAction =
   | { type: 'CLICK_NOTE'; measureIndex: number; tick: number; pitch: Pitch; duration: Duration }
-  | { type: 'CLICK_REST'; measureIndex: number; tick: number; duration: Duration }
   | { type: 'SET_ACCIDENTAL'; measureIndex: number; eventId: string; diatonic: number; alter: Alter }
   | { type: 'ERASE'; measureIndex: number; eventId: string; diatonic: number | null }
   | { type: 'SET_TIME_SIGNATURE'; timeSignature: TimeSignature }
@@ -77,23 +76,6 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const pitches = sortPitches([...target.pitches, action.pitch]);
       const events = m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));
       return withMeasureEvents(state, action.measureIndex, events);
-    }
-
-    case 'CLICK_REST': {
-      const m = state.measures[action.measureIndex];
-      if (!m) return state;
-      const total = measureTicks(state.timeSignature);
-      const verdict = classifyRest(m.events, action.tick, action.duration, total);
-      if (verdict === 'blocked') return state;
-
-      if (verdict === 'delete') {
-        const target = m.events.find((e) => e.startTick === action.tick);
-        if (!target) return state;
-        return withMeasureEvents(state, action.measureIndex, m.events.filter((e) => e.id !== target.id));
-      }
-
-      const rest: RestEvent = { id: uid('r'), kind: 'rest', startTick: action.tick, duration: action.duration };
-      return withMeasureEvents(state, action.measureIndex, [...m.events, rest]);
     }
 
     case 'SET_ACCIDENTAL': {

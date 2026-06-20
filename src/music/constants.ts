@@ -16,11 +16,11 @@ export const SYSTEM_HEIGHT = 248; // total vertical space reserved per system
 export const SYSTEM_GAP = 26; // vertical gap between systems in page mode
 
 // ---- Horizontal layout (pixels) ----
-export const HEADER_WIDTH = 86; // brace + clef + time-signature area
+export const HEADER_WIDTH = 104; // brace + clef + time-signature area
 export const STAFF_LEFT = 14; // where the staff lines start
 export const BRACE_X = 9;
 export const CLEF_X = 24;
-export const TIME_SIG_X = 60;
+export const TIME_SIG_X = 80;
 export const MEASURE_PAD = 18; // inner left/right padding inside a measure
 export const PX_PER_TICK = 64 / TICKS_PER_QUARTER; // a quarter note ~ 64px wide
 

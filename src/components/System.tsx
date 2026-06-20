@@ -10,9 +10,9 @@ import {
   clamp,
   TREBLE_LINES,
   BASS_LINES,
-  TREBLE_MIDDLE,
 } from '../music/layout';
-import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
+import { classifyNote, PlaceAction } from '../music/placement';
+import { measureRests } from '../music/rests';
 import { SMUFL, timeSigString } from '../music/smufl';
 import {
   STAFF_LEFT,
@@ -101,7 +101,7 @@ export function System({
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
 
-  // ---- placement tools (note / rest): snap to a grid slot ----
+  // ---- note tool: snap to a grid slot ----
   function computePlace(x: number, y: number): PlaceHover | null {
     const pm = layout.measures.find((p) => x >= p.leftX && x < p.leftX + p.contentW);
     if (!pm) return null;
@@ -122,44 +122,29 @@ export function System({
 
     const d = clamp(yToDiatonic(y), 5, 50);
     const pitch = diatonicToPitch(d, 0);
-    const action =
-      tool.kind === 'rest'
-        ? classifyRest(pm.measure.events, tick, duration, total)
-        : classifyNote(pm.measure.events, tick, pitch, duration, total);
+    const action = classifyNote(pm.measure.events, tick, pitch, duration, total);
     return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, action };
   }
 
   // ---- modal tools (accidental / eraser): hit-test an existing notehead ----
   function computeTarget(x: number, y: number): TargetHover | null {
     const leftPad = tool.kind === 'accidental' ? 20 : 0; // accidentals sit left of the head
-    const allowRests = tool.kind === 'eraser';
     let best: (TargetHover & { dist: number }) | null = null;
 
     for (const pm of layout.measures) {
       for (const ev of pm.measure.events) {
+        if (ev.kind !== 'note') continue;
         const ex = tickToX(pm.leftX, pm.contentW, ev.startTick, total);
-        if (ev.kind === 'note') {
-          for (const p of ev.pitches) {
-            const d = pitchToDiatonic(p);
-            const ey = diatonicToY(d);
-            const dx = x - ex;
-            const dy = y - ey;
-            const inX = dx <= NOTEHEAD_RX + 4 && dx >= -(NOTEHEAD_RX + 4 + leftPad);
-            if (inX && Math.abs(dy) <= NOTEHEAD_RY + 4) {
-              const dist = Math.hypot(dx, dy);
-              if (!best || dist < best.dist) {
-                best = { mode: 'target', measureIndex: pm.index, eventId: ev.id, diatonic: d, hx: ex, hy: ey, dist };
-              }
-            }
-          }
-        } else if (allowRests) {
-          const ey = diatonicToY(TREBLE_MIDDLE);
+        for (const p of ev.pitches) {
+          const d = pitchToDiatonic(p);
+          const ey = diatonicToY(d);
           const dx = x - ex;
           const dy = y - ey;
-          if (Math.abs(dx) <= 11 && Math.abs(dy) <= 20) {
+          const inX = dx <= NOTEHEAD_RX + 4 && dx >= -(NOTEHEAD_RX + 4 + leftPad);
+          if (inX && Math.abs(dy) <= NOTEHEAD_RY + 4) {
             const dist = Math.hypot(dx, dy);
             if (!best || dist < best.dist) {
-              best = { mode: 'target', measureIndex: pm.index, eventId: ev.id, diatonic: null, hx: ex, hy: ey, dist };
+              best = { mode: 'target', measureIndex: pm.index, eventId: ev.id, diatonic: d, hx: ex, hy: ey, dist };
             }
           }
         }
@@ -186,16 +171,12 @@ export function System({
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
 
-    if (tool.kind === 'note' || tool.kind === 'rest') {
+    if (tool.kind === 'note') {
       const target = computePlace(pt.x, pt.y);
       if (!target || target.action === 'blocked') return;
-      if (tool.kind === 'note') {
-        const pitch = diatonicToPitch(target.diatonic, 0);
-        onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration });
-        if (previewOnCreate && (target.action === 'create' || target.action === 'chord')) onPreviewNote([pitch]);
-      } else {
-        onAction({ type: 'CLICK_REST', measureIndex: target.measureIndex, tick: target.tick, duration });
-      }
+      const pitch = diatonicToPitch(target.diatonic, 0);
+      onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration });
+      if (previewOnCreate && (target.action === 'create' || target.action === 'chord')) onPreviewNote([pitch]);
       return;
     }
 
@@ -225,12 +206,9 @@ export function System({
       const gx = tickToX(pm.leftX, pm.contentW, hover.tick, total);
       const color = GHOST_COLOR[hover.action];
       const op = GHOST_OPACITY[hover.action];
-      overlay =
-        tool.kind === 'rest' ? (
-          <RestView duration={duration} x={gx} color={color} opacity={op} />
-        ) : (
-          <NoteView pitches={[diatonicToPitch(hover.diatonic, 0)]} duration={duration} x={gx} color={color} opacity={op} />
-        );
+      overlay = (
+        <NoteView pitches={[diatonicToPitch(hover.diatonic, 0)]} duration={duration} x={gx} color={color} opacity={op} />
+      );
     }
   } else if (hover?.mode === 'target') {
     const isAcc = tool.kind === 'accidental';
@@ -303,17 +281,28 @@ export function System({
           </Fragment>
         ))}
 
-      {/* measures: events + right barline */}
+      {/* measures: notes + auto-derived rests + right barline */}
       {layout.measures.map((pm) => (
         <Fragment key={pm.measure.id}>
-          {pm.measure.events.map((ev) => {
-            const x = tickToX(pm.leftX, pm.contentW, ev.startTick, total);
-            return ev.kind === 'note' ? (
-              <NoteView key={ev.id} pitches={ev.pitches} duration={ev.duration} x={x} color="#1a1a1a" />
-            ) : (
-              <RestView key={ev.id} duration={ev.duration} x={x} color="#1a1a1a" />
-            );
-          })}
+          {pm.measure.events.map((ev) =>
+            ev.kind === 'note' ? (
+              <NoteView
+                key={ev.id}
+                pitches={ev.pitches}
+                duration={ev.duration}
+                x={tickToX(pm.leftX, pm.contentW, ev.startTick, total)}
+                color="#1a1a1a"
+              />
+            ) : null,
+          )}
+          {measureRests(pm.measure.events, total).map((r, i) => (
+            <RestView
+              key={`rest-${i}`}
+              duration={r.duration}
+              x={tickToX(pm.leftX, pm.contentW, r.startTick + durationTicks(r.duration) / 2, total)}
+              color="#1a1a1a"
+            />
+          ))}
           <line x1={pm.leftX + pm.contentW} x2={pm.leftX + pm.contentW} y1={TOP_Y} y2={BOTTOM_Y} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
         </Fragment>
       ))}
