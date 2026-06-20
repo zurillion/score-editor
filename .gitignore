@@ -1,0 +1,52 @@
+# ---- Dipendenze ----
+node_modules/
+.pnp
+.pnp.js
+# ---- Build / output ----
+dist/
+dist-ssr/
+build/
+# ---- Cache Vite / vari ----
+.vite/
+*.local
+*.tsbuildinfo
+# ---- Log ----
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# ---- Variabili d'ambiente ----
+.env
+.env.*
+!.env.example
+# ---- Editor / IDE ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+# file temporanei di vi/vim
+*.swp
+*.swo
+*~
+# ---- Test / coverage ----
+coverage/
+# ---- macOS ----
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
