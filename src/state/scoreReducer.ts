@@ -1,6 +1,6 @@
-import { Alter, Duration, Measure, NoteEvent, Pitch, ScoreEvent, ScoreState, TimeSignature } from '../music/types';
+import { Alter, Duration, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, ScoreState, TimeSignature } from '../music/types';
 import { durationTicks, measureTicks, pitchEquals, pitchToDiatonic } from '../music/theory';
-import { classifyNote } from '../music/placement';
+import { classifyNote, classifyRest } from '../music/placement';
 
 let idCounter = 0;
 const uid = (prefix: string): string => `${prefix}${++idCounter}`;
@@ -18,8 +18,11 @@ export function initialScore(measureCount = 4): ScoreState {
 
 export type ScoreAction =
   | { type: 'CLICK_NOTE'; measureIndex: number; tick: number; pitch: Pitch; duration: Duration }
+  | { type: 'CLICK_REST'; measureIndex: number; tick: number; duration: Duration }
   | { type: 'SET_ACCIDENTAL'; measureIndex: number; eventId: string; diatonic: number; alter: Alter }
   | { type: 'ERASE'; measureIndex: number; eventId: string; diatonic: number | null }
+  | { type: 'DELETE_MEASURES'; indices: number[] }
+  | { type: 'DELETE_NOTES'; ids: string[] }
   | { type: 'SET_TIME_SIGNATURE'; timeSignature: TimeSignature }
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
@@ -78,6 +81,21 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       return withMeasureEvents(state, action.measureIndex, events);
     }
 
+    case 'CLICK_REST': {
+      const m = state.measures[action.measureIndex];
+      if (!m) return state;
+      const total = measureTicks(state.timeSignature);
+      const verdict = classifyRest(m.events, action.tick, action.duration, total);
+      if (verdict === 'blocked') return state;
+      if (verdict === 'delete') {
+        const target = m.events.find((e) => e.startTick === action.tick);
+        if (!target) return state;
+        return withMeasureEvents(state, action.measureIndex, m.events.filter((e) => e.id !== target.id));
+      }
+      const rest: RestEvent = { id: uid('r'), kind: 'rest', startTick: action.tick, duration: action.duration };
+      return withMeasureEvents(state, action.measureIndex, [...m.events, rest]);
+    }
+
     case 'SET_ACCIDENTAL': {
       const m = state.measures[action.measureIndex];
       if (!m) return state;
@@ -112,6 +130,33 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         return withMeasureEvents(state, action.measureIndex, events);
       }
       return withMeasureEvents(state, action.measureIndex, m.events.filter((e) => e.id !== target.id));
+    }
+
+    case 'DELETE_MEASURES': {
+      const drop = new Set(action.indices);
+      let measures = state.measures.filter((_, i) => !drop.has(i));
+      if (measures.length === 0) measures = [emptyMeasure()];
+      return { ...state, measures };
+    }
+
+    case 'DELETE_NOTES': {
+      const ids = new Set(action.ids);
+      const measures = state.measures.map((m) => {
+        const deleted = m.events.filter((e) => ids.has(e.id));
+        if (deleted.length === 0) return m;
+        // Remove the events and ripple the remaining ones back by the total
+        // duration of the deleted events that started before them.
+        const kept = m.events
+          .filter((e) => !ids.has(e.id))
+          .map((e) => {
+            const shift = deleted
+              .filter((d) => d.startTick < e.startTick)
+              .reduce((a, d) => a + durationTicks(d.duration), 0);
+            return shift > 0 ? { ...e, startTick: Math.max(0, e.startTick - shift) } : e;
+          });
+        return { ...m, events: sortEvents(kept) };
+      });
+      return { ...state, measures };
     }
 
     case 'SET_TIME_SIGNATURE': {

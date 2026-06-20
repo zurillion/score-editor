@@ -5,6 +5,7 @@ import { LayoutMode, layoutSystems, tickToX, clamp } from '../music/layout';
 import { SYSTEM_HEIGHT, SYSTEM_GAP } from '../music/constants';
 import type { ScoreAction } from '../state/scoreReducer';
 import { Tool } from '../state/tool';
+import { Selection } from '../state/selection';
 import { System } from './System';
 
 interface ScoreProps {
@@ -13,10 +14,14 @@ interface ScoreProps {
   tool: Tool;
   duration: Duration;
   previewOnCreate: boolean;
+  selection: Selection | null;
   playheadTick: number | null;
   onAction: (action: ScoreAction) => void;
   onAfterApply: () => void;
   onPreviewNote: (pitches: Pitch[]) => void;
+  onSelectMeasures: (indices: number[]) => void;
+  onSelectNotes: (ids: string[]) => void;
+  onClearSelection: () => void;
 }
 
 export function Score({
@@ -25,10 +30,14 @@ export function Score({
   tool,
   duration,
   previewOnCreate,
+  selection,
   playheadTick,
   onAction,
   onAfterApply,
   onPreviewNote,
+  onSelectMeasures,
+  onSelectNotes,
+  onClearSelection,
 }: ScoreProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
@@ -85,10 +94,14 @@ export function Score({
             tool={tool}
             duration={duration}
             previewOnCreate={previewOnCreate}
+            selection={selection}
             playheadX={i === phSystem ? phX : null}
             onAction={onAction}
             onAfterApply={onAfterApply}
             onPreviewNote={onPreviewNote}
+            onSelectMeasures={onSelectMeasures}
+            onSelectNotes={onSelectNotes}
+            onClearSelection={onClearSelection}
           />
         ))}
       </div>

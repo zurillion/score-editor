@@ -26,3 +26,12 @@ export function classifyNote(
   if (tick + dur > total) return 'blocked';
   return overlaps(events, tick, dur) ? 'blocked' : 'create';
 }
+
+/** What would clicking with the rest tool do at this slot? */
+export function classifyRest(events: ScoreEvent[], tick: number, duration: Duration, total: number): PlaceAction {
+  const exact = events.find((e) => e.startTick === tick);
+  if (exact) return exact.kind === 'rest' ? 'delete' : 'blocked';
+  const dur = durationTicks(duration);
+  if (tick + dur > total) return 'blocked';
+  return overlaps(events, tick, dur) ? 'blocked' : 'create';
+}

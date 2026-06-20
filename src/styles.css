@@ -125,6 +125,15 @@ button.on.sticky {
 .glyph-btn .bravura.acc {
   font-size: 30px;
 }
+.glyph-btn .bravura.rest {
+  font-size: 24px;
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 
 select,
 input[type='number'] {

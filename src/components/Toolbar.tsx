@@ -1,5 +1,4 @@
 import { Duration, DurationValue, Alter, TimeSignature } from '../music/types';
-import { durationLabel } from '../music/theory';
 import { SMUFL } from '../music/smufl';
 import { LayoutMode } from '../music/layout';
 import { Tool } from '../state/tool';
@@ -40,6 +39,8 @@ interface ToolbarProps {
   setMode: (m: LayoutMode) => void;
   bpm: number;
   setBpm: (n: number) => void;
+  loop: boolean;
+  setLoop: (v: boolean) => void;
   isPlaying: boolean;
   onPlay: () => void;
   onStop: () => void;
@@ -63,6 +64,8 @@ export function Toolbar(props: ToolbarProps) {
     setMode,
     bpm,
     setBpm,
+    loop,
+    setLoop,
     isPlaying,
     onPlay,
     onStop,
@@ -73,24 +76,15 @@ export function Toolbar(props: ToolbarProps) {
   } = props;
 
   // Single click arms a modal tool for one use; double click makes it sticky.
-  // (onClick fires for both, with e.detail telling us the click count.)
   function clickAccidental(alter: Alter, detail: number) {
-    if (detail >= 2) {
-      setTool({ kind: 'accidental', alter, sticky: true });
-    } else if (tool.kind === 'accidental' && tool.alter === alter) {
-      setTool({ kind: 'note' }); // toggle off
-    } else {
-      setTool({ kind: 'accidental', alter, sticky: false });
-    }
+    if (detail >= 2) setTool({ kind: 'accidental', alter, sticky: true });
+    else if (tool.kind === 'accidental' && tool.alter === alter) setTool({ kind: 'note' });
+    else setTool({ kind: 'accidental', alter, sticky: false });
   }
   function clickEraser(detail: number) {
-    if (detail >= 2) {
-      setTool({ kind: 'eraser', sticky: true });
-    } else if (tool.kind === 'eraser') {
-      setTool({ kind: 'note' });
-    } else {
-      setTool({ kind: 'eraser', sticky: false });
-    }
+    if (detail >= 2) setTool({ kind: 'eraser', sticky: true });
+    else if (tool.kind === 'eraser') setTool({ kind: 'note' });
+    else setTool({ kind: 'eraser', sticky: false });
   }
 
   const eraserClass = tool.kind === 'eraser' ? (tool.sticky ? 'on sticky' : 'on') : '';
@@ -98,34 +92,38 @@ export function Toolbar(props: ToolbarProps) {
   return (
     <div className="toolbar">
       <fieldset className="group">
-        <legend>Strumento</legend>
-        <div className="btn-row">
-          <button className={tool.kind === 'note' ? 'on' : ''} onClick={() => setTool({ kind: 'note' })} title="Inserisci note">
-            Note
-          </button>
-          <button
-            className={eraserClass}
-            onClick={(e) => clickEraser(e.detail)}
-            title="Gomma — 1 click: una volta · doppio click: modalità fissa. Clicca sulla testa della nota."
-          >
-            ⌫ Gomma
-          </button>
-        </div>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Durata</legend>
-        <div className="btn-row">
-          {DURATIONS.map((v) => (
-            <button
-              key={v}
-              className={`glyph-btn ${duration.value === v ? 'on' : ''}`}
-              onClick={() => setDuration({ ...duration, value: v })}
-              title={durationLabel({ value: v, dots: 0 })}
-            >
-              <span className="bravura">{SMUFL.paletteNotes[v]}</span>
-            </button>
-          ))}
+        <legend>Note / Pause</legend>
+        <div className="palette">
+          <div className="btn-row">
+            {DURATIONS.map((v) => (
+              <button
+                key={`n${v}`}
+                className={`glyph-btn ${tool.kind === 'note' && duration.value === v ? 'on' : ''}`}
+                onClick={() => {
+                  setTool({ kind: 'note' });
+                  setDuration({ ...duration, value: v });
+                }}
+                title="Nota"
+              >
+                <span className="bravura">{SMUFL.paletteNotes[v]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="btn-row">
+            {DURATIONS.map((v) => (
+              <button
+                key={`r${v}`}
+                className={`glyph-btn ${tool.kind === 'rest' && duration.value === v ? 'on' : ''}`}
+                onClick={() => {
+                  setTool({ kind: 'rest' });
+                  setDuration({ ...duration, value: v });
+                }}
+                title="Pausa"
+              >
+                <span className="bravura rest">{SMUFL.rests[v]}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </fieldset>
 
@@ -162,6 +160,33 @@ export function Toolbar(props: ToolbarProps) {
               </button>
             );
           })}
+        </div>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>Strumenti</legend>
+        <div className="btn-row">
+          <button
+            className={eraserClass}
+            onClick={(e) => clickEraser(e.detail)}
+            title="Gomma — 1 click: una volta · doppio click: modalità fissa. Clicca sulla testa della nota."
+          >
+            ⌫ Gomma
+          </button>
+          <button
+            className={tool.kind === 'select-measures' ? 'on' : ''}
+            onClick={() => setTool({ kind: 'select-measures' })}
+            title="Seleziona battute (trascina). ⌘C/X copia/taglia · Backspace elimina"
+          >
+            ▭ Battute
+          </button>
+          <button
+            className={tool.kind === 'select-notes' ? 'on' : ''}
+            onClick={() => setTool({ kind: 'select-notes' })}
+            title="Lazo: seleziona note (trascina un rettangolo). ⌘C/X · Backspace"
+          >
+            ⬚ Lazo
+          </button>
         </div>
       </fieldset>
 
@@ -243,6 +268,9 @@ export function Toolbar(props: ToolbarProps) {
         <div className="btn-row">
           <button className={`play ${isPlaying ? 'stop' : ''}`} onClick={isPlaying ? onStop : onPlay}>
             {isPlaying ? '■ Stop' : '▶ Play'}
+          </button>
+          <button className={loop ? 'on' : ''} onClick={() => setLoop(!loop)} title="Ripeti il brano in loop">
+            ↻ Loop
           </button>
           <label className="bpm">
             BPM
