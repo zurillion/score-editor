@@ -7,11 +7,12 @@ interface RestViewProps {
   duration: Duration;
   x: number;
   color: string;
+  middle?: number; // diatonic of the staff's middle line the rest sits on
   opacity?: number;
 }
 
-export function RestView({ duration, x, color, opacity = 1 }: RestViewProps) {
-  const y = diatonicToY(TREBLE_MIDDLE); // rests sit on the treble middle line
+export function RestView({ duration, x, color, middle = TREBLE_MIDDLE, opacity = 1 }: RestViewProps) {
+  const y = diatonicToY(middle);
   const glyph = SMUFL.rests[duration.value];
   const dotY = y - HALF_SPACE;
   return (

@@ -1,4 +1,4 @@
-import { Alter, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, ScoreState, StepName, TimeSignature } from './types';
+import { Alter, Measure, NoteEvent, Pitch, ScoreEvent, ScoreState, Staff, StepName, TimeSignature } from './types';
 import { durationTicks, measureTicks } from './theory';
 
 // ---------------------------------------------------------------------------
@@ -59,16 +59,17 @@ function parseVoice(src: string): VoiceEvent[] {
   return out;
 }
 
-function toScoreEvents(idBase: string, voice: VoiceEvent[], total: number): Map<number, ScoreEvent[]> {
+function toScoreEvents(idBase: string, staff: Staff, voice: VoiceEvent[], total: number): Map<number, ScoreEvent[]> {
   const byMeasure = new Map<number, ScoreEvent[]>();
   voice.forEach((ve, i) => {
     if (ve.pitches === null) return; // rests are implicit (we don't render gaps)
     const measureIndex = Math.floor(ve.startTick / total);
     const startTick = ve.startTick - measureIndex * total;
     const duration = { value: ve.value, dots: ve.dots };
-    const ev: NoteEvent | RestEvent = {
+    const ev: NoteEvent = {
       id: `${idBase}-${i}`,
       kind: 'note',
+      staff,
       startTick,
       duration,
       pitches: ve.pitches,
@@ -100,8 +101,8 @@ export interface LibraryPiece {
 
 function buildScore(def: PieceDef): LibraryPiece {
   const total = measureTicks(def.ts);
-  const rh = toScoreEvents(`${def.id}-rh`, parseVoice(def.rh), total);
-  const lh = toScoreEvents(`${def.id}-lh`, parseVoice(def.lh), total);
+  const rh = toScoreEvents(`${def.id}-rh`, 'treble', parseVoice(def.rh), total);
+  const lh = toScoreEvents(`${def.id}-lh`, 'bass', parseVoice(def.lh), total);
   const count = Math.max(0, ...rh.keys(), ...lh.keys()) + 1;
   const measures: Measure[] = [];
   for (let i = 0; i < count; i++) {

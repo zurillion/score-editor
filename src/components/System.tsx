@@ -1,6 +1,6 @@
 import { Fragment, useRef, useState } from 'react';
-import { Duration, Pitch, ScoreEvent, TimeSignature } from '../music/types';
-import { diatonicToPitch, durationTicks, measureTicks, pitchToDiatonic } from '../music/theory';
+import { Duration, Pitch, ScoreEvent, Staff, TimeSignature } from '../music/types';
+import { diatonicToPitch, durationTicks, measureTicks, pitchToDiatonic, staffForDiatonic } from '../music/theory';
 import {
   SystemLayout,
   diatonicToY,
@@ -10,6 +10,8 @@ import {
   clamp,
   TREBLE_LINES,
   BASS_LINES,
+  TREBLE_MIDDLE,
+  BASS_MIDDLE,
 } from '../music/layout';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
@@ -56,6 +58,7 @@ interface PlaceHover {
   measureIndex: number;
   tick: number;
   diatonic: number;
+  staff: Staff;
   action: PlaceAction;
 }
 interface TargetHover {
@@ -150,11 +153,12 @@ export function System(props: SystemProps) {
     }
 
     const d = clamp(yToDiatonic(y), 5, 50);
+    const staff = staffForDiatonic(d);
     const action =
       tool.kind === 'rest'
-        ? classifyRest(pm.measure.events, tick, duration, total)
-        : classifyNote(pm.measure.events, tick, diatonicToPitch(d, 0), duration, total);
-    return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, action };
+        ? classifyRest(pm.measure.events, tick, duration, total, staff)
+        : classifyNote(pm.measure.events, tick, diatonicToPitch(d, 0), duration, total, staff);
+    return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, staff, action };
   }
 
   // ---- modal tools (accidental / eraser): hit-test an existing notehead ----
@@ -220,7 +224,7 @@ export function System(props: SystemProps) {
       const target = computePlace(pt.x, pt.y);
       if (!target || target.action === 'blocked') return;
       if (tool.kind === 'rest') {
-        onAction({ type: 'CLICK_REST', measureIndex: target.measureIndex, tick: target.tick, duration });
+        onAction({ type: 'CLICK_REST', measureIndex: target.measureIndex, tick: target.tick, duration, staff: target.staff });
       } else {
         const pitch = diatonicToPitch(target.diatonic, 0);
         onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration });
@@ -249,11 +253,12 @@ export function System(props: SystemProps) {
       const gx = tickToX(pm.leftX, pm.contentW, hover.tick, total);
       const color = GHOST_COLOR[hover.action];
       const op = GHOST_OPACITY[hover.action];
+      const gMiddle = hover.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE;
       overlay =
         tool.kind === 'rest' ? (
-          <RestView duration={duration} x={gx} color={color} opacity={op} />
+          <RestView duration={duration} x={gx} color={color} middle={gMiddle} opacity={op} />
         ) : (
-          <NoteView pitches={[diatonicToPitch(hover.diatonic, 0)]} duration={duration} x={gx} color={color} opacity={op} />
+          <NoteView pitches={[diatonicToPitch(hover.diatonic, 0)]} duration={duration} staff={hover.staff} x={gx} color={color} opacity={op} />
         );
     }
   } else if (hover?.mode === 'target') {
@@ -367,13 +372,25 @@ export function System(props: SystemProps) {
         <Fragment key={pm.measure.id}>
           {pm.measure.events.map((ev) =>
             ev.kind === 'note' ? (
-              <NoteView key={ev.id} pitches={ev.pitches} duration={ev.duration} x={tickToX(pm.leftX, pm.contentW, ev.startTick, total)} color="#1a1a1a" />
+              <NoteView key={ev.id} pitches={ev.pitches} duration={ev.duration} staff={ev.staff} x={tickToX(pm.leftX, pm.contentW, ev.startTick, total)} color="#1a1a1a" />
             ) : (
-              <RestView key={ev.id} duration={ev.duration} x={tickToX(pm.leftX, pm.contentW, ev.startTick + durationTicks(ev.duration) / 2, total)} color="#1a1a1a" />
+              <RestView
+                key={ev.id}
+                duration={ev.duration}
+                middle={ev.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
+                x={tickToX(pm.leftX, pm.contentW, ev.startTick + durationTicks(ev.duration) / 2, total)}
+                color="#1a1a1a"
+              />
             ),
           )}
           {measureRests(pm.measure.events, total).map((r, i) => (
-            <RestView key={`rest-${i}`} duration={r.duration} x={tickToX(pm.leftX, pm.contentW, r.startTick + durationTicks(r.duration) / 2, total)} color="#1a1a1a" />
+            <RestView
+              key={`rest-${i}`}
+              duration={r.duration}
+              middle={r.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
+              x={tickToX(pm.leftX, pm.contentW, (r.whole ? total / 2 : r.startTick + durationTicks(r.duration) / 2), total)}
+              color="#1a1a1a"
+            />
           ))}
           {selectedNoteIds &&
             pm.measure.events

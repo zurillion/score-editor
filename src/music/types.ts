@@ -3,6 +3,9 @@ export type StepName = 'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B';
 /** Accidental offset in semitones: double-flat .. double-sharp. */
 export type Alter = -2 | -1 | 0 | 1 | 2;
 
+/** Which staff of the grand staff an event belongs to (kept independent of pitch). */
+export type Staff = 'treble' | 'bass';
+
 /** A pitch in scientific notation (C4 = middle C). `alter` is the accidental. */
 export interface Pitch {
   step: StepName;
@@ -19,6 +22,7 @@ export interface Duration {
 export interface NoteEvent {
   id: string;
   kind: 'note';
+  staff: Staff;
   startTick: number; // offset from the measure's start
   duration: Duration;
   pitches: Pitch[]; // one entry = single note, several = chord (simultaneous notes)
@@ -27,6 +31,7 @@ export interface NoteEvent {
 export interface RestEvent {
   id: string;
   kind: 'rest';
+  staff: Staff;
   startTick: number;
   duration: Duration;
 }

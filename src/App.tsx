@@ -124,15 +124,15 @@ export default function App() {
       }
       const ids = new Set(selection.ids);
       const total = measureTicks(score.timeSignature);
-      const picked: { g: number; duration: NoteEvent['duration']; pitches: NoteEvent['pitches'] }[] = [];
+      const picked: { g: number; staff: NoteEvent['staff']; duration: NoteEvent['duration']; pitches: NoteEvent['pitches'] }[] = [];
       score.measures.forEach((m, mi) =>
         m.events.forEach((e) => {
-          if (e.kind === 'note' && ids.has(e.id)) picked.push({ g: mi * total + e.startTick, duration: e.duration, pitches: e.pitches });
+          if (e.kind === 'note' && ids.has(e.id)) picked.push({ g: mi * total + e.startTick, staff: e.staff, duration: e.duration, pitches: e.pitches });
         }),
       );
       if (picked.length === 0) return null;
       const minG = Math.min(...picked.map((p) => p.g));
-      const events: ClipNote[] = picked.map((p) => ({ offset: p.g - minG, duration: clone(p.duration), pitches: clone(p.pitches) }));
+      const events: ClipNote[] = picked.map((p) => ({ offset: p.g - minG, staff: p.staff, duration: clone(p.duration), pitches: clone(p.pitches) }));
       return { kind: 'notes', events };
     };
     const deleteSelection = () => {

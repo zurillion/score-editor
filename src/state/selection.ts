@@ -1,4 +1,4 @@
-import { Duration, Measure, Pitch } from '../music/types';
+import { Duration, Measure, Pitch, Staff } from '../music/types';
 
 /** Current selection (global measure indices, or global event ids). */
 export type Selection =
@@ -9,6 +9,7 @@ export type Selection =
  *  original spacing across measures is preserved on paste). */
 export interface ClipNote {
   offset: number;
+  staff: Staff;
   duration: Duration;
   pitches: Pitch[];
 }

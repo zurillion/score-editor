@@ -1,5 +1,5 @@
-import { Alter, Duration, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, ScoreState, TimeSignature } from '../music/types';
-import { diatonicToPitch, durationTicks, measureTicks, pitchEquals, pitchToDiatonic } from '../music/theory';
+import { Alter, Duration, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, Staff, ScoreState, TimeSignature } from '../music/types';
+import { diatonicToPitch, durationTicks, measureTicks, pitchEquals, pitchToDiatonic, staffForDiatonic } from '../music/theory';
 import { classifyNote, classifyRest } from '../music/placement';
 import { ClipNote } from './selection';
 
@@ -19,7 +19,7 @@ export function initialScore(measureCount = 4): ScoreState {
 
 export type ScoreAction =
   | { type: 'CLICK_NOTE'; measureIndex: number; tick: number; pitch: Pitch; duration: Duration }
-  | { type: 'CLICK_REST'; measureIndex: number; tick: number; duration: Duration }
+  | { type: 'CLICK_REST'; measureIndex: number; tick: number; duration: Duration; staff: Staff }
   | { type: 'SET_ACCIDENTAL'; measureIndex: number; eventId: string; diatonic: number; alter: Alter }
   | { type: 'ERASE'; measureIndex: number; eventId: string; diatonic: number | null }
   | { type: 'DELETE_MEASURES'; indices: number[] }
@@ -52,13 +52,15 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const m = state.measures[action.measureIndex];
       if (!m) return state;
       const total = measureTicks(state.timeSignature);
-      const verdict = classifyNote(m.events, action.tick, action.pitch, action.duration, total);
+      const staff = staffForDiatonic(pitchToDiatonic(action.pitch));
+      const verdict = classifyNote(m.events, action.tick, action.pitch, action.duration, total, staff);
       if (verdict === 'blocked') return state;
 
       if (verdict === 'create') {
         const note: NoteEvent = {
           id: uid('n'),
           kind: 'note',
+          staff,
           startTick: action.tick,
           duration: action.duration,
           pitches: [action.pitch],
@@ -66,8 +68,8 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         return withMeasureEvents(state, action.measureIndex, [...m.events, note]);
       }
 
-      // chord / delete operate on the event that starts exactly here
-      const target = m.events.find((e) => e.startTick === action.tick);
+      // chord / delete operate on the event of this staff that starts exactly here
+      const target = m.events.find((e) => e.startTick === action.tick && e.staff === staff);
       if (!target || target.kind !== 'note') return state;
 
       if (verdict === 'delete') {
@@ -89,14 +91,14 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const m = state.measures[action.measureIndex];
       if (!m) return state;
       const total = measureTicks(state.timeSignature);
-      const verdict = classifyRest(m.events, action.tick, action.duration, total);
+      const verdict = classifyRest(m.events, action.tick, action.duration, total, action.staff);
       if (verdict === 'blocked') return state;
       if (verdict === 'delete') {
-        const target = m.events.find((e) => e.startTick === action.tick);
+        const target = m.events.find((e) => e.startTick === action.tick && e.staff === action.staff);
         if (!target) return state;
         return withMeasureEvents(state, action.measureIndex, m.events.filter((e) => e.id !== target.id));
       }
-      const rest: RestEvent = { id: uid('r'), kind: 'rest', startTick: action.tick, duration: action.duration };
+      const rest: RestEvent = { id: uid('r'), kind: 'rest', staff: action.staff, startTick: action.tick, duration: action.duration };
       return withMeasureEvents(state, action.measureIndex, [...m.events, rest]);
     }
 
@@ -146,18 +148,21 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
     case 'DELETE_NOTES': {
       const ids = new Set(action.ids);
       const measures = state.measures.map((m) => {
-        const deleted = m.events.filter((e) => ids.has(e.id));
-        if (deleted.length === 0) return m;
-        // Remove the events and ripple the remaining ones back by the total
-        // duration of the deleted events that started before them.
-        const kept = m.events
-          .filter((e) => !ids.has(e.id))
-          .map((e) => {
+        if (!m.events.some((e) => ids.has(e.id))) return m;
+        // Ripple per staff: removing a note shifts the later notes of the SAME
+        // staff back by the deleted durations (the other staff is untouched).
+        const kept: ScoreEvent[] = [];
+        for (const staff of ['treble', 'bass'] as Staff[]) {
+          const se = m.events.filter((e) => e.staff === staff);
+          const deleted = se.filter((e) => ids.has(e.id));
+          for (const e of se) {
+            if (ids.has(e.id)) continue;
             const shift = deleted
               .filter((d) => d.startTick < e.startTick)
               .reduce((a, d) => a + durationTicks(d.duration), 0);
-            return shift > 0 ? { ...e, startTick: Math.max(0, e.startTick - shift) } : e;
-          });
+            kept.push(shift > 0 ? { ...e, startTick: Math.max(0, e.startTick - shift) } : e);
+          }
+        }
         return { ...m, events: sortEvents(kept) };
       });
       return { ...state, measures };
@@ -182,13 +187,14 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       if (action.events.length === 0) return state;
       const total = measureTicks(state.timeSignature);
       // group pasted notes by target measure, preserving their relative offsets
-      const groups = new Map<number, { tick: number; duration: Duration; pitches: Pitch[] }[]>();
+      type Item = { tick: number; staff: Staff; duration: Duration; pitches: Pitch[] };
+      const groups = new Map<number, Item[]>();
       for (const ev of action.events) {
         const g = action.baseTick + ev.offset;
         const mi = Math.floor(g / total);
         if (mi < 0) continue;
         const list = groups.get(mi) ?? [];
-        list.push({ tick: g - mi * total, duration: ev.duration, pitches: ev.pitches });
+        list.push({ tick: g - mi * total, staff: ev.staff, duration: ev.duration, pitches: ev.pitches });
         groups.set(mi, list);
       }
       if (groups.size === 0) return state;
@@ -196,19 +202,26 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const maxMi = Math.max(...groups.keys());
       while (measures.length <= maxMi) measures.push(emptyMeasure());
       for (const [mi, items] of groups) {
-        const minT = Math.min(...items.map((i) => i.tick));
-        const span = Math.max(...items.map((i) => i.tick + durationTicks(i.duration))) - minT;
-        const shifted = measures[mi].events.map((e) =>
-          e.startTick >= minT ? { ...e, startTick: e.startTick + span } : e,
-        );
+        let events = measures[mi].events;
+        // shift existing notes right, per staff, to make room
+        for (const staff of ['treble', 'bass'] as Staff[]) {
+          const staffItems = items.filter((i) => i.staff === staff);
+          if (staffItems.length === 0) continue;
+          const minT = Math.min(...staffItems.map((i) => i.tick));
+          const span = Math.max(...staffItems.map((i) => i.tick + durationTicks(i.duration))) - minT;
+          events = events.map((e) =>
+            e.staff === staff && e.startTick >= minT ? { ...e, startTick: e.startTick + span } : e,
+          );
+        }
         const pasted: NoteEvent[] = items.map((it) => ({
           id: uid('n'),
           kind: 'note',
+          staff: it.staff,
           startTick: it.tick,
           duration: it.duration,
           pitches: it.pitches.map((p) => ({ ...p })),
         }));
-        measures[mi] = { ...measures[mi], events: sortEvents([...shifted, ...pasted]) };
+        measures[mi] = { ...measures[mi], events: sortEvents([...events, ...pasted]) };
       }
       return { ...state, measures };
     }

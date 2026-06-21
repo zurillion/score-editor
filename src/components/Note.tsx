@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { Duration, Pitch } from '../music/types';
+import { Duration, Pitch, Staff } from '../music/types';
 import { pitchToDiatonic } from '../music/theory';
 import { diatonicToY, ledgerLineDiatonics, TREBLE_MIDDLE, BASS_MIDDLE } from '../music/layout';
 import { SMUFL } from '../music/smufl';
@@ -16,26 +16,27 @@ import {
 interface NoteViewProps {
   pitches: Pitch[];
   duration: Duration;
+  staff: Staff;
   x: number; // notehead centre x
   color: string;
   opacity?: number;
 }
 
 /** Renders a single note or a chord (several simultaneous noteheads on one stem). */
-export function NoteView({ pitches, duration, x, color, opacity = 1 }: NoteViewProps) {
+export function NoteView({ pitches, duration, staff, x, color, opacity = 1 }: NoteViewProps) {
   if (pitches.length === 0) return null;
 
   const ds = pitches.map(pitchToDiatonic);
   const minD = Math.min(...ds);
   const maxD = Math.max(...ds);
-  const avg = ds.reduce((a, b) => a + b, 0) / ds.length;
 
-  const middle = avg >= 28 ? TREBLE_MIDDLE : BASS_MIDDLE;
+  // stem direction is decided by the note's own staff, not by where the pitch sits
+  const middle = staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE;
+  const avg = ds.reduce((a, b) => a + b, 0) / ds.length;
   const stemUp = avg < middle;
 
   const value = duration.value;
   const isWhole = value === 1;
-  const isOpen = value <= 2; // whole + half use open noteheads
   const headHW = isWhole ? 9 : 7.1; // actual Bravura notehead half-widths (so glyph centres on x)
   const headGlyph = SMUFL.noteheads[isWhole ? 1 : value === 2 ? 2 : 4];
 
@@ -75,8 +76,7 @@ export function NoteView({ pitches, duration, x, color, opacity = 1 }: NoteViewP
         const dotY = d % 2 === 0 ? y - HALF_SPACE : y;
         return (
           <Fragment key={i}>
-            {/* open noteheads: a white band hides the staff line crossing the hole */}
-            {isOpen && <ellipse cx={x} cy={y} rx={headHW * 0.82} ry={3.3} fill="white" stroke="none" />}
+            {/* open noteheads stay hollow: the staff line shows through, as in print */}
             <text x={x - headHW} y={y} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>
               {headGlyph}
             </text>

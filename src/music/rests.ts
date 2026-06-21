@@ -1,9 +1,11 @@
-import { Duration, DurationValue, ScoreEvent } from './types';
+import { Duration, DurationValue, ScoreEvent, Staff } from './types';
 import { durationTicks } from './theory';
 
 export interface RestSeg {
+  staff: Staff;
   startTick: number;
   duration: Duration;
+  whole?: boolean; // a whole-measure rest, centred horizontally
 }
 
 // Candidate rest durations (largest first), with and without a single dot.
@@ -18,7 +20,7 @@ const CANDIDATES: { value: DurationValue; dots: 0 | 1; ticks: number }[] = (() =
 })();
 
 /** Greedily fill a gap [start, start+len) with the fewest standard rests. */
-function fillGap(start: number, len: number): RestSeg[] {
+function fillGap(staff: Staff, start: number, len: number): RestSeg[] {
   const out: RestSeg[] = [];
   let pos = start;
   let rem = len;
@@ -26,28 +28,34 @@ function fillGap(start: number, len: number): RestSeg[] {
   while (rem > 0 && guard++ < 64) {
     const c = CANDIDATES.find((cand) => cand.ticks <= rem);
     if (!c) break;
-    out.push({ startTick: pos, duration: { value: c.value, dots: c.dots } });
+    out.push({ staff, startTick: pos, duration: { value: c.value, dots: c.dots } });
     pos += c.ticks;
     rem -= c.ticks;
   }
   return out;
 }
 
+const STAVES: Staff[] = ['treble', 'bass'];
+
 /**
- * Auto-rests fill every gap left by the events of a measure (notes *and*
- * explicitly placed rests): before the first event, between events, and up to
- * the barline. A completely empty measure stays blank.
+ * Rests are derived per staff. A staff with events gets its gaps filled; an
+ * empty staff gets a single whole-measure rest, but only when the *other* staff
+ * has at least one note (so a fully empty measure stays blank).
  */
 export function measureRests(events: ScoreEvent[], total: number): RestSeg[] {
-  if (events.length === 0) return [];
-  const sorted = events.slice().sort((a, b) => a.startTick - b.startTick);
-
-  const segs: RestSeg[] = [];
-  let pos = 0;
-  for (const e of sorted) {
-    if (e.startTick > pos) segs.push(...fillGap(pos, e.startTick - pos));
-    pos = Math.max(pos, e.startTick + durationTicks(e.duration));
+  const out: RestSeg[] = [];
+  for (const staff of STAVES) {
+    const se = events.filter((e) => e.staff === staff).slice().sort((a, b) => a.startTick - b.startTick);
+    if (se.length > 0) {
+      let pos = 0;
+      for (const e of se) {
+        if (e.startTick > pos) out.push(...fillGap(staff, pos, e.startTick - pos));
+        pos = Math.max(pos, e.startTick + durationTicks(e.duration));
+      }
+      if (pos < total) out.push(...fillGap(staff, pos, total - pos));
+    } else if (events.some((e) => e.staff !== staff && e.kind === 'note')) {
+      out.push({ staff, startTick: 0, duration: { value: 1, dots: 0 }, whole: true });
+    }
   }
-  if (pos < total) segs.push(...fillGap(pos, total - pos));
-  return segs;
+  return out;
 }
