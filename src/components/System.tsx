@@ -68,10 +68,6 @@ interface TargetHover {
 }
 type Hover = PlaceHover | TargetHover;
 
-type Drag =
-  | { kind: 'measures'; start: number; current: number }
-  | { kind: 'lasso'; x0: number; y0: number; x1: number; y1: number };
-
 interface SystemProps {
   layout: SystemLayout;
   ts: TimeSignature;
@@ -85,9 +81,6 @@ interface SystemProps {
   onAction: (action: ScoreAction) => void;
   onAfterApply: () => void;
   onPreviewNote: (pitches: Pitch[]) => void;
-  onSelectMeasures: (indices: number[]) => void;
-  onSelectNotes: (ids: string[]) => void;
-  onClearSelection: () => void;
   onSetCursor: (tick: number) => void;
 }
 
@@ -105,27 +98,14 @@ export function System(props: SystemProps) {
     onAction,
     onAfterApply,
     onPreviewNote,
-    onSelectMeasures,
-    onSelectNotes,
-    onClearSelection,
     onSetCursor,
   } = props;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
-  const [drag, setDrag] = useState<Drag | null>(null);
   const [cursorDrag, setCursorDrag] = useState(false);
   const total = measureTicks(ts);
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
-
-  // global tick (across measures) for a local x, snapped to the cursor grid
-  function globalTickAt(x: number): number | null {
-    const pm = measureAt(x);
-    if (!pm) return null;
-    const raw = xToTickRaw(pm.leftX, pm.contentW, x, total);
-    const t = clamp(Math.round(raw / CURSOR_GRID) * CURSOR_GRID, 0, total);
-    return pm.index * total + t;
-  }
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
   const modal = tool.kind === 'accidental' || tool.kind === 'eraser';
@@ -139,6 +119,15 @@ export function System(props: SystemProps) {
 
   function measureAt(x: number) {
     return layout.measures.find((p) => x >= p.leftX && x < p.leftX + p.contentW) ?? null;
+  }
+
+  // global tick (across measures) for a local x, snapped to the cursor grid
+  function globalTickAt(x: number): number | null {
+    const pm = measureAt(x);
+    if (!pm) return null;
+    const raw = xToTickRaw(pm.leftX, pm.contentW, x, total);
+    const t = clamp(Math.round(raw / CURSOR_GRID) * CURSOR_GRID, 0, total);
+    return pm.index * total + t;
   }
 
   // ---- placement tools (note / rest): snap to a grid slot ----
@@ -195,39 +184,6 @@ export function System(props: SystemProps) {
     return { mode: 'target', measureIndex: best.measureIndex, eventId: best.eventId, diatonic: best.diatonic, hx: best.hx, hy: best.hy };
   }
 
-  function notesInRect(x0: number, y0: number, x1: number, y1: number): string[] {
-    const lo = { x: Math.min(x0, x1), y: Math.min(y0, y1) };
-    const hi = { x: Math.max(x0, x1), y: Math.max(y0, y1) };
-    const ids = new Set<string>();
-    for (const pm of layout.measures) {
-      for (const ev of pm.measure.events) {
-        if (ev.kind !== 'note') continue;
-        const ex = tickToX(pm.leftX, pm.contentW, ev.startTick, total);
-        for (const p of ev.pitches) {
-          const ey = diatonicToY(pitchToDiatonic(p));
-          if (ex >= lo.x && ex <= hi.x && ey >= lo.y && ey <= hi.y) ids.add(ev.id);
-        }
-      }
-    }
-    return [...ids];
-  }
-
-  // ---- pointer handlers ----
-  function handleMouseDown(e: React.MouseEvent) {
-    if (e.altKey) return; // alt-click moves the cursor (handled on click)
-    const pt = localPoint(e.clientX, e.clientY);
-    if (!pt) return;
-    if (tool.kind === 'select-measures') {
-      const pm = measureAt(pt.x);
-      if (!pm) return onClearSelection();
-      setDrag({ kind: 'measures', start: pm.index, current: pm.index });
-      onSelectMeasures([pm.index]);
-    } else if (tool.kind === 'select-notes') {
-      setDrag({ kind: 'lasso', x0: pt.x, y0: pt.y, x1: pt.x, y1: pt.y });
-      setHover(null);
-    }
-  }
-
   function handleMouseMove(e: React.MouseEvent) {
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
@@ -236,41 +192,17 @@ export function System(props: SystemProps) {
       if (g !== null) onSetCursor(g);
       return;
     }
-    if (drag?.kind === 'measures') {
-      const pm = measureAt(pt.x);
-      if (pm && pm.index !== drag.current) {
-        setDrag({ ...drag, current: pm.index });
-        const lo = Math.min(drag.start, pm.index);
-        const hi = Math.max(drag.start, pm.index);
-        onSelectMeasures(Array.from({ length: hi - lo + 1 }, (_, i) => lo + i));
-      }
-      return;
-    }
-    if (drag?.kind === 'lasso') {
-      setDrag({ ...drag, x1: pt.x, y1: pt.y });
-      return;
-    }
     if (placing) setHover(computePlace(pt.x, pt.y));
     else if (modal) setHover(computeTarget(pt.x, pt.y));
     else setHover(null);
   }
 
-  function finishLasso(d: Drag & { kind: 'lasso' }) {
-    const ids = notesInRect(d.x0, d.y0, d.x1, d.y1);
-    if (ids.length > 0) onSelectNotes(ids);
-    else onClearSelection();
-  }
-
   function handleMouseUp() {
-    if (drag?.kind === 'lasso') finishLasso(drag);
-    setDrag(null);
     setCursorDrag(false);
   }
 
   function handleMouseLeave() {
     setHover(null);
-    if (drag?.kind === 'lasso') finishLasso(drag);
-    setDrag(null);
     setCursorDrag(false);
   }
 
@@ -373,7 +305,6 @@ export function System(props: SystemProps) {
       data-tool={tool.kind}
       width={layout.width}
       height={SYSTEM_HEIGHT}
-      onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
@@ -451,21 +382,6 @@ export function System(props: SystemProps) {
           <line x1={pm.leftX + pm.contentW} x2={pm.leftX + pm.contentW} y1={TOP_Y} y2={BOTTOM_Y} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
         </Fragment>
       ))}
-
-      {/* lasso rectangle */}
-      {drag?.kind === 'lasso' && (
-        <rect
-          x={Math.min(drag.x0, drag.x1)}
-          y={Math.min(drag.y0, drag.y1)}
-          width={Math.abs(drag.x1 - drag.x0)}
-          height={Math.abs(drag.y1 - drag.y0)}
-          fill="rgba(37,99,235,0.08)"
-          stroke={SEL_STROKE}
-          strokeWidth={1}
-          strokeDasharray="4 3"
-          pointerEvents="none"
-        />
-      )}
 
       {/* ghost / hover highlight */}
       {overlay}

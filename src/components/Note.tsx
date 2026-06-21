@@ -45,7 +45,9 @@ export function NoteView({ pitches, duration, x, color, opacity = 1 }: NoteViewP
   const nFlags = value === 8 ? 1 : value === 16 ? 2 : value === 32 ? 3 : 0;
   const stemLen = STEM_LENGTH + (nFlags > 1 ? (nFlags - 1) * STAFF_SPACE : 0);
 
-  const stemX = stemUp ? x + headHW : x - headHW;
+  // attach the stem just inside the notehead edge (tangent internally)
+  const stemInset = 2.2;
+  const stemX = stemUp ? x + headHW - stemInset : x - headHW + stemInset;
   const baseY = stemUp ? diatonicToY(minD) : diatonicToY(maxD);
   const tipY = isWhole ? baseY : stemUp ? diatonicToY(maxD) - stemLen : diatonicToY(minD) + stemLen;
 
@@ -77,7 +79,17 @@ export function NoteView({ pitches, duration, x, color, opacity = 1 }: NoteViewP
         return (
           <Fragment key={i}>
             {/* open noteheads get an opaque white core so the staff line doesn't show through the hole */}
-            {isOpen && <ellipse cx={x} cy={y} rx={headHW * 0.52} ry={NOTEHEAD_RY * 0.46} fill="white" stroke="none" />}
+            {isOpen && (
+              <ellipse
+                cx={x}
+                cy={y}
+                rx={headHW * 0.66}
+                ry={NOTEHEAD_RY * 0.62}
+                transform={value === 2 ? `rotate(-22 ${x} ${y})` : undefined}
+                fill="white"
+                stroke="none"
+              />
+            )}
             <text x={x - headHW} y={y} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>
               {headGlyph}
             </text>

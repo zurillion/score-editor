@@ -1,11 +1,19 @@
-import { Measure, NoteEvent } from '../music/types';
+import { Duration, Measure, Pitch } from '../music/types';
 
 /** Current selection (global measure indices, or global event ids). */
 export type Selection =
   | { kind: 'measures'; indices: number[] }
   | { kind: 'notes'; ids: string[] };
 
-/** What a copy/cut put aside. Paste is not wired up yet. */
+/** A copied note, with its tick offset from the earliest copied note (so the
+ *  original spacing across measures is preserved on paste). */
+export interface ClipNote {
+  offset: number;
+  duration: Duration;
+  pitches: Pitch[];
+}
+
+/** What a copy/cut put aside. */
 export type Clipboard =
   | { kind: 'measures'; measures: Measure[] }
-  | { kind: 'notes'; events: NoteEvent[] };
+  | { kind: 'notes'; events: ClipNote[] };

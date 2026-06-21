@@ -1,6 +1,7 @@
 import { Alter, Duration, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, ScoreState, TimeSignature } from '../music/types';
-import { durationTicks, measureTicks, pitchEquals, pitchToDiatonic } from '../music/theory';
+import { diatonicToPitch, durationTicks, measureTicks, pitchEquals, pitchToDiatonic } from '../music/theory';
 import { classifyNote, classifyRest } from '../music/placement';
+import { ClipNote } from './selection';
 
 let idCounter = 0;
 const uid = (prefix: string): string => `${prefix}${++idCounter}`;
@@ -23,7 +24,8 @@ export type ScoreAction =
   | { type: 'ERASE'; measureIndex: number; eventId: string; diatonic: number | null }
   | { type: 'DELETE_MEASURES'; indices: number[] }
   | { type: 'DELETE_NOTES'; ids: string[] }
-  | { type: 'PASTE_NOTES'; measureIndex: number; tick: number; events: NoteEvent[] }
+  | { type: 'TRANSPOSE_NOTES'; ids: string[]; delta: number }
+  | { type: 'PASTE_NOTES'; baseTick: number; events: ClipNote[] }
   | { type: 'PASTE_MEASURES'; index: number; measures: Measure[] }
   | { type: 'SET_TIME_SIGNATURE'; timeSignature: TimeSignature }
   | { type: 'ADD_MEASURE' }
@@ -161,21 +163,54 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       return { ...state, measures };
     }
 
+    case 'TRANSPOSE_NOTES': {
+      if (action.delta === 0) return state;
+      const ids = new Set(action.ids);
+      const measures = state.measures.map((m) => {
+        if (!m.events.some((e) => ids.has(e.id))) return m;
+        const events = m.events.map((e) =>
+          e.kind === 'note' && ids.has(e.id)
+            ? { ...e, pitches: e.pitches.map((p) => diatonicToPitch(pitchToDiatonic(p) + action.delta, p.alter)) }
+            : e,
+        );
+        return { ...m, events };
+      });
+      return { ...state, measures };
+    }
+
     case 'PASTE_NOTES': {
-      const m = state.measures[action.measureIndex];
-      if (!m || action.events.length === 0) return state;
-      const minStart = Math.min(...action.events.map((e) => e.startTick));
-      const span = Math.max(...action.events.map((e) => e.startTick + durationTicks(e.duration))) - minStart;
-      // shift events at/after the insertion tick to the right by the pasted span
-      const shifted = m.events.map((e) =>
-        e.startTick >= action.tick ? { ...e, startTick: e.startTick + span } : e,
-      );
-      const pasted: NoteEvent[] = action.events.map((e) => ({
-        ...e,
-        id: uid('n'),
-        startTick: action.tick + (e.startTick - minStart),
-      }));
-      return withMeasureEvents(state, action.measureIndex, [...shifted, ...pasted]);
+      if (action.events.length === 0) return state;
+      const total = measureTicks(state.timeSignature);
+      // group pasted notes by target measure, preserving their relative offsets
+      const groups = new Map<number, { tick: number; duration: Duration; pitches: Pitch[] }[]>();
+      for (const ev of action.events) {
+        const g = action.baseTick + ev.offset;
+        const mi = Math.floor(g / total);
+        if (mi < 0) continue;
+        const list = groups.get(mi) ?? [];
+        list.push({ tick: g - mi * total, duration: ev.duration, pitches: ev.pitches });
+        groups.set(mi, list);
+      }
+      if (groups.size === 0) return state;
+      const measures = state.measures.slice();
+      const maxMi = Math.max(...groups.keys());
+      while (measures.length <= maxMi) measures.push(emptyMeasure());
+      for (const [mi, items] of groups) {
+        const minT = Math.min(...items.map((i) => i.tick));
+        const span = Math.max(...items.map((i) => i.tick + durationTicks(i.duration))) - minT;
+        const shifted = measures[mi].events.map((e) =>
+          e.startTick >= minT ? { ...e, startTick: e.startTick + span } : e,
+        );
+        const pasted: NoteEvent[] = items.map((it) => ({
+          id: uid('n'),
+          kind: 'note',
+          startTick: it.tick,
+          duration: it.duration,
+          pitches: it.pitches.map((p) => ({ ...p })),
+        }));
+        measures[mi] = { ...measures[mi], events: sortEvents([...shifted, ...pasted]) };
+      }
+      return { ...state, measures };
     }
 
     case 'PASTE_MEASURES': {

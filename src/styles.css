@@ -190,12 +190,21 @@ input[type='number'] {
 }
 
 .score-inner {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 26px;
   padding: 16px;
   width: max-content;
   min-width: 100%;
+}
+
+.lasso {
+  position: absolute;
+  border: 1px dashed rgba(37, 99, 235, 0.7);
+  background: rgba(37, 99, 235, 0.08);
+  pointer-events: none;
+  z-index: 5;
 }
 
 .system {
