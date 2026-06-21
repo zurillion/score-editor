@@ -12,6 +12,9 @@ import {
   BASS_LINES,
   TREBLE_MIDDLE,
   BASS_MIDDLE,
+  noteheadHalfWidth,
+  stemUpForChord,
+  secondOffsets,
 } from '../music/layout';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
@@ -169,16 +172,19 @@ export function System(props: SystemProps) {
       for (const ev of pm.measure.events) {
         if (ev.kind !== 'note') continue;
         const ex = tickToX(pm.leftX, pm.contentW, ev.startTick, total);
-        for (const p of ev.pitches) {
-          const d = pitchToDiatonic(p);
+        const ds = ev.pitches.map(pitchToDiatonic);
+        const offs = secondOffsets(ds, stemUpForChord(ds, ev.staff), noteheadHalfWidth(ev.duration.value));
+        for (let pi = 0; pi < ds.length; pi++) {
+          const d = ds[pi];
           const ey = diatonicToY(d);
-          const dx = x - ex;
+          const hx = ex + offs[pi];
+          const dx = x - hx;
           const dy = y - ey;
           const inX = dx <= NOTEHEAD_RX + 4 && dx >= -(NOTEHEAD_RX + 4 + leftPad);
           if (inX && Math.abs(dy) <= NOTEHEAD_RY + 4) {
             const dist = Math.hypot(dx, dy);
             if (!best || dist < best.dist) {
-              best = { mode: 'target', measureIndex: pm.index, eventId: ev.id, diatonic: d, hx: ex, hy: ey, dist };
+              best = { mode: 'target', measureIndex: pm.index, eventId: ev.id, diatonic: d, hx, hy: ey, dist };
             }
           }
         }
@@ -282,14 +288,17 @@ export function System(props: SystemProps) {
   function noteHighlight(pm: SystemLayout['measures'][number], ev: Extract<ScoreEvent, { kind: 'note' }>) {
     const ex = tickToX(pm.leftX, pm.contentW, ev.startTick, total);
     const ds = ev.pitches.map(pitchToDiatonic);
+    const offs = secondOffsets(ds, stemUpForChord(ds, ev.staff), noteheadHalfWidth(ev.duration.value));
+    const leftX = ex + Math.min(0, ...offs) - NOTEHEAD_RX - 4;
+    const rightX = ex + Math.max(0, ...offs) + NOTEHEAD_RX + 4;
     const topY = diatonicToY(Math.max(...ds)) - NOTEHEAD_RY - 4;
     const botY = diatonicToY(Math.min(...ds)) + NOTEHEAD_RY + 4;
     return (
       <rect
         key={`sel-${ev.id}`}
-        x={ex - NOTEHEAD_RX - 4}
+        x={leftX}
         y={topY}
-        width={2 * (NOTEHEAD_RX + 4)}
+        width={rightX - leftX}
         height={botY - topY}
         rx={3}
         fill={SEL_FILL}
