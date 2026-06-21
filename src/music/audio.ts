@@ -1,5 +1,5 @@
 import { Pitch, ScoreState } from './types';
-import { durationTicks, measureTicks, pitchToFrequency } from './theory';
+import { durationTicks, measureTicks, pitchToFrequency, pitchToMidi } from './theory';
 import { resolveMeasure } from './accidentals';
 import { TICKS_PER_QUARTER } from './constants';
 
@@ -46,6 +46,7 @@ export interface ScheduledNote {
   startSec: number;
   durSec: number;
   freqs: number[];
+  midis: number[];
 }
 
 export interface Schedule {
@@ -69,11 +70,11 @@ export function buildSchedule(score: ScoreState, bpm: number): Schedule {
       if (ev.kind !== 'note') continue;
       const startSec = (measureStart + ev.startTick) * secPerTick;
       const durSec = durationTicks(ev.duration) * secPerTick;
-      const freqs = ev.pitches.map((p) => {
+      const eff = ev.pitches.map((p) => {
         const r = resolved.get(`${ev.id}|${p.step}${p.octave}`);
-        return pitchToFrequency(r ? { ...p, alter: r.alter } : p);
+        return r ? { ...p, alter: r.alter } : p;
       });
-      notes.push({ startSec, durSec, freqs });
+      notes.push({ startSec, durSec, freqs: eff.map(pitchToFrequency), midis: eff.map(pitchToMidi) });
     }
     measureStart += mTicks;
   }

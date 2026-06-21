@@ -123,6 +123,9 @@ export function System(props: SystemProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [cursorDrag, setCursorDrag] = useState(false);
+  const noteDragRef = useRef<{ measureIndex: number; eventId: string; lastD: number } | null>(null);
+  const movedRef = useRef(false);
+  const suppressClickRef = useRef(false);
   const total = measureTicks(ts);
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
 
@@ -177,10 +180,9 @@ export function System(props: SystemProps) {
     return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, staff, action };
   }
 
-  // ---- modal tools (accidental / eraser): hit-test an existing notehead ----
-  function computeTarget(x: number, y: number): TargetHover | null {
-    const leftPad = tool.kind === 'accidental' ? 20 : 0;
-    let best: (TargetHover & { dist: number }) | null = null;
+  // nearest notehead to (x,y); leftPad widens the catch zone to the left (for accidentals)
+  function pickNotehead(x: number, y: number, leftPad: number) {
+    let best: { measureIndex: number; eventId: string; diatonic: number; hx: number; hy: number; dist: number } | null = null;
     for (const pm of layout.measures) {
       for (const ev of pm.measure.events) {
         if (ev.kind !== 'note') continue;
@@ -196,15 +198,32 @@ export function System(props: SystemProps) {
           const inX = dx <= NOTEHEAD_RX + 4 && dx >= -(NOTEHEAD_RX + 4 + leftPad);
           if (inX && Math.abs(dy) <= NOTEHEAD_RY + 4) {
             const dist = Math.hypot(dx, dy);
-            if (!best || dist < best.dist) {
-              best = { mode: 'target', measureIndex: pm.index, eventId: ev.id, diatonic: d, hx, hy: ey, dist };
-            }
+            if (!best || dist < best.dist) best = { measureIndex: pm.index, eventId: ev.id, diatonic: d, hx, hy: ey, dist };
           }
         }
       }
     }
-    if (!best) return null;
-    return { mode: 'target', measureIndex: best.measureIndex, eventId: best.eventId, diatonic: best.diatonic, hx: best.hx, hy: best.hy };
+    return best;
+  }
+
+  // ---- modal tools (accidental / eraser): hit-test an existing notehead ----
+  function computeTarget(x: number, y: number): TargetHover | null {
+    const hit = pickNotehead(x, y, tool.kind === 'accidental' ? 20 : 0);
+    if (!hit) return null;
+    return { mode: 'target', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic, hx: hit.hx, hy: hit.hy };
+  }
+
+  // mousedown on a notehead with the note tool starts a diatonic drag-to-move
+  function handleMouseDown(e: React.MouseEvent) {
+    if (e.altKey || tool.kind !== 'note') return;
+    const pt = localPoint(e.clientX, e.clientY);
+    if (!pt) return;
+    const hit = pickNotehead(pt.x, pt.y, 0);
+    if (hit) {
+      noteDragRef.current = { measureIndex: hit.measureIndex, eventId: hit.eventId, lastD: hit.diatonic };
+      movedRef.current = false;
+      setHover(null);
+    }
   }
 
   function handleMouseMove(e: React.MouseEvent) {
@@ -215,6 +234,17 @@ export function System(props: SystemProps) {
       if (g !== null) onSetCursor(g);
       return;
     }
+    const nd = noteDragRef.current;
+    if (nd) {
+      const d = clamp(yToDiatonic(pt.y), 5, 50);
+      if (d !== nd.lastD) {
+        onAction({ type: 'MOVE_NOTE', measureIndex: nd.measureIndex, eventId: nd.eventId, fromDiatonic: nd.lastD, toDiatonic: d });
+        nd.lastD = d;
+        movedRef.current = true;
+        if (previewOnCreate) onPreviewNote([keyedPitch(d)]);
+      }
+      return;
+    }
     if (placing) setHover(computePlace(pt.x, pt.y));
     else if (modal) setHover(computeTarget(pt.x, pt.y));
     else setHover(null);
@@ -222,14 +252,26 @@ export function System(props: SystemProps) {
 
   function handleMouseUp() {
     setCursorDrag(false);
+    if (noteDragRef.current) {
+      noteDragRef.current = null;
+      if (movedRef.current) suppressClickRef.current = true; // a drag happened: don't treat it as a click
+    }
   }
 
   function handleMouseLeave() {
     setHover(null);
     setCursorDrag(false);
+    if (noteDragRef.current) {
+      noteDragRef.current = null;
+      movedRef.current = false;
+    }
   }
 
   function handleClick(e: React.MouseEvent) {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
     if (e.altKey) {
@@ -334,6 +376,7 @@ export function System(props: SystemProps) {
       data-tool={tool.kind}
       width={layout.width}
       height={SYSTEM_HEIGHT}
+      onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}

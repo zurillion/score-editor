@@ -4,6 +4,7 @@ import { LayoutMode, clamp } from './music/layout';
 import { durationTicks, measureTicks } from './music/theory';
 import { TICKS_PER_QUARTER } from './music/constants';
 import { Player, playPreview } from './music/audio';
+import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
 import { LIBRARY } from './music/library';
 import { initialScore, scoreReducer } from './state/scoreReducer';
 import { Tool, NOTE_TOOL } from './state/tool';
@@ -39,6 +40,50 @@ export default function App() {
     loopRef.current = loop;
   }, [loop]);
 
+  // ---- MIDI playback ----
+  const [midiOn, setMidiOn] = useState(false);
+  const [midiOutputs, setMidiOutputs] = useState<MidiOutputInfo[]>([]);
+  const [midiOutId, setMidiOutId] = useState('');
+  const [midiChannel, setMidiChannel] = useState(1); // 1..16 in the UI
+  const midiPlayerRef = useRef<MidiPlayer | null>(null);
+
+  // route the chosen output / channel into the live player
+  useEffect(() => {
+    if (midiPlayerRef.current && midiOutId) midiPlayerRef.current.setOutput(midiOutId);
+  }, [midiOutId]);
+  useEffect(() => {
+    if (midiPlayerRef.current) midiPlayerRef.current.channel = midiChannel - 1;
+  }, [midiChannel]);
+
+  const handleToggleMidi = useCallback(async () => {
+    if (midiOn) {
+      midiPlayerRef.current?.stop();
+      setMidiOn(false);
+      return;
+    }
+    const access = await requestMidiAccess();
+    if (!access) {
+      window.alert(
+        'Web MIDI non disponibile: il browser non lo supporta o il permesso è stato negato.\n' +
+          'Usa Chrome/Edge (o Firefox con flag) e consenti l’accesso MIDI.',
+      );
+      return;
+    }
+    const outs = listOutputs(access);
+    if (outs.length === 0) {
+      window.alert('Nessuna uscita MIDI trovata. Collega o avvia un dispositivo/synth MIDI e riprova.');
+      return;
+    }
+    const player = midiPlayerRef.current ?? new MidiPlayer(access);
+    midiPlayerRef.current = player;
+    player.channel = midiChannel - 1;
+    setMidiOutputs(outs);
+    const first = outs[0].id;
+    setMidiOutId(first);
+    player.setOutput(first);
+    setMidiOn(true);
+  }, [midiOn, midiChannel]);
+
   // changing tool always starts from a clean selection
   useEffect(() => {
     setSelection(null);
@@ -46,28 +91,45 @@ export default function App() {
 
   const handleStop = useCallback(() => {
     playerRef.current?.stop();
+    midiPlayerRef.current?.stop();
     setIsPlaying(false);
     setPlayheadTick(null);
   }, []);
 
   const handlePlay = useCallback(() => {
-    const player = playerRef.current ?? new Player();
-    playerRef.current = player;
     const secPerTick = 60 / bpm / TICKS_PER_QUARTER;
-    player.loop = loopRef.current; // looping is handled inside the Player (seamless)
-    player.onTick = (sec) => setPlayheadTick(sec / secPerTick);
-    player.onEnd = () => {
+    const onTick = (sec: number) => setPlayheadTick(sec / secPerTick);
+    const onEnd = () => {
       setIsPlaying(false);
       setPlayheadTick(null);
     };
+    // Drive an external MIDI device when MIDI is enabled and an output is set;
+    // otherwise fall back to the built-in Web Audio synth.
+    const mp = midiPlayerRef.current;
+    if (midiOn && mp?.output) {
+      playerRef.current?.stop();
+      mp.loop = loopRef.current;
+      mp.channel = midiChannel - 1;
+      mp.onTick = onTick;
+      mp.onEnd = onEnd;
+      mp.play(score, bpm);
+      setIsPlaying(true);
+      return;
+    }
+    const player = playerRef.current ?? new Player();
+    playerRef.current = player;
+    player.loop = loopRef.current; // looping is handled inside the Player (seamless)
+    player.onTick = onTick;
+    player.onEnd = onEnd;
     player.play(score, bpm);
     setIsPlaying(true);
-  }, [bpm, score]);
+  }, [bpm, score, midiOn, midiChannel]);
 
   const handleSetLoop = useCallback((v: boolean) => {
     setLoop(v);
     loopRef.current = v;
     if (playerRef.current) playerRef.current.loop = v; // apply immediately if playing
+    if (midiPlayerRef.current) midiPlayerRef.current.loop = v;
   }, []);
 
   // After a one-shot accidental/eraser is applied, revert to the note tool.
@@ -115,7 +177,13 @@ export default function App() {
   }, [score, cursorTick, pushUndo]);
 
   // stop audio when the component unmounts
-  useEffect(() => () => playerRef.current?.stop(), []);
+  useEffect(
+    () => () => {
+      playerRef.current?.stop();
+      midiPlayerRef.current?.stop();
+    },
+    [],
+  );
 
   // keyboard shortcuts
   useEffect(() => {
@@ -275,6 +343,13 @@ export default function App() {
         setBpm={setBpm}
         loop={loop}
         setLoop={handleSetLoop}
+        midiOn={midiOn}
+        onToggleMidi={handleToggleMidi}
+        midiOutputs={midiOutputs}
+        midiOutId={midiOutId}
+        setMidiOutId={setMidiOutId}
+        midiChannel={midiChannel}
+        setMidiChannel={setMidiChannel}
         isPlaying={isPlaying}
         onPlay={handlePlay}
         onStop={handleStop}

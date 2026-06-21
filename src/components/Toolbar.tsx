@@ -4,6 +4,7 @@ import { LayoutMode } from '../music/layout';
 import { Tool } from '../state/tool';
 import { LIBRARY } from '../music/library';
 import { KEY_OPTIONS } from '../music/key';
+import { MidiOutputInfo } from '../music/midi';
 
 const DURATIONS: DurationValue[] = [1, 2, 4, 8, 16, 32];
 
@@ -70,6 +71,13 @@ interface ToolbarProps {
   setBpm: (n: number) => void;
   loop: boolean;
   setLoop: (v: boolean) => void;
+  midiOn: boolean;
+  onToggleMidi: () => void;
+  midiOutputs: MidiOutputInfo[];
+  midiOutId: string;
+  setMidiOutId: (id: string) => void;
+  midiChannel: number;
+  setMidiChannel: (n: number) => void;
   isPlaying: boolean;
   onPlay: () => void;
   onStop: () => void;
@@ -98,6 +106,13 @@ export function Toolbar(props: ToolbarProps) {
     setBpm,
     loop,
     setLoop,
+    midiOn,
+    onToggleMidi,
+    midiOutputs,
+    midiOutId,
+    setMidiOutId,
+    midiChannel,
+    setMidiChannel,
     isPlaying,
     onPlay,
     onStop,
@@ -339,6 +354,49 @@ export function Toolbar(props: ToolbarProps) {
             onChange={(e) => setBpm(Number(e.target.value))}
             aria-label="BPM"
           />
+        </div>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>MIDI</legend>
+        <div className="btn-row">
+          <button
+            className={midiOn ? 'on' : ''}
+            onClick={onToggleMidi}
+            title="Pilota un dispositivo/synth MIDI esterno via Web MIDI (Chrome/Edge)"
+          >
+            🎹 MIDI {midiOn ? 'on' : 'off'}
+          </button>
+          <label className="midi-out">
+            Uscita
+            <select
+              value={midiOutId}
+              onChange={(e) => setMidiOutId(e.target.value)}
+              disabled={!midiOn || midiOutputs.length === 0}
+              title="Uscita MIDI"
+            >
+              {midiOutputs.length === 0 && <option value="">—</option>}
+              {midiOutputs.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="midi-ch">
+            Canale
+            <select
+              value={midiChannel}
+              onChange={(e) => setMidiChannel(Number(e.target.value))}
+              title="Canale MIDI (1-16)"
+            >
+              {Array.from({ length: 16 }, (_, i) => i + 1).map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </fieldset>
     </div>

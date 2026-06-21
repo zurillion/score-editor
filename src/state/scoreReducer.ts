@@ -26,6 +26,7 @@ export type ScoreAction =
   | { type: 'DELETE_MEASURES'; indices: number[] }
   | { type: 'DELETE_NOTES'; ids: string[] }
   | { type: 'TRANSPOSE_NOTES'; ids: string[]; delta: number }
+  | { type: 'MOVE_NOTE'; measureIndex: number; eventId: string; fromDiatonic: number; toDiatonic: number }
   | { type: 'PASTE_NOTES'; baseTick: number; events: ClipNote[] }
   | { type: 'PASTE_MEASURES'; index: number; measures: Measure[] }
   | { type: 'SET_TIME_SIGNATURE'; timeSignature: TimeSignature }
@@ -184,6 +185,24 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         return { ...m, events };
       });
       return { ...state, measures };
+    }
+
+    case 'MOVE_NOTE': {
+      const m = state.measures[action.measureIndex];
+      if (!m || action.fromDiatonic === action.toDiatonic) return state;
+      const target = m.events.find((e) => e.id === action.eventId);
+      if (!target || target.kind !== 'note') return state;
+      // don't move onto another notehead already present in the chord
+      if (target.pitches.some((p) => pitchToDiatonic(p) === action.toDiatonic)) return state;
+      let moved = false;
+      const pitches = sortPitches(
+        target.pitches.map((p) =>
+          pitchToDiatonic(p) === action.fromDiatonic ? ((moved = true), diatonicToPitch(action.toDiatonic, 0)) : p,
+        ),
+      );
+      if (!moved) return state;
+      const events = m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));
+      return withMeasureEvents(state, action.measureIndex, events);
     }
 
     case 'PASTE_NOTES': {
