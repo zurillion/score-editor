@@ -4,9 +4,6 @@ import { pitchToDiatonic } from '../music/theory';
 import { diatonicToY, ledgerLineDiatonics, TREBLE_MIDDLE, BASS_MIDDLE } from '../music/layout';
 import { SMUFL } from '../music/smufl';
 import {
-  NOTEHEAD_RX,
-  NOTEHEAD_RY,
-  WHOLE_RX,
   STEM_WIDTH,
   STEM_LENGTH,
   LEDGER_HALF,
@@ -39,14 +36,14 @@ export function NoteView({ pitches, duration, x, color, opacity = 1 }: NoteViewP
   const value = duration.value;
   const isWhole = value === 1;
   const isOpen = value <= 2; // whole + half use open noteheads
-  const headHW = isWhole ? WHOLE_RX : NOTEHEAD_RX; // notehead half-width
+  const headHW = isWhole ? 9 : 7.1; // actual Bravura notehead half-widths (so glyph centres on x)
   const headGlyph = SMUFL.noteheads[isWhole ? 1 : value === 2 ? 2 : 4];
 
   const nFlags = value === 8 ? 1 : value === 16 ? 2 : value === 32 ? 3 : 0;
   const stemLen = STEM_LENGTH + (nFlags > 1 ? (nFlags - 1) * STAFF_SPACE : 0);
 
   // attach the stem just inside the notehead edge (tangent internally)
-  const stemInset = 2.2;
+  const stemInset = 0.8;
   const stemX = stemUp ? x + headHW - stemInset : x - headHW + stemInset;
   const baseY = stemUp ? diatonicToY(minD) : diatonicToY(maxD);
   const tipY = isWhole ? baseY : stemUp ? diatonicToY(maxD) - stemLen : diatonicToY(minD) + stemLen;
@@ -78,18 +75,8 @@ export function NoteView({ pitches, duration, x, color, opacity = 1 }: NoteViewP
         const dotY = d % 2 === 0 ? y - HALF_SPACE : y;
         return (
           <Fragment key={i}>
-            {/* open noteheads get an opaque white core so the staff line doesn't show through the hole */}
-            {isOpen && (
-              <ellipse
-                cx={x}
-                cy={y}
-                rx={headHW * 0.66}
-                ry={NOTEHEAD_RY * 0.62}
-                transform={value === 2 ? `rotate(-22 ${x} ${y})` : undefined}
-                fill="white"
-                stroke="none"
-              />
-            )}
+            {/* open noteheads: a white band hides the staff line crossing the hole */}
+            {isOpen && <ellipse cx={x} cy={y} rx={headHW * 0.82} ry={3.3} fill="white" stroke="none" />}
             <text x={x - headHW} y={y} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>
               {headGlyph}
             </text>

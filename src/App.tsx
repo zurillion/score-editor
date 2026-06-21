@@ -95,6 +95,22 @@ export default function App() {
   const onClearSelection = useCallback(() => setSelection(null), []);
   const onSetCursor = useCallback((tick: number) => setCursorTick(Math.max(0, tick)), []);
 
+  const pushUndo = useCallback(() => {
+    undoRef.current.push(clone(score));
+    if (undoRef.current.length > 50) undoRef.current.shift();
+  }, [score]);
+
+  const handleInsertMeasures = useCallback(() => {
+    const raw = window.prompt('Quante battute vuote inserire al punto di playback?', '1');
+    if (raw === null) return;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n <= 0) return;
+    const total = measureTicks(score.timeSignature);
+    const idx = clamp(Math.floor(cursorTick / total), 0, score.measures.length);
+    pushUndo();
+    dispatch({ type: 'PASTE_MEASURES', index: idx, measures: Array.from({ length: n }, () => ({ id: '', events: [] })) });
+  }, [score, cursorTick, pushUndo]);
+
   // stop audio when the component unmounts
   useEffect(() => () => playerRef.current?.stop(), []);
 
@@ -118,10 +134,6 @@ export default function App() {
       const minG = Math.min(...picked.map((p) => p.g));
       const events: ClipNote[] = picked.map((p) => ({ offset: p.g - minG, duration: clone(p.duration), pitches: clone(p.pitches) }));
       return { kind: 'notes', events };
-    };
-    const pushUndo = () => {
-      undoRef.current.push(clone(score));
-      if (undoRef.current.length > 50) undoRef.current.shift();
     };
     const deleteSelection = () => {
       if (!selection) return;
@@ -234,7 +246,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isPlaying, handlePlay, handleStop, selection, score, cursorTick, duration]);
+  }, [isPlaying, handlePlay, handleStop, selection, score, cursorTick, duration, pushUndo]);
 
   return (
     <div className="app">
@@ -265,6 +277,7 @@ export default function App() {
         onRemoveMeasure={() => dispatch({ type: 'REMOVE_LAST_MEASURE' })}
         onClear={() => dispatch({ type: 'CLEAR' })}
         onLoadPiece={handleLoadPiece}
+        onInsertMeasures={handleInsertMeasures}
       />
 
       <Score

@@ -18,6 +18,32 @@ const TIME_PRESETS: TimeSignature[] = [
   { numerator: 2, denominator: 2 },
 ];
 
+function MeasureIcon() {
+  return (
+    <svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="1.4" fill="none">
+        <line x1="2.5" y1="2" x2="2.5" y2="14" />
+        <line x1="19.5" y1="2" x2="19.5" y2="14" />
+      </g>
+      <g stroke="currentColor" strokeWidth="0.8" opacity="0.85">
+        <line x1="2.5" y1="4" x2="19.5" y2="4" />
+        <line x1="2.5" y1="8" x2="19.5" y2="8" />
+        <line x1="2.5" y1="12" x2="19.5" y2="12" />
+      </g>
+    </svg>
+  );
+}
+
+function LassoIcon() {
+  return (
+    <svg width="20" height="19" viewBox="0 0 20 19" aria-hidden="true" focusable="false" fill="none" stroke="currentColor">
+      <ellipse cx="10" cy="6.5" rx="7" ry="4.5" strokeWidth="1.3" strokeDasharray="2.2 1.7" />
+      <path d="M9 11 C 8 13.5, 6.5 14.5, 6 17.5" strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="6" cy="17.6" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 const ACCIDENTALS: { alter: Alter; title: string }[] = [
   { alter: -2, title: 'Doppio bemolle' },
   { alter: -1, title: 'Bemolle' },
@@ -48,6 +74,7 @@ interface ToolbarProps {
   onRemoveMeasure: () => void;
   onClear: () => void;
   onLoadPiece: (id: string) => void;
+  onInsertMeasures: () => void;
 }
 
 export function Toolbar(props: ToolbarProps) {
@@ -73,6 +100,7 @@ export function Toolbar(props: ToolbarProps) {
     onRemoveMeasure,
     onClear,
     onLoadPiece,
+    onInsertMeasures,
   } = props;
 
   // Single click arms a modal tool for one use; double click makes it sticky.
@@ -174,18 +202,23 @@ export function Toolbar(props: ToolbarProps) {
             ⌫ Gomma
           </button>
           <button
-            className={tool.kind === 'select-measures' ? 'on' : ''}
+            className={`icon-btn ${tool.kind === 'select-measures' ? 'on' : ''}`}
             onClick={() => setTool({ kind: 'select-measures' })}
             title="Seleziona battute (trascina). ⌘C/X copia/taglia · Backspace elimina"
+            aria-label="Seleziona battute"
           >
-            ▭ Battute
+            <MeasureIcon />
+          </button>
+          <button onClick={onInsertMeasures} title="Inserisci battute vuote al punto di playback" aria-label="Inserisci battute">
+            +
           </button>
           <button
-            className={tool.kind === 'select-notes' ? 'on' : ''}
+            className={`icon-btn ${tool.kind === 'select-notes' ? 'on' : ''}`}
             onClick={() => setTool({ kind: 'select-notes' })}
             title="Lazo: seleziona note (trascina un rettangolo). ⌘C/X · Backspace"
+            aria-label="Lazo note"
           >
-            ⬚ Lazo
+            <LassoIcon />
           </button>
         </div>
       </fieldset>

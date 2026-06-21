@@ -117,6 +117,13 @@ button.on.sticky {
   align-items: center;
   justify-content: center;
 }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+}
 .glyph-btn .bravura {
   font-family: 'Bravura';
   font-size: 26px;
