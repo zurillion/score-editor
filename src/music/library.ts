@@ -109,7 +109,13 @@ function buildScore(def: PieceDef): LibraryPiece {
     const events = [...(rh.get(i) ?? []), ...(lh.get(i) ?? [])].sort((a, b) => a.startTick - b.startTick);
     measures.push({ id: `${def.id}-m${i}`, events });
   }
-  return { id: def.id, title: def.title, subtitle: def.subtitle, bpm: def.bpm, score: { timeSignature: def.ts, measures } };
+  return {
+    id: def.id,
+    title: def.title,
+    subtitle: def.subtitle,
+    bpm: def.bpm,
+    score: { timeSignature: def.ts, keySignature: 0, measures },
+  };
 }
 
 // ---------------------------------------------------------------------------

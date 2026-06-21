@@ -15,9 +15,13 @@ import {
   noteheadHalfWidth,
   stemUpForChord,
   secondOffsets,
+  KEYSIG_X,
+  KEYSIG_STEP,
+  keySigWidth,
 } from '../music/layout';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
+import { keyAlterForStep, keySignatureAccidentals } from '../music/key';
 import { SMUFL, timeSigString } from '../music/smufl';
 import {
   STAFF_LEFT,
@@ -77,6 +81,7 @@ type Hover = PlaceHover | TargetHover;
 interface SystemProps {
   layout: SystemLayout;
   ts: TimeSignature;
+  keySignature: number;
   showTimeSig: boolean;
   tool: Tool;
   duration: Duration;
@@ -94,6 +99,7 @@ export function System(props: SystemProps) {
   const {
     layout,
     ts,
+    keySignature,
     showTimeSig,
     tool,
     duration,
@@ -106,6 +112,12 @@ export function System(props: SystemProps) {
     onPreviewNote,
     onSetCursor,
   } = props;
+
+  // pitch the note tool would create at a diatonic, honouring the key signature
+  function keyedPitch(d: number): Pitch {
+    const p = diatonicToPitch(d, 0);
+    return { ...p, alter: keyAlterForStep(p.step, keySignature) };
+  }
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -232,7 +244,7 @@ export function System(props: SystemProps) {
       if (tool.kind === 'rest') {
         onAction({ type: 'CLICK_REST', measureIndex: target.measureIndex, tick: target.tick, duration, staff: target.staff });
       } else {
-        const pitch = diatonicToPitch(target.diatonic, 0);
+        const pitch = keyedPitch(target.diatonic);
         onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration });
         if (previewOnCreate && (target.action === 'create' || target.action === 'chord')) onPreviewNote([pitch]);
       }
@@ -264,7 +276,7 @@ export function System(props: SystemProps) {
         tool.kind === 'rest' ? (
           <RestView duration={duration} x={gx} color={color} middle={gMiddle} opacity={op} />
         ) : (
-          <NoteView pitches={[diatonicToPitch(hover.diatonic, 0)]} duration={duration} staff={hover.staff} x={gx} color={color} opacity={op} />
+          <NoteView pitches={[keyedPitch(hover.diatonic)]} duration={duration} staff={hover.staff} keySignature={keySignature} x={gx} color={color} opacity={op} />
         );
     }
   } else if (hover?.mode === 'target') {
@@ -360,17 +372,33 @@ export function System(props: SystemProps) {
         {SMUFL.fClef}
       </text>
 
-      {/* time signature (first system only) */}
+      {/* key signature (both staves, every system) */}
+      {[0, -14].flatMap((staffOffset) =>
+        keySignatureAccidentals(keySignature, staffOffset).map((acc, i) => (
+          <text
+            key={`ks${staffOffset}-${i}`}
+            x={KEYSIG_X + i * KEYSIG_STEP}
+            y={diatonicToY(acc.diatonic)}
+            fontFamily="Bravura"
+            fontSize={GLYPH_FONT_SIZE}
+            fill="#222"
+          >
+            {SMUFL.accidentals[String(acc.alter)]}
+          </text>
+        )),
+      )}
+
+      {/* time signature (first system only), pushed right past the key signature */}
       {showTimeSig &&
         [
           { numY: diatonicToY(36), denY: diatonicToY(32) },
           { numY: diatonicToY(24), denY: diatonicToY(20) },
         ].map((r, i) => (
           <Fragment key={i}>
-            <text x={TIME_SIG_X} y={r.numY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+            <text x={TIME_SIG_X + keySigWidth(keySignature)} y={r.numY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
               {timeSigString(ts.numerator)}
             </text>
-            <text x={TIME_SIG_X} y={r.denY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+            <text x={TIME_SIG_X + keySigWidth(keySignature)} y={r.denY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
               {timeSigString(ts.denominator)}
             </text>
           </Fragment>
@@ -381,7 +409,7 @@ export function System(props: SystemProps) {
         <Fragment key={pm.measure.id}>
           {pm.measure.events.map((ev) =>
             ev.kind === 'note' ? (
-              <NoteView key={ev.id} pitches={ev.pitches} duration={ev.duration} staff={ev.staff} x={tickToX(pm.leftX, pm.contentW, ev.startTick, total)} color="#1a1a1a" />
+              <NoteView key={ev.id} pitches={ev.pitches} duration={ev.duration} staff={ev.staff} keySignature={keySignature} x={tickToX(pm.leftX, pm.contentW, ev.startTick, total)} color="#1a1a1a" />
             ) : (
               <RestView
                 key={ev.id}

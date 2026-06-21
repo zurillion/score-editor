@@ -13,6 +13,7 @@ export function emptyMeasure(): Measure {
 export function initialScore(measureCount = 4): ScoreState {
   return {
     timeSignature: { numerator: 4, denominator: 4 },
+    keySignature: 0,
     measures: Array.from({ length: measureCount }, emptyMeasure),
   };
 }
@@ -28,6 +29,7 @@ export type ScoreAction =
   | { type: 'PASTE_NOTES'; baseTick: number; events: ClipNote[] }
   | { type: 'PASTE_MEASURES'; index: number; measures: Measure[] }
   | { type: 'SET_TIME_SIGNATURE'; timeSignature: TimeSignature }
+  | { type: 'SET_KEY_SIGNATURE'; keySignature: number }
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
   | { type: 'CLEAR' }
@@ -244,6 +246,9 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       }));
       return { ...state, timeSignature: action.timeSignature, measures };
     }
+
+    case 'SET_KEY_SIGNATURE':
+      return { ...state, keySignature: Math.max(-7, Math.min(7, action.keySignature)) };
 
     case 'ADD_MEASURE':
       return { ...state, measures: [...state.measures, emptyMeasure()] };

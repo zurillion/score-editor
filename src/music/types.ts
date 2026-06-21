@@ -50,5 +50,6 @@ export interface TimeSignature {
 
 export interface ScoreState {
   timeSignature: TimeSignature;
+  keySignature: number; // + = sharps, − = flats (−7..7)
   measures: Measure[];
 }

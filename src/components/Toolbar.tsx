@@ -3,6 +3,7 @@ import { SMUFL } from '../music/smufl';
 import { LayoutMode } from '../music/layout';
 import { Tool } from '../state/tool';
 import { LIBRARY } from '../music/library';
+import { KEY_OPTIONS } from '../music/key';
 
 const DURATIONS: DurationValue[] = [1, 2, 4, 8, 16, 32];
 
@@ -61,6 +62,8 @@ interface ToolbarProps {
   setPreviewOnCreate: (v: boolean) => void;
   timeSignature: TimeSignature;
   setTimeSignature: (ts: TimeSignature) => void;
+  keySignature: number;
+  setKeySignature: (k: number) => void;
   mode: LayoutMode;
   setMode: (m: LayoutMode) => void;
   bpm: number;
@@ -87,6 +90,8 @@ export function Toolbar(props: ToolbarProps) {
     setPreviewOnCreate,
     timeSignature,
     setTimeSignature,
+    keySignature,
+    setKeySignature,
     mode,
     setMode,
     bpm,
@@ -253,6 +258,17 @@ export function Toolbar(props: ToolbarProps) {
               </option>
             );
           })}
+        </select>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>Armatura</legend>
+        <select value={keySignature} onChange={(e) => setKeySignature(Number(e.target.value))} title="Numero di diesis/bemolli o tonalità">
+          {KEY_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
       </fieldset>
 

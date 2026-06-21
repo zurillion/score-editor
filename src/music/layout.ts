@@ -36,20 +36,22 @@ export function stemUpForChord(diatonics: number[], staff: Staff): boolean {
 /**
  * Horizontal offset (px) for each notehead of a chord so that notes a second
  * apart sit on opposite sides of the stem. Input diatonics must be sorted
- * ascending; output is in the same order. Stem-up displaces the lower note of a
- * second to the right; stem-down displaces the upper note to the left;
- * consecutive seconds alternate.
+ * ascending; output is in the same order. For a single second the lower note is
+ * kept on the left and the upper note is pushed to the right (regardless of stem
+ * direction); runs of consecutive seconds alternate from there.
  */
 export function secondOffsets(diatonicsAsc: number[], stemUp: boolean, headHW: number): number[] {
   const n = diatonicsAsc.length;
   const displaced = new Array<boolean>(n).fill(false);
   if (stemUp) {
-    for (let i = n - 2; i >= 0; i--) {
-      if (diatonicsAsc[i + 1] - diatonicsAsc[i] === 1 && !displaced[i + 1]) displaced[i] = true;
-    }
-  } else {
+    // keep the lower note on the (normal) left, push the upper note of a second right
     for (let i = 1; i < n; i++) {
       if (diatonicsAsc[i] - diatonicsAsc[i - 1] === 1 && !displaced[i - 1]) displaced[i] = true;
+    }
+  } else {
+    // keep the upper note on the (normal) right, push the lower note of a second left
+    for (let i = n - 2; i >= 0; i--) {
+      if (diatonicsAsc[i + 1] - diatonicsAsc[i] === 1 && !displaced[i + 1]) displaced[i] = true;
     }
   }
   const disp = 2 * (headHW - STEM_INSET);
@@ -98,6 +100,7 @@ export function layoutSystems(
   ts: TimeSignature,
   mode: LayoutMode,
   availableWidth: number,
+  header: number = HEADER_WIDTH,
 ): SystemLayout[] {
   const cw = measureContentWidth(ts);
 
@@ -105,14 +108,14 @@ export function layoutSystems(
     const placed = measures.map((m, i) => ({
       measure: m,
       index: i,
-      leftX: HEADER_WIDTH + i * cw,
+      leftX: header + i * cw,
       contentW: cw,
     }));
-    return [{ measures: placed, width: HEADER_WIDTH + measures.length * cw + 2 }];
+    return [{ measures: placed, width: header + measures.length * cw + 2 }];
   }
 
   // page mode: wrap measures into systems by available width
-  const usable = Math.max(cw, availableWidth - HEADER_WIDTH - 6);
+  const usable = Math.max(cw, availableWidth - header - 6);
   const perSystem = Math.max(1, Math.floor(usable / cw));
   const systems: SystemLayout[] = [];
   for (let i = 0; i < measures.length; i += perSystem) {
@@ -120,13 +123,23 @@ export function layoutSystems(
     const placed = slice.map((m, j) => ({
       measure: m,
       index: i + j,
-      leftX: HEADER_WIDTH + j * cw,
+      leftX: header + j * cw,
       contentW: cw,
     }));
-    systems.push({ measures: placed, width: HEADER_WIDTH + slice.length * cw + 2 });
+    systems.push({ measures: placed, width: header + slice.length * cw + 2 });
   }
-  if (systems.length === 0) systems.push({ measures: [], width: HEADER_WIDTH + cw });
+  if (systems.length === 0) systems.push({ measures: [], width: header + cw });
   return systems;
+}
+
+// key-signature layout
+export const KEYSIG_X = 46; // x of the first key-signature accidental
+export const KEYSIG_STEP = 10; // horizontal gap between accidentals
+export function keySigWidth(keySig: number): number {
+  return Math.abs(keySig) * KEYSIG_STEP;
+}
+export function headerWidthFor(keySig: number): number {
+  return HEADER_WIDTH + keySigWidth(keySig);
 }
 
 export function clamp(v: number, lo: number, hi: number): number {

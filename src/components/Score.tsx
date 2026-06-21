@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Duration, Pitch, ScoreState } from '../music/types';
 import { measureTicks, pitchToDiatonic } from '../music/theory';
-import { LayoutMode, layoutSystems, tickToX, diatonicToY, clamp } from '../music/layout';
+import { LayoutMode, layoutSystems, tickToX, diatonicToY, clamp, headerWidthFor } from '../music/layout';
 import { SYSTEM_HEIGHT, SYSTEM_GAP } from '../music/constants';
 import type { ScoreAction } from '../state/scoreReducer';
 import { Tool } from '../state/tool';
@@ -75,7 +75,7 @@ export function Score({
     return () => ro.disconnect();
   }, []);
 
-  const systems = layoutSystems(state.measures, state.timeSignature, mode, containerWidth);
+  const systems = layoutSystems(state.measures, state.timeSignature, mode, containerWidth, headerWidthFor(state.keySignature));
   const total = measureTicks(state.timeSignature);
 
   // report system measure-ranges so the parent can move the cursor by whole rows
@@ -216,6 +216,7 @@ export function Score({
             key={i}
             layout={sys}
             ts={state.timeSignature}
+            keySignature={state.keySignature}
             showTimeSig={i === 0}
             tool={tool}
             duration={duration}

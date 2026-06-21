@@ -264,6 +264,8 @@ export default function App() {
         setPreviewOnCreate={setPreviewOnCreate}
         timeSignature={score.timeSignature}
         setTimeSignature={(ts) => dispatch({ type: 'SET_TIME_SIGNATURE', timeSignature: ts })}
+        keySignature={score.keySignature}
+        setKeySignature={(k) => dispatch({ type: 'SET_KEY_SIGNATURE', keySignature: k })}
         mode={mode}
         setMode={setMode}
         bpm={bpm}
