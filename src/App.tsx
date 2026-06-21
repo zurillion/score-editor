@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { Duration, DurationValue, NoteEvent, Pitch } from './music/types';
-import { LayoutMode } from './music/layout';
+import { Duration, DurationValue, NoteEvent, Pitch, ScoreState } from './music/types';
+import { LayoutMode, clamp } from './music/layout';
+import { measureTicks } from './music/theory';
 import { TICKS_PER_QUARTER } from './music/constants';
 import { Player, playPreview } from './music/audio';
 import { LIBRARY } from './music/library';
@@ -17,14 +18,16 @@ export default function App() {
 
   const [tool, setTool] = useState<Tool>(NOTE_TOOL);
   const [duration, setDuration] = useState<Duration>({ value: 4, dots: 0 });
-  const [previewOnCreate, setPreviewOnCreate] = useState(false);
+  const [previewOnCreate, setPreviewOnCreate] = useState(true);
   const [mode, setMode] = useState<LayoutMode>('horizontal');
   const [bpm, setBpm] = useState(96);
   const [loop, setLoop] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playheadTick, setPlayheadTick] = useState<number | null>(null);
+  const [cursorTick, setCursorTick] = useState(0); // persistent playback/insertion cursor
   const [selection, setSelection] = useState<Selection | null>(null);
   const clipboardRef = useRef<Clipboard | null>(null);
+  const undoRef = useRef<ScoreState[]>([]);
 
   const playerRef = useRef<Player | null>(null);
   const loopRef = useRef(loop);
@@ -86,6 +89,7 @@ export default function App() {
     setSelection(ids.length ? { kind: 'notes', ids } : null);
   }, []);
   const onClearSelection = useCallback(() => setSelection(null), []);
+  const onSetCursor = useCallback((tick: number) => setCursorTick(Math.max(0, tick)), []);
 
   // stop audio when the component unmounts
   useEffect(() => () => playerRef.current?.stop(), []);
@@ -105,8 +109,13 @@ export default function App() {
         .map(clone);
       return { kind: 'notes', events };
     };
+    const pushUndo = () => {
+      undoRef.current.push(clone(score));
+      if (undoRef.current.length > 50) undoRef.current.shift();
+    };
     const deleteSelection = () => {
       if (!selection) return;
+      pushUndo();
       if (selection.kind === 'measures') dispatch({ type: 'DELETE_MEASURES', indices: selection.indices });
       else dispatch({ type: 'DELETE_NOTES', ids: selection.ids });
       setSelection(null);
@@ -117,6 +126,15 @@ export default function App() {
       if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) return;
 
       const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === 'z') {
+        const prev = undoRef.current.pop();
+        if (prev) {
+          dispatch({ type: 'LOAD', score: prev });
+          setSelection(null);
+        }
+        e.preventDefault();
+        return;
+      }
       if (mod && e.key.toLowerCase() === 'c') {
         const cb = copyOf();
         if (cb) clipboardRef.current = cb;
@@ -130,7 +148,22 @@ export default function App() {
         return;
       }
       if (mod && e.key.toLowerCase() === 'v') {
-        e.preventDefault(); // paste not wired up yet
+        e.preventDefault();
+        const cb = clipboardRef.current;
+        if (!cb) return;
+        const total = measureTicks(score.timeSignature);
+        if (cb.kind === 'notes') {
+          if (cb.events.length === 0) return;
+          const mi = clamp(Math.floor(cursorTick / total), 0, score.measures.length - 1);
+          const tick = Math.round(cursorTick - mi * total);
+          pushUndo();
+          dispatch({ type: 'PASTE_NOTES', measureIndex: mi, tick, events: cb.events });
+        } else {
+          if (cb.measures.length === 0) return;
+          const idx = clamp(Math.floor(cursorTick / total), 0, score.measures.length);
+          pushUndo();
+          dispatch({ type: 'PASTE_MEASURES', index: idx, measures: cb.measures });
+        }
         return;
       }
       if (e.key === 'Backspace' || e.key === 'Delete') {
@@ -157,7 +190,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isPlaying, handlePlay, handleStop, selection, score]);
+  }, [isPlaying, handlePlay, handleStop, selection, score, cursorTick]);
 
   return (
     <div className="app">
@@ -198,12 +231,14 @@ export default function App() {
         previewOnCreate={previewOnCreate}
         selection={selection}
         playheadTick={playheadTick}
+        cursorTick={cursorTick}
         onAction={dispatch}
         onAfterApply={handleAfterApply}
         onPreviewNote={handlePreviewNote}
         onSelectMeasures={onSelectMeasures}
         onSelectNotes={onSelectNotes}
         onClearSelection={onClearSelection}
+        onSetCursor={onSetCursor}
       />
 
       <footer className="hint">

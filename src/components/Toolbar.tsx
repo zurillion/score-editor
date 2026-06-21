@@ -105,7 +105,7 @@ export function Toolbar(props: ToolbarProps) {
                 }}
                 title="Nota"
               >
-                <span className="bravura">{SMUFL.paletteNotes[v]}</span>
+                <span className="bravura note">{SMUFL.paletteNotes[v]}</span>
               </button>
             ))}
           </div>

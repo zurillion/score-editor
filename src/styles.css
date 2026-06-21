@@ -128,6 +128,12 @@ button.on.sticky {
 .glyph-btn .bravura.rest {
   font-size: 24px;
 }
+/* note glyphs carry a tall upward stem; sit them lower so it stays inside the button */
+.glyph-btn .bravura.note {
+  font-size: 22px;
+  position: relative;
+  top: 7px;
+}
 
 .palette {
   display: flex;

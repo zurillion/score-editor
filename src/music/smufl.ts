@@ -33,6 +33,13 @@ export const SMUFL = {
     '2': g(0xe263), // double sharp
   } as Record<string, string>,
 
+  // Standalone noteheads (origin at left edge, vertical centre on the baseline).
+  noteheads: {
+    1: g(0xe0a2), // whole
+    2: g(0xe0a3), // half (open)
+    4: g(0xe0a4), // black
+  } as Record<number, string>,
+
   // Combined note glyphs (stem up) for the palette buttons.
   paletteNotes: {
     1: g(0xe1d2), // whole

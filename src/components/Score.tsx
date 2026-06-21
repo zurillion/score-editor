@@ -16,12 +16,14 @@ interface ScoreProps {
   previewOnCreate: boolean;
   selection: Selection | null;
   playheadTick: number | null;
+  cursorTick: number;
   onAction: (action: ScoreAction) => void;
   onAfterApply: () => void;
   onPreviewNote: (pitches: Pitch[]) => void;
   onSelectMeasures: (indices: number[]) => void;
   onSelectNotes: (ids: string[]) => void;
   onClearSelection: () => void;
+  onSetCursor: (tick: number) => void;
 }
 
 export function Score({
@@ -32,12 +34,14 @@ export function Score({
   previewOnCreate,
   selection,
   playheadTick,
+  cursorTick,
   onAction,
   onAfterApply,
   onPreviewNote,
   onSelectMeasures,
   onSelectNotes,
   onClearSelection,
+  onSetCursor,
 }: ScoreProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
@@ -55,32 +59,34 @@ export function Score({
   const systems = layoutSystems(state.measures, state.timeSignature, mode, containerWidth);
   const total = measureTicks(state.timeSignature);
 
-  // ---- locate the playhead ----
-  let phSystem = -1;
-  let phX: number | null = null;
-  if (playheadTick !== null && state.measures.length > 0) {
-    const mi = clamp(Math.floor(playheadTick / total), 0, state.measures.length - 1);
-    const tin = clamp(playheadTick - mi * total, 0, total);
+  // ---- locate the bar (live playhead while playing, else the persistent cursor) ----
+  const barTick = playheadTick !== null ? playheadTick : cursorTick;
+  const showHandle = playheadTick === null;
+  let barSystem = -1;
+  let barX: number | null = null;
+  if (state.measures.length > 0) {
+    const mi = clamp(Math.floor(barTick / total), 0, state.measures.length - 1);
+    const tin = clamp(barTick - mi * total, 0, total);
     for (let s = 0; s < systems.length; s++) {
       const pm = systems[s].measures.find((p) => p.index === mi);
       if (pm) {
-        phSystem = s;
-        phX = tickToX(pm.leftX, pm.contentW, tin, total);
+        barSystem = s;
+        barX = tickToX(pm.leftX, pm.contentW, tin, total);
         break;
       }
     }
   }
 
-  // ---- auto-scroll to follow the playhead ----
+  // ---- auto-scroll to follow the playhead (only while playing) ----
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || phX === null) return;
+    if (!el || playheadTick === null || barX === null) return;
     if (mode === 'horizontal') {
-      el.scrollLeft = Math.max(0, phX - el.clientWidth * 0.4);
-    } else if (phSystem >= 0) {
-      el.scrollTop = Math.max(0, phSystem * (SYSTEM_HEIGHT + SYSTEM_GAP) - 30);
+      el.scrollLeft = Math.max(0, barX - el.clientWidth * 0.4);
+    } else if (barSystem >= 0) {
+      el.scrollTop = Math.max(0, barSystem * (SYSTEM_HEIGHT + SYSTEM_GAP) - 30);
     }
-  }, [phX, phSystem, mode]);
+  }, [playheadTick, barX, barSystem, mode]);
 
   return (
     <div className="score-scroll" ref={scrollRef} data-mode={mode}>
@@ -95,13 +101,15 @@ export function Score({
             duration={duration}
             previewOnCreate={previewOnCreate}
             selection={selection}
-            playheadX={i === phSystem ? phX : null}
+            playheadX={i === barSystem ? barX : null}
+            showHandle={showHandle}
             onAction={onAction}
             onAfterApply={onAfterApply}
             onPreviewNote={onPreviewNote}
             onSelectMeasures={onSelectMeasures}
             onSelectNotes={onSelectNotes}
             onClearSelection={onClearSelection}
+            onSetCursor={onSetCursor}
           />
         ))}
       </div>

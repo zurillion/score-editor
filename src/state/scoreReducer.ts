@@ -23,6 +23,8 @@ export type ScoreAction =
   | { type: 'ERASE'; measureIndex: number; eventId: string; diatonic: number | null }
   | { type: 'DELETE_MEASURES'; indices: number[] }
   | { type: 'DELETE_NOTES'; ids: string[] }
+  | { type: 'PASTE_NOTES'; measureIndex: number; tick: number; events: NoteEvent[] }
+  | { type: 'PASTE_MEASURES'; index: number; measures: Measure[] }
   | { type: 'SET_TIME_SIGNATURE'; timeSignature: TimeSignature }
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
@@ -156,6 +158,33 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
           });
         return { ...m, events: sortEvents(kept) };
       });
+      return { ...state, measures };
+    }
+
+    case 'PASTE_NOTES': {
+      const m = state.measures[action.measureIndex];
+      if (!m || action.events.length === 0) return state;
+      const minStart = Math.min(...action.events.map((e) => e.startTick));
+      const span = Math.max(...action.events.map((e) => e.startTick + durationTicks(e.duration))) - minStart;
+      // shift events at/after the insertion tick to the right by the pasted span
+      const shifted = m.events.map((e) =>
+        e.startTick >= action.tick ? { ...e, startTick: e.startTick + span } : e,
+      );
+      const pasted: NoteEvent[] = action.events.map((e) => ({
+        ...e,
+        id: uid('n'),
+        startTick: action.tick + (e.startTick - minStart),
+      }));
+      return withMeasureEvents(state, action.measureIndex, [...shifted, ...pasted]);
+    }
+
+    case 'PASTE_MEASURES': {
+      const fresh = action.measures.map((m) => ({
+        id: uid('m'),
+        events: m.events.map((e) => ({ ...e, id: uid('e') })),
+      }));
+      const measures = state.measures.slice();
+      measures.splice(Math.max(0, Math.min(action.index, measures.length)), 0, ...fresh);
       return { ...state, measures };
     }
 

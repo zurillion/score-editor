@@ -25,6 +25,7 @@ import {
   GLYPH_FONT_SIZE,
   NOTEHEAD_RX,
   NOTEHEAD_RY,
+  TICKS_PER_QUARTER,
 } from '../music/constants';
 import type { ScoreAction } from '../state/scoreReducer';
 import { Tool } from '../state/tool';
@@ -80,12 +81,14 @@ interface SystemProps {
   previewOnCreate: boolean;
   selection: Selection | null;
   playheadX: number | null;
+  showHandle: boolean;
   onAction: (action: ScoreAction) => void;
   onAfterApply: () => void;
   onPreviewNote: (pitches: Pitch[]) => void;
   onSelectMeasures: (indices: number[]) => void;
   onSelectNotes: (ids: string[]) => void;
   onClearSelection: () => void;
+  onSetCursor: (tick: number) => void;
 }
 
 export function System(props: SystemProps) {
@@ -98,18 +101,31 @@ export function System(props: SystemProps) {
     previewOnCreate,
     selection,
     playheadX,
+    showHandle,
     onAction,
     onAfterApply,
     onPreviewNote,
     onSelectMeasures,
     onSelectNotes,
     onClearSelection,
+    onSetCursor,
   } = props;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [cursorDrag, setCursorDrag] = useState(false);
   const total = measureTicks(ts);
+  const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
+
+  // global tick (across measures) for a local x, snapped to the cursor grid
+  function globalTickAt(x: number): number | null {
+    const pm = measureAt(x);
+    if (!pm) return null;
+    const raw = xToTickRaw(pm.leftX, pm.contentW, x, total);
+    const t = clamp(Math.round(raw / CURSOR_GRID) * CURSOR_GRID, 0, total);
+    return pm.index * total + t;
+  }
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
   const modal = tool.kind === 'accidental' || tool.kind === 'eraser';
@@ -198,6 +214,7 @@ export function System(props: SystemProps) {
 
   // ---- pointer handlers ----
   function handleMouseDown(e: React.MouseEvent) {
+    if (e.altKey) return; // alt-click moves the cursor (handled on click)
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
     if (tool.kind === 'select-measures') {
@@ -214,6 +231,11 @@ export function System(props: SystemProps) {
   function handleMouseMove(e: React.MouseEvent) {
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
+    if (cursorDrag) {
+      const g = globalTickAt(pt.x);
+      if (g !== null) onSetCursor(g);
+      return;
+    }
     if (drag?.kind === 'measures') {
       const pm = measureAt(pt.x);
       if (pm && pm.index !== drag.current) {
@@ -242,18 +264,25 @@ export function System(props: SystemProps) {
   function handleMouseUp() {
     if (drag?.kind === 'lasso') finishLasso(drag);
     setDrag(null);
+    setCursorDrag(false);
   }
 
   function handleMouseLeave() {
     setHover(null);
     if (drag?.kind === 'lasso') finishLasso(drag);
     setDrag(null);
+    setCursorDrag(false);
   }
 
   function handleClick(e: React.MouseEvent) {
-    if (tool.kind === 'select-measures' || tool.kind === 'select-notes') return;
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
+    if (e.altKey) {
+      const g = globalTickAt(pt.x);
+      if (g !== null) onSetCursor(g);
+      return;
+    }
+    if (tool.kind === 'select-measures' || tool.kind === 'select-notes') return;
 
     if (tool.kind === 'note' || tool.kind === 'rest') {
       const target = computePlace(pt.x, pt.y);
@@ -441,11 +470,26 @@ export function System(props: SystemProps) {
       {/* ghost / hover highlight */}
       {overlay}
 
-      {/* playhead */}
+      {/* playback / cursor bar (+ drag handle when not playing) */}
       {playheadX !== null && (
-        <g pointerEvents="none">
-          <rect x={playheadX - 6} y={TOP_Y - 10} width={12} height={BOTTOM_Y - TOP_Y + 20} fill="rgba(56,132,255,0.16)" />
-          <line x1={playheadX} x2={playheadX} y1={TOP_Y - 10} y2={BOTTOM_Y + 10} stroke="rgba(56,132,255,0.9)" strokeWidth={1.5} />
+        <g>
+          <g pointerEvents="none">
+            <rect x={playheadX - 6} y={TOP_Y - 10} width={12} height={BOTTOM_Y - TOP_Y + 20} fill="rgba(56,132,255,0.16)" />
+            <line x1={playheadX} x2={playheadX} y1={TOP_Y - 16} y2={BOTTOM_Y + 10} stroke="rgba(56,132,255,0.9)" strokeWidth={1.5} />
+          </g>
+          {showHandle && (
+            <path
+              d={`M ${playheadX - 7} ${TOP_Y - 22} L ${playheadX + 7} ${TOP_Y - 22} L ${playheadX} ${TOP_Y - 10} Z`}
+              fill="rgba(56,132,255,0.95)"
+              stroke="#fff"
+              strokeWidth={0.6}
+              style={{ cursor: 'ew-resize' }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                setCursorDrag(true);
+              }}
+            />
+          )}
         </g>
       )}
     </svg>

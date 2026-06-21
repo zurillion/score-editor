@@ -39,13 +39,13 @@ export function NoteView({ pitches, duration, x, color, opacity = 1 }: NoteViewP
   const value = duration.value;
   const isWhole = value === 1;
   const isOpen = value <= 2; // whole + half use open noteheads
-  const rx = isWhole ? WHOLE_RX : NOTEHEAD_RX;
-  const ry = NOTEHEAD_RY;
+  const headHW = isWhole ? WHOLE_RX : NOTEHEAD_RX; // notehead half-width
+  const headGlyph = SMUFL.noteheads[isWhole ? 1 : value === 2 ? 2 : 4];
 
   const nFlags = value === 8 ? 1 : value === 16 ? 2 : value === 32 ? 3 : 0;
   const stemLen = STEM_LENGTH + (nFlags > 1 ? (nFlags - 1) * STAFF_SPACE : 0);
 
-  const stemX = stemUp ? x + rx : x - rx;
+  const stemX = stemUp ? x + headHW : x - headHW;
   const baseY = stemUp ? diatonicToY(minD) : diatonicToY(maxD);
   const tipY = isWhole ? baseY : stemUp ? diatonicToY(maxD) - stemLen : diatonicToY(minD) + stemLen;
 
@@ -76,23 +76,18 @@ export function NoteView({ pitches, duration, x, color, opacity = 1 }: NoteViewP
         const dotY = d % 2 === 0 ? y - HALF_SPACE : y;
         return (
           <Fragment key={i}>
-            <ellipse
-              cx={x}
-              cy={y}
-              rx={rx}
-              ry={ry}
-              transform={isOpen ? undefined : `rotate(-20 ${x} ${y})`}
-              fill={isOpen ? 'white' : color}
-              stroke={isOpen ? color : 'none'}
-              strokeWidth={isOpen ? 1.6 : 0}
-            />
+            {/* open noteheads get an opaque white core so the staff line doesn't show through the hole */}
+            {isOpen && <ellipse cx={x} cy={y} rx={headHW * 0.52} ry={NOTEHEAD_RY * 0.46} fill="white" stroke="none" />}
+            <text x={x - headHW} y={y} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>
+              {headGlyph}
+            </text>
             {p.alter !== 0 && (
-              <text x={x - rx - 3} y={y} textAnchor="end" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>
+              <text x={x - headHW - 3} y={y} textAnchor="end" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>
                 {SMUFL.accidentals[String(p.alter)]}
               </text>
             )}
             {Array.from({ length: duration.dots }).map((_, k) => (
-              <circle key={k} cx={x + rx + 6 + k * 5} cy={dotY} r={2.1} fill={color} />
+              <circle key={k} cx={x + headHW + 6 + k * 5} cy={dotY} r={2.1} fill={color} />
             ))}
           </Fragment>
         );
