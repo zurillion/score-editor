@@ -1,5 +1,6 @@
 import { Pitch, ScoreState } from './types';
 import { durationTicks, measureTicks, pitchToFrequency } from './theory';
+import { resolveMeasure } from './accidentals';
 import { TICKS_PER_QUARTER } from './constants';
 
 // ---- One-shot audio preview ----
@@ -62,11 +63,17 @@ export function buildSchedule(score: ScoreState, bpm: number): Schedule {
   const notes: ScheduledNote[] = [];
   let measureStart = 0;
   for (const m of score.measures) {
+    // accidentals (key signature + "lasts for the measure") resolved per measure
+    const resolved = resolveMeasure(m.events, score.keySignature);
     for (const ev of m.events) {
       if (ev.kind !== 'note') continue;
       const startSec = (measureStart + ev.startTick) * secPerTick;
       const durSec = durationTicks(ev.duration) * secPerTick;
-      notes.push({ startSec, durSec, freqs: ev.pitches.map(pitchToFrequency) });
+      const freqs = ev.pitches.map((p) => {
+        const r = resolved.get(`${ev.id}|${p.step}${p.octave}`);
+        return pitchToFrequency(r ? { ...p, alter: r.alter } : p);
+      });
+      notes.push({ startSec, durSec, freqs });
     }
     measureStart += mTicks;
   }
@@ -81,9 +88,17 @@ export function buildSchedule(score: ScoreState, bpm: number): Schedule {
  */
 export class Player {
   private ctx: AudioContext | null = null;
-  private sources: OscillatorNode[] = [];
+  private master: GainNode | null = null;
+  private sources = new Set<OscillatorNode>();
   private raf = 0;
 
+  // scheduling state for the current run
+  private notes: ScheduledNote[] = [];
+  private totalSec = 0;
+  private t0 = 0;
+  private scheduledIters = 0;
+
+  loop = false;
   onTick: (sec: number) => void = () => {};
   onEnd: () => void = () => {};
 
@@ -101,31 +116,51 @@ export class Player {
     const master = ctx.createGain();
     master.gain.value = 0.85;
     master.connect(ctx.destination);
+    this.master = master;
 
-    const { notes, totalSec } = buildSchedule(score, bpm);
-    const t0 = ctx.currentTime + 0.12;
-
-    for (const n of notes) {
-      for (const f of n.freqs) {
-        this.scheduleNote(ctx, master, f, t0 + n.startSec, n.durSec);
-      }
-    }
+    const sched = buildSchedule(score, bpm);
+    this.notes = sched.notes;
+    this.totalSec = sched.totalSec;
+    this.t0 = ctx.currentTime + 0.12;
+    this.scheduledIters = 0;
+    this.scheduleUpTo(this.loop ? 2 : 1); // pre-schedule an extra iteration for a seamless loop
 
     const tick = () => {
       if (!this.ctx) return;
-      const elapsed = this.ctx.currentTime - t0;
-      this.onTick(Math.max(0, elapsed));
-      if (elapsed >= totalSec + 0.05) {
-        this.stop();
-        this.onEnd();
-        return;
+      const elapsed = this.ctx.currentTime - this.t0;
+      if (this.loop && this.totalSec > 0) {
+        const pos = elapsed <= 0 ? 0 : elapsed % this.totalSec;
+        this.onTick(pos);
+        const cur = Math.max(0, Math.floor(elapsed / this.totalSec));
+        this.scheduleUpTo(cur + 2); // keep one iteration scheduled ahead
+      } else {
+        this.onTick(Math.max(0, elapsed));
+        if (elapsed >= this.totalSec + 0.05) {
+          this.stop();
+          this.onEnd();
+          return;
+        }
       }
       this.raf = requestAnimationFrame(tick);
     };
     this.raf = requestAnimationFrame(tick);
   }
 
-  private scheduleNote(ctx: AudioContext, dest: AudioNode, freq: number, start: number, dur: number): void {
+  private scheduleUpTo(n: number): void {
+    if (this.totalSec <= 0) return;
+    while (this.scheduledIters < n) {
+      const base = this.t0 + this.scheduledIters * this.totalSec;
+      for (const note of this.notes) {
+        for (const f of note.freqs) this.scheduleNote(base + note.startSec, note.durSec, f);
+      }
+      this.scheduledIters++;
+    }
+  }
+
+  private scheduleNote(start: number, dur: number, freq: number): void {
+    const ctx = this.ctx;
+    const dest = this.master;
+    if (!ctx || !dest) return;
     const osc = ctx.createOscillator();
     osc.type = 'triangle';
     osc.frequency.value = freq;
@@ -144,7 +179,8 @@ export class Player {
     gain.connect(dest);
     osc.start(start);
     osc.stop(start + dur + 0.03);
-    this.sources.push(osc);
+    this.sources.add(osc);
+    osc.onended = () => this.sources.delete(osc); // prune so a long loop doesn't accumulate
   }
 
   stop(): void {
@@ -154,12 +190,14 @@ export class Player {
     }
     for (const o of this.sources) {
       try {
+        o.onended = null;
         o.stop();
       } catch {
         /* already stopped */
       }
     }
-    this.sources = [];
+    this.sources.clear();
+    this.master = null;
     if (this.ctx) {
       void this.ctx.close();
       this.ctx = null;

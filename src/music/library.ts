@@ -23,7 +23,7 @@ function parsePitch(tok: string): Pitch {
   // letter, accidental (bb|b|#|x), octave (may be negative)
   const m = /^([A-Ga-g])(bb|b|#|x)?(-?\d+)$/.exec(tok);
   if (!m) throw new Error(`bad pitch token: "${tok}"`);
-  return { step: m[1].toUpperCase() as StepName, alter: ACCIDENTAL[m[2] ?? ''], octave: Number(m[3]) };
+  return { step: m[1].toUpperCase() as StepName, alter: ACCIDENTAL[m[2] ?? ''], octave: Number(m[3]), explicit: true };
 }
 
 interface ParsedEvent {

@@ -133,7 +133,7 @@ export function layoutSystems(
 }
 
 // key-signature layout
-export const KEYSIG_X = 46; // x of the first key-signature accidental
+export const KEYSIG_X = 56; // x of the first key-signature accidental (clear of the clefs)
 export const KEYSIG_STEP = 10; // horizontal gap between accidentals
 export function keySigWidth(keySig: number): number {
   return Math.abs(keySig) * KEYSIG_STEP;

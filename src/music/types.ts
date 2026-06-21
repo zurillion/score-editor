@@ -11,6 +11,7 @@ export interface Pitch {
   step: StepName;
   octave: number;
   alter: Alter; // bb / b / natural / # / x
+  explicit?: boolean; // true if the user wrote an accidental on this note
 }
 
 export type DurationValue = 1 | 2 | 4 | 8 | 16 | 32; // whole .. 32nd

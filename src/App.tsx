@@ -54,18 +54,21 @@ export default function App() {
     const player = playerRef.current ?? new Player();
     playerRef.current = player;
     const secPerTick = 60 / bpm / TICKS_PER_QUARTER;
+    player.loop = loopRef.current; // looping is handled inside the Player (seamless)
     player.onTick = (sec) => setPlayheadTick(sec / secPerTick);
     player.onEnd = () => {
-      if (loopRef.current) {
-        player.play(score, bpm); // restart; handlers stay attached
-      } else {
-        setIsPlaying(false);
-        setPlayheadTick(null);
-      }
+      setIsPlaying(false);
+      setPlayheadTick(null);
     };
     player.play(score, bpm);
     setIsPlaying(true);
   }, [bpm, score]);
+
+  const handleSetLoop = useCallback((v: boolean) => {
+    setLoop(v);
+    loopRef.current = v;
+    if (playerRef.current) playerRef.current.loop = v; // apply immediately if playing
+  }, []);
 
   // After a one-shot accidental/eraser is applied, revert to the note tool.
   const handleAfterApply = useCallback(() => {
@@ -271,7 +274,7 @@ export default function App() {
         bpm={bpm}
         setBpm={setBpm}
         loop={loop}
-        setLoop={setLoop}
+        setLoop={handleSetLoop}
         isPlaying={isPlaying}
         onPlay={handlePlay}
         onStop={handleStop}

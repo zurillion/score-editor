@@ -110,11 +110,12 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const target = m.events.find((e) => e.id === action.eventId);
       if (!target || target.kind !== 'note') return state;
       let changed = false;
-      const pitches = target.pitches.map((p) =>
-        pitchToDiatonic(p) === action.diatonic && p.alter !== action.alter
-          ? ((changed = true), { ...p, alter: action.alter })
-          : p,
-      );
+      const pitches = target.pitches.map((p) => {
+        if (pitchToDiatonic(p) !== action.diatonic) return p;
+        if (p.alter === action.alter && p.explicit) return p;
+        changed = true;
+        return { ...p, alter: action.alter, explicit: true };
+      });
       if (!changed) return state;
       const events = m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));
       return withMeasureEvents(state, action.measureIndex, events);

@@ -3,6 +3,8 @@ import { Duration, Pitch, Staff } from '../music/types';
 import { pitchToDiatonic } from '../music/theory';
 import { diatonicToY, ledgerLineDiatonics, STEM_INSET, noteheadHalfWidth, stemUpForChord, secondOffsets } from '../music/layout';
 import { keyAlterForStep } from '../music/key';
+import { Resolved } from '../music/accidentals';
+import { Alter } from '../music/types';
 import { SMUFL } from '../music/smufl';
 import { STEM_WIDTH, STEM_LENGTH, LEDGER_HALF, LEDGER_WIDTH, HALF_SPACE, STAFF_SPACE, GLYPH_FONT_SIZE } from '../music/constants';
 
@@ -11,13 +13,14 @@ interface NoteViewProps {
   duration: Duration;
   staff: Staff;
   keySignature?: number;
+  resolve?: (step: string, octave: number) => Resolved | undefined;
   x: number; // notehead column reference x
   color: string;
   opacity?: number;
 }
 
 /** Renders a single note or a chord (several noteheads on one stem). */
-export function NoteView({ pitches, duration, staff, keySignature = 0, x, color, opacity = 1 }: NoteViewProps) {
+export function NoteView({ pitches, duration, staff, keySignature = 0, resolve, x, color, opacity = 1 }: NoteViewProps) {
   if (pitches.length === 0) return null;
 
   // noteheads low -> high
@@ -94,11 +97,16 @@ export function NoteView({ pitches, duration, staff, keySignature = 0, x, color,
             <text x={cx - headHW} y={y} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>
               {headGlyph}
             </text>
-            {n.p.alter !== keyAlterForStep(n.p.step, keySignature) && (
-              <text x={cx - headHW - 3} y={y} textAnchor="end" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>
-                {SMUFL.accidentals[String(n.p.alter)]}
-              </text>
-            )}
+            {(() => {
+              const r = resolve?.(n.p.step, n.p.octave);
+              const show = r ? r.show : n.p.alter !== keyAlterForStep(n.p.step, keySignature);
+              const glyphAlter: Alter = r ? r.alter : n.p.alter;
+              return show ? (
+                <text x={cx - headHW - 3} y={y} textAnchor="end" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>
+                  {SMUFL.accidentals[String(glyphAlter)]}
+                </text>
+              ) : null;
+            })()}
           </Fragment>
         );
       })}

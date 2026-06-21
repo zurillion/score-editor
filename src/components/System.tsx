@@ -22,6 +22,7 @@ import {
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
 import { keyAlterForStep, keySignatureAccidentals } from '../music/key';
+import { resolveMeasure } from '../music/accidentals';
 import { SMUFL, timeSigString } from '../music/smufl';
 import {
   STAFF_LEFT,
@@ -244,9 +245,11 @@ export function System(props: SystemProps) {
       if (tool.kind === 'rest') {
         onAction({ type: 'CLICK_REST', measureIndex: target.measureIndex, tick: target.tick, duration, staff: target.staff });
       } else {
-        const pitch = keyedPitch(target.diatonic);
+        // store a non-explicit note: it follows the key signature and any
+        // accidental already in effect in the measure
+        const pitch = diatonicToPitch(target.diatonic, 0);
         onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration });
-        if (previewOnCreate && (target.action === 'create' || target.action === 'chord')) onPreviewNote([pitch]);
+        if (previewOnCreate && (target.action === 'create' || target.action === 'chord')) onPreviewNote([keyedPitch(target.diatonic)]);
       }
       return;
     }
@@ -405,11 +408,22 @@ export function System(props: SystemProps) {
         ))}
 
       {/* measures: notes + placed rests + auto-derived rests + right barline */}
-      {layout.measures.map((pm) => (
+      {layout.measures.map((pm) => {
+        const resolved = resolveMeasure(pm.measure.events, keySignature);
+        return (
         <Fragment key={pm.measure.id}>
           {pm.measure.events.map((ev) =>
             ev.kind === 'note' ? (
-              <NoteView key={ev.id} pitches={ev.pitches} duration={ev.duration} staff={ev.staff} keySignature={keySignature} x={tickToX(pm.leftX, pm.contentW, ev.startTick, total)} color="#1a1a1a" />
+              <NoteView
+                key={ev.id}
+                pitches={ev.pitches}
+                duration={ev.duration}
+                staff={ev.staff}
+                keySignature={keySignature}
+                resolve={(step, octave) => resolved.get(`${ev.id}|${step}${octave}`)}
+                x={tickToX(pm.leftX, pm.contentW, ev.startTick, total)}
+                color="#1a1a1a"
+              />
             ) : (
               <RestView
                 key={ev.id}
@@ -435,7 +449,8 @@ export function System(props: SystemProps) {
               .map((ev) => noteHighlight(pm, ev))}
           <line x1={pm.leftX + pm.contentW} x2={pm.leftX + pm.contentW} y1={TOP_Y} y2={BOTTOM_Y} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
         </Fragment>
-      ))}
+        );
+      })}
 
       {/* ghost / hover highlight */}
       {overlay}
