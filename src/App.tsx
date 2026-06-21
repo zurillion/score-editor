@@ -381,7 +381,8 @@ export default function App() {
 
       <footer className="hint">
         Palette: <strong>note</strong> sopra, <strong>pause</strong> sotto. Le pause riempiono automaticamente lo spazio
-        libero. <strong>Alterazioni</strong> e <strong>gomma</strong>: clic su una nota (1 = una volta, doppio = fisso).
+        libero. Trascina una nota per spostarla; <kbd>Alt</kbd>+clic la cancella.{' '}
+        <strong>Alterazioni</strong> e <strong>gomma</strong>: clic su una nota (1 = una volta, doppio = fisso).
         <strong> Selezione</strong> battute o note (lazo): <kbd>⌘C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> · <kbd>Backspace</kbd>{' '}
         elimina · <kbd>⌘Z</kbd> annulla. <kbd>← →</kbd> sposta cursore (<kbd>Alt</kbd> battuta, <kbd>Ctrl</kbd> rigo) ·{' '}
         <kbd>↑ ↓</kbd> traspone le note selezionate. <kbd>1-6</kbd> durata · <kbd>.</kbd> punto · <kbd>E</kbd> gomma ·{' '}

@@ -275,6 +275,15 @@ export function System(props: SystemProps) {
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
     if (e.altKey) {
+      // alt-click on a notehead (note tool) deletes it; on empty space it
+      // moves the playback/insertion cursor instead.
+      if (tool.kind === 'note') {
+        const hit = pickNotehead(pt.x, pt.y, 0);
+        if (hit) {
+          onAction({ type: 'ERASE', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic });
+          return;
+        }
+      }
       const g = globalTickAt(pt.x);
       if (g !== null) onSetCursor(g);
       return;
