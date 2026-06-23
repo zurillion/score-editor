@@ -17,10 +17,11 @@ interface NoteViewProps {
   x: number; // notehead column reference x
   color: string;
   opacity?: number;
+  beam?: { stemUp: boolean; tipY: number }; // when set, stem reaches the beam and no flag is drawn
 }
 
 /** Renders a single note or a chord (several noteheads on one stem). */
-export function NoteView({ pitches, duration, staff, keySignature = 0, resolve, x, color, opacity = 1 }: NoteViewProps) {
+export function NoteView({ pitches, duration, staff, keySignature = 0, resolve, x, color, opacity = 1, beam }: NoteViewProps) {
   if (pitches.length === 0) return null;
 
   // noteheads low -> high
@@ -29,19 +30,19 @@ export function NoteView({ pitches, duration, staff, keySignature = 0, resolve, 
   const minD = ds[0];
   const maxD = ds[ds.length - 1];
 
-  const stemUp = stemUpForChord(ds, staff);
+  const stemUp = beam ? beam.stemUp : stemUpForChord(ds, staff);
 
   const value = duration.value;
   const isWhole = value === 1;
   const headHW = noteheadHalfWidth(value);
   const headGlyph = SMUFL.noteheads[isWhole ? 1 : value === 2 ? 2 : 4];
 
-  const nFlags = value === 8 ? 1 : value === 16 ? 2 : value === 32 ? 3 : 0;
+  const nFlags = beam ? 0 : value === 8 ? 1 : value === 16 ? 2 : value === 32 ? 3 : 0;
   const stemLen = STEM_LENGTH + (nFlags > 1 ? (nFlags - 1) * STAFF_SPACE : 0);
 
   const stemX = stemUp ? x + headHW - STEM_INSET : x - headHW + STEM_INSET;
   const baseY = stemUp ? diatonicToY(minD) : diatonicToY(maxD);
-  const tipY = isWhole ? baseY : stemUp ? diatonicToY(maxD) - stemLen : diatonicToY(minD) + stemLen;
+  const tipY = isWhole ? baseY : beam ? beam.tipY : stemUp ? diatonicToY(maxD) - stemLen : diatonicToY(minD) + stemLen;
 
   // seconds: displace one of each pair to the far side of the stem
   const offsets = secondOffsets(ds, stemUp, headHW);

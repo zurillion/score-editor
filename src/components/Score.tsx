@@ -221,7 +221,7 @@ export function Score({
             layout={sys}
             headerTs={sys.headerTs}
             headerKeySig={sys.headerKeySig}
-            showTimeSig={i === 0}
+            showTimeSig={i === 0 || sys.headerTsChanged}
             tool={tool}
             duration={duration}
             previewOnCreate={previewOnCreate}

@@ -182,8 +182,11 @@ input[type='number'] {
 }
 
 .note-readout {
-  min-width: 56px;
+  width: 78px;
+  box-sizing: border-box;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
   font-size: 20px;
   font-weight: 600;
   line-height: 1.4;

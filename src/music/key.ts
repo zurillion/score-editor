@@ -58,5 +58,5 @@ export interface KeyOption {
 export const KEY_OPTIONS: KeyOption[] = Array.from({ length: 15 }, (_, i) => {
   const count = i - 7; // −7 .. +7
   const acc = count === 0 ? 'naturale' : `${Math.abs(count)}${count > 0 ? '♯' : '♭'}`;
-  return { value: count, label: `${acc} — ${MAJOR[i]} magg / ${MINOR[i]} min` };
+  return { value: count, label: `${MAJOR[i]} magg / ${MINOR[i]} min (${acc})` };
 });

@@ -16,12 +16,14 @@ import {
   noteheadHalfWidth,
   stemUpForChord,
   secondOffsets,
+  STEM_INSET,
   KEYSIG_X,
   KEYSIG_STEP,
   keySigWidth,
 } from '../music/layout';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
+import { beamGroups, beamCount } from '../music/beams';
 import { keyAlterForStep, keySignatureAccidentals, keyChangeNaturals } from '../music/key';
 import { effectiveAlterForNew, resolveMeasure } from '../music/accidentals';
 import { SMUFL, timeSigString } from '../music/smufl';
@@ -36,6 +38,7 @@ import {
   GLYPH_FONT_SIZE,
   NOTEHEAD_RX,
   NOTEHEAD_RY,
+  STEM_LENGTH,
   TICKS_PER_QUARTER,
 } from '../music/constants';
 import type { ScoreAction } from '../state/scoreReducer';
@@ -48,6 +51,58 @@ const TOP_Y = diatonicToY(38);
 const BOTTOM_Y = diatonicToY(18);
 const SEL_FILL = 'rgba(37,99,235,0.13)';
 const SEL_STROKE = 'rgba(37,99,235,0.7)';
+const BEAM_THICK = 5;
+const BEAM_GAP = 3.5;
+
+/** Horizontal beams for one measure: stem-end y for each beamed note + the beam rects. */
+function computeMeasureBeams(pm: PlacedMeasure): { beamProps: Map<string, { stemUp: boolean; tipY: number }>; elements: JSX.Element[] } {
+  const beamProps = new Map<string, { stemUp: boolean; tipY: number }>();
+  const elements: JSX.Element[] = [];
+  for (const staff of ['treble', 'bass'] as Staff[]) {
+    for (const group of beamGroups(pm.measure.events, staff, pm.ts)) {
+      const allDs = group.flatMap((ev) => ev.pitches.map(pitchToDiatonic));
+      const stemUp = stemUpForChord(allDs, staff);
+      const dir = stemUp ? 1 : -1;
+      const items = group.map((ev) => {
+        const x = measureTickToX(pm, ev.startTick);
+        const headHW = noteheadHalfWidth(ev.duration.value);
+        const ds = ev.pitches.map(pitchToDiatonic);
+        const tipBase = stemUp ? diatonicToY(Math.max(...ds)) - STEM_LENGTH : diatonicToY(Math.min(...ds)) + STEM_LENGTH;
+        return { ev, stemX: stemUp ? x + headHW - STEM_INSET : x - headHW + STEM_INSET, tipBase, count: beamCount(ev.duration.value) };
+      });
+      const beamY = stemUp ? Math.min(...items.map((it) => it.tipBase)) : Math.max(...items.map((it) => it.tipBase));
+      for (const it of items) beamProps.set(it.ev.id, { stemUp, tipY: beamY });
+      const k = (s: string) => `bm-${pm.index}-${staff}-${group[0].id}-${s}`;
+      const xa = items[0].stemX;
+      const xb = items[items.length - 1].stemX;
+      elements.push(<rect key={k('1')} x={Math.min(xa, xb)} y={beamY - BEAM_THICK / 2} width={Math.abs(xb - xa)} height={BEAM_THICK} fill="#1a1a1a" />);
+      const maxLevel = Math.max(...items.map((it) => it.count));
+      for (let L = 2; L <= maxLevel; L++) {
+        const y = beamY + dir * (L - 1) * (BEAM_THICK + BEAM_GAP);
+        let i = 0;
+        while (i < items.length) {
+          if (items[i].count < L) {
+            i++;
+            continue;
+          }
+          let end = i;
+          while (end + 1 < items.length && items[end + 1].count >= L) end++;
+          if (end > i) {
+            const a = items[i].stemX;
+            const b = items[end].stemX;
+            elements.push(<rect key={k(`${L}-${i}`)} x={Math.min(a, b)} y={y - BEAM_THICK / 2} width={Math.abs(b - a)} height={BEAM_THICK} fill="#1a1a1a" />);
+          } else {
+            const a = items[i].stemX;
+            const b = i > 0 ? a - 8 : a + 8; // beamlet stub toward the neighbour
+            elements.push(<rect key={k(`${L}-${i}b`)} x={Math.min(a, b)} y={y - BEAM_THICK / 2} width={8} height={BEAM_THICK} fill="#1a1a1a" />);
+          }
+          i = end + 1;
+        }
+      }
+    }
+  }
+  return { beamProps, elements };
+}
 
 const GHOST_COLOR: Record<PlaceAction, string> = {
   create: '#94a3b8',
@@ -535,9 +590,11 @@ export function System(props: SystemProps) {
       {/* measures: notes + placed rests + auto-derived rests + right barline */}
       {layout.measures.map((pm) => {
         const resolved = resolveMeasure(pm.measure.events, pm.keySig);
+        const { beamProps, elements: beamEls } = computeMeasureBeams(pm);
         return (
         <Fragment key={pm.measure.id}>
           {(pm.keyChanged || pm.tsChanged) && renderChange(pm)}
+          {beamEls}
           {pm.measure.events.map((ev) =>
             ev.kind === 'note' ? (
               <NoteView
@@ -549,6 +606,7 @@ export function System(props: SystemProps) {
                 resolve={(step, octave) => resolved.get(`${ev.id}|${step}${octave}`)}
                 x={measureTickToX(pm, ev.startTick)}
                 color="#1a1a1a"
+                beam={beamProps.get(ev.id)}
               />
             ) : (
               <RestView
@@ -577,6 +635,31 @@ export function System(props: SystemProps) {
         </Fragment>
         );
       })}
+
+      {/* cautionary key change at the end of the line (next system starts in a new key) */}
+      {layout.trailingKey &&
+        (() => {
+          const { fromKey, toKey } = layout.trailingKey;
+          const contentRight = layout.measures.length ? Math.max(...layout.measures.map((m) => m.leftX + m.contentW)) : layout.header;
+          const x0 = contentRight + 8;
+          const natCount = keyChangeNaturals(fromKey, toKey, 0).length;
+          return (
+            <g pointerEvents="none">
+              {[0, -14].flatMap((off) => [
+                ...keyChangeNaturals(fromKey, toKey, off).map((n, i) => (
+                  <text key={`tnat${off}-${i}`} x={x0 + i * KEYSIG_STEP} y={diatonicToY(n.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                    {SMUFL.accidentals['0']}
+                  </text>
+                )),
+                ...keySignatureAccidentals(toKey, off).map((a, j) => (
+                  <text key={`tacc${off}-${j}`} x={x0 + (natCount + j) * KEYSIG_STEP} y={diatonicToY(a.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                    {SMUFL.accidentals[String(a.alter)]}
+                  </text>
+                )),
+              ])}
+            </g>
+          );
+        })()}
 
       {/* ghost / hover highlight */}
       {overlay}

@@ -107,7 +107,9 @@ export interface SystemLayout {
   width: number; // total svg width of the system
   header: number; // header width (brace + clefs + key signature)
   headerKeySig: number; // key signature shown in this system's header
-  headerTs: TimeSignature; // time signature for the header (drawn only on the first system)
+  headerTs: TimeSignature; // time signature for the header
+  headerTsChanged: boolean; // the first measure's time signature differs from the previous measure
+  trailingKey?: { fromKey: number; toKey: number }; // cautionary key change at the end of the line
 }
 
 // key-signature layout
@@ -169,7 +171,20 @@ function buildSystem(
     });
     x += contentW;
   }
-  return { measures: placed, width: x + 2, header, headerKeySig, headerTs: metas[from].ts };
+  return { measures: placed, width: x + 2, header, headerKeySig, headerTs: metas[from].ts, headerTsChanged: metas[from].tsChanged };
+}
+
+/** When a key change falls on a system break, show the cancellation+new key as a cautionary at the end of the previous line. */
+function applyTrailingKey(systems: SystemLayout[], metas: MeasureMeta[]): void {
+  for (let s = 0; s < systems.length - 1; s++) {
+    const next = systems[s + 1].measures[0];
+    if (!next) continue;
+    const mm = metas[next.index];
+    if (!mm.keyChanged) continue;
+    systems[s].trailingKey = { fromKey: mm.prevKeySig, toKey: mm.keySig };
+    const naturals = keyChangeNaturals(mm.prevKeySig, mm.keySig, 0).length;
+    systems[s].width += (naturals + Math.abs(mm.keySig)) * KEYSIG_STEP + 16;
+  }
 }
 
 export function layoutSystems(
@@ -179,7 +194,7 @@ export function layoutSystems(
   availableWidth: number,
 ): SystemLayout[] {
   if (measures.length === 0) {
-    return [{ measures: [], width: HEADER_WIDTH + 150, header: HEADER_WIDTH, headerKeySig: 0, headerTs: { numerator: 4, denominator: 4 } }];
+    return [{ measures: [], width: HEADER_WIDTH + 150, header: HEADER_WIDTH, headerKeySig: 0, headerTs: { numerator: 4, denominator: 4 }, headerTsChanged: false }];
   }
 
   if (mode === 'horizontal') {
@@ -204,6 +219,7 @@ export function layoutSystems(
     systems.push(buildSystem(measures, metas, i, j));
     i = j;
   }
+  applyTrailingKey(systems, metas);
   return systems;
 }
 
