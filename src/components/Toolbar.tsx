@@ -13,10 +13,15 @@ const TIME_PRESETS: TimeSignature[] = [
   { numerator: 3, denominator: 4 },
   { numerator: 4, denominator: 4 },
   { numerator: 5, denominator: 4 },
-  { numerator: 6, denominator: 8 },
-  { numerator: 9, denominator: 8 },
-  { numerator: 12, denominator: 8 },
+  { numerator: 7, denominator: 4 },
   { numerator: 3, denominator: 8 },
+  { numerator: 5, denominator: 8 },
+  { numerator: 6, denominator: 8 },
+  { numerator: 7, denominator: 8 },
+  { numerator: 9, denominator: 8 },
+  { numerator: 11, denominator: 8 },
+  { numerator: 12, denominator: 8 },
+  { numerator: 13, denominator: 8 },
   { numerator: 2, denominator: 2 },
 ];
 
@@ -274,6 +279,7 @@ export function Toolbar(props: ToolbarProps) {
           onChange={(e) => {
             const [n, d] = e.target.value.split('/').map(Number);
             setTimeSignature({ numerator: n, denominator: d });
+            e.currentTarget.blur(); // give focus back so arrow keys still move the playhead
           }}
           title={`Tempo dalla battuta ${measureNumber} in poi`}
         >
@@ -292,7 +298,10 @@ export function Toolbar(props: ToolbarProps) {
         <legend>Armatura · batt. {measureNumber}</legend>
         <select
           value={keySignature}
-          onChange={(e) => setKeySignature(Number(e.target.value))}
+          onChange={(e) => {
+            setKeySignature(Number(e.target.value));
+            e.currentTarget.blur();
+          }}
           title={`Tonalità dalla battuta ${measureNumber} in poi`}
         >
           {KEY_OPTIONS.map((o) => (
@@ -322,6 +331,7 @@ export function Toolbar(props: ToolbarProps) {
           onChange={(e) => {
             if (e.target.value) onLoadPiece(e.target.value);
             e.target.value = '';
+            e.currentTarget.blur();
           }}
           title="Carica un brano pronto da suonare"
         >
@@ -368,6 +378,7 @@ export function Toolbar(props: ToolbarProps) {
             max={300}
             value={bpm}
             onChange={(e) => setBpm(Number(e.target.value))}
+            onMouseUp={(e) => e.currentTarget.blur()}
             aria-label="BPM"
           />
         </div>
@@ -387,7 +398,10 @@ export function Toolbar(props: ToolbarProps) {
             Uscita
             <select
               value={midiOutId}
-              onChange={(e) => setMidiOutId(e.target.value)}
+              onChange={(e) => {
+                setMidiOutId(e.target.value);
+                e.currentTarget.blur();
+              }}
               disabled={!midiOn || midiOutputs.length === 0}
               title="Uscita MIDI"
             >
@@ -403,7 +417,10 @@ export function Toolbar(props: ToolbarProps) {
             Canale
             <select
               value={midiChannel}
-              onChange={(e) => setMidiChannel(Number(e.target.value))}
+              onChange={(e) => {
+                setMidiChannel(Number(e.target.value));
+                e.currentTarget.blur();
+              }}
               title="Canale MIDI (1-16)"
             >
               {Array.from({ length: 16 }, (_, i) => i + 1).map((c) => (

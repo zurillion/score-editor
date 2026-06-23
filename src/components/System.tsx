@@ -134,6 +134,7 @@ export function System(props: SystemProps) {
   const noteDragRef = useRef<{ measureIndex: number; eventId: string; lastD: number } | null>(null);
   const movedRef = useRef(false);
   const suppressClickRef = useRef(false);
+  const cursorDragRef = useRef(false); // a playhead-handle interaction is in progress
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
@@ -238,6 +239,7 @@ export function System(props: SystemProps) {
 
   // mousedown on a notehead with the note tool starts a diatonic drag-to-move
   function handleMouseDown(e: React.MouseEvent) {
+    suppressClickRef.current = false; // fresh press: clear any stale click suppression
     if (e.altKey || tool.kind !== 'note') return;
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
@@ -275,6 +277,10 @@ export function System(props: SystemProps) {
 
   function handleMouseUp() {
     setCursorDrag(false);
+    if (cursorDragRef.current) {
+      cursorDragRef.current = false;
+      suppressClickRef.current = true; // dragging/clicking the playhead handle must not place a note
+    }
     if (noteDragRef.current) {
       noteDragRef.current = null;
       if (movedRef.current) suppressClickRef.current = true; // a drag happened: don't treat it as a click
@@ -591,6 +597,7 @@ export function System(props: SystemProps) {
               style={{ cursor: 'ew-resize' }}
               onMouseDown={(e) => {
                 e.stopPropagation();
+                cursorDragRef.current = true;
                 setCursorDrag(true);
               }}
             />
