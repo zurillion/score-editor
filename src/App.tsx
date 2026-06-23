@@ -2,7 +2,6 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { Duration, DurationValue, NoteEvent, Pitch, ScoreState } from './music/types';
 import { LayoutMode, clamp } from './music/layout';
 import { durationTicks, measureTicks } from './music/theory';
-import { TICKS_PER_QUARTER } from './music/constants';
 import { Player, playPreview } from './music/audio';
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
 import { LIBRARY } from './music/library';
@@ -26,6 +25,7 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playheadTick, setPlayheadTick] = useState<number | null>(null);
   const [cursorTick, setCursorTick] = useState(0); // persistent playback/insertion cursor
+  const [hoverNote, setHoverNote] = useState<string | null>(null); // name of the ghost note under the cursor
   const [selection, setSelection] = useState<Selection | null>(null);
   const clipboardRef = useRef<Clipboard | null>(null);
   const undoRef = useRef<ScoreState[]>([]);
@@ -87,7 +87,14 @@ export default function App() {
   // changing tool always starts from a clean selection
   useEffect(() => {
     setSelection(null);
+    setHoverNote(null);
   }, [tool.kind]);
+
+  // apply tempo changes live while a player is running
+  useEffect(() => {
+    if (playerRef.current?.playing) playerRef.current.setBpm(bpm);
+    if (midiPlayerRef.current?.playing) midiPlayerRef.current.setBpm(bpm);
+  }, [bpm]);
 
   const handleStop = useCallback(() => {
     playerRef.current?.stop();
@@ -97,8 +104,7 @@ export default function App() {
   }, []);
 
   const handlePlay = useCallback(() => {
-    const secPerTick = 60 / bpm / TICKS_PER_QUARTER;
-    const onTick = (sec: number) => setPlayheadTick(sec / secPerTick);
+    const onTick = (tick: number) => setPlayheadTick(tick);
     const onEnd = () => {
       setIsPlaying(false);
       setPlayheadTick(null);
@@ -331,6 +337,7 @@ export default function App() {
         setTool={setTool}
         duration={duration}
         setDuration={setDuration}
+        hoverNote={hoverNote}
         previewOnCreate={previewOnCreate}
         setPreviewOnCreate={setPreviewOnCreate}
         timeSignature={score.timeSignature}
@@ -376,6 +383,7 @@ export default function App() {
         onSelectNotes={onSelectNotes}
         onClearSelection={onClearSelection}
         onSetCursor={onSetCursor}
+        onHoverNote={setHoverNote}
         onLayout={onLayout}
       />
 

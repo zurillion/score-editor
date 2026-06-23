@@ -29,6 +29,7 @@ interface ScoreProps {
   onSelectNotes: (ids: string[]) => void;
   onClearSelection: () => void;
   onSetCursor: (tick: number) => void;
+  onHoverNote: (name: string | null) => void;
   onLayout: (ranges: SystemRange[]) => void;
 }
 
@@ -58,6 +59,7 @@ export function Score({
   onSelectNotes,
   onClearSelection,
   onSetCursor,
+  onHoverNote,
   onLayout,
 }: ScoreProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -228,6 +230,7 @@ export function Score({
             onAfterApply={onAfterApply}
             onPreviewNote={onPreviewNote}
             onSetCursor={onSetCursor}
+            onHoverNote={onHoverNote}
           />
         ))}
         {lassoRect && (

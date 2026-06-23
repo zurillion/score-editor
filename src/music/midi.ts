@@ -1,5 +1,6 @@
 import { ScoreState } from './types';
-import { buildSchedule, ScheduledNote } from './audio';
+import { buildSchedule, occurrences, ScheduledNote } from './audio';
+import { TICKS_PER_QUARTER } from './constants';
 
 // Web MIDI is provided by the DOM lib (MIDIAccess / MIDIOutput); some browsers
 // expose requestMIDIAccess only at runtime, so guard the navigator call.
@@ -30,29 +31,29 @@ export function listOutputs(access: MIDIAccess): MidiOutputInfo[] {
   return [...access.outputs.values()].map((o) => ({ id: o.id, name: o.name || o.id }));
 }
 
-interface FlatEvent {
-  onMs: number;
-  offMs: number;
-  midi: number;
-}
-
-/** Plays a score by sending Web MIDI messages to an output on a chosen channel. */
+/**
+ * Plays a score by sending Web MIDI messages to an output on a chosen channel.
+ * Like the audio Player, position is tracked in ticks and turned into real time
+ * with the *current* tempo, so the BPM can change live (setBpm).
+ */
 export class MidiPlayer {
   private access: MIDIAccess;
   output: MIDIOutput | null = null;
   channel = 0; // 0..15
   loop = false;
-  onTick: (sec: number) => void = () => {};
+  onTick: (tick: number) => void = () => {};
   onEnd: () => void = () => {};
 
   private raf = 0;
-  private t0 = 0;
-  private notes: ScheduledNote[] = [];
-  private totalSec = 0;
-  private iter = 0;
-  private flat: FlatEvent[] = [];
-  private fi = 0;
+  private notes: ScheduledNote[] = []; // sorted by startTick
+  private totalTicks = 0;
+  private posTicks = 0;
+  private scheduledTick = 0;
+  private lastTime = 0; // performance.now() at the previous frame
+  private secPerTick = 60 / 96 / TICKS_PER_QUARTER;
   private playingFlag = false;
+
+  private static readonly LOOKAHEAD_SEC = 0.2; // keep a small window queued so Stop stays responsive
 
   constructor(access: MIDIAccess) {
     this.access = access;
@@ -66,60 +67,56 @@ export class MidiPlayer {
     this.output = this.access.outputs.get(id) ?? null;
   }
 
-  private flatten(iter: number): FlatEvent[] {
-    const base = this.t0 + iter * this.totalSec * 1000;
-    const arr: FlatEvent[] = [];
-    for (const note of this.notes) {
-      const onMs = base + note.startSec * 1000;
-      const offMs = base + (note.startSec + note.durSec) * 1000;
-      for (const m of note.midis) arr.push({ onMs, offMs, midi: m });
-    }
-    arr.sort((a, b) => a.onMs - b.onMs);
-    return arr;
+  setBpm(bpm: number): void {
+    this.secPerTick = 60 / bpm / TICKS_PER_QUARTER;
   }
 
   play(score: ScoreState, bpm: number): void {
     this.stop();
     if (!this.output) return;
-    const sched = buildSchedule(score, bpm);
+    const sched = buildSchedule(score);
     this.notes = sched.notes;
-    this.totalSec = sched.totalSec;
-    this.t0 = performance.now() + 150;
-    this.iter = 0;
-    this.flat = this.flatten(0);
-    this.fi = 0;
+    this.totalTicks = sched.totalTicks;
+    this.setBpm(bpm);
+    this.posTicks = 0;
+    this.scheduledTick = 0;
+    this.lastTime = performance.now();
     this.playingFlag = true;
 
-    const LOOKAHEAD = 200; // ms; keep few messages queued so Stop is responsive
-    const tick = () => {
+    const frame = () => {
       if (!this.playingFlag || !this.output) return;
       const now = performance.now();
+      this.posTicks += (now - this.lastTime) / 1000 / this.secPerTick;
+      this.lastTime = now;
       const ch = this.channel & 0x0f;
-      while (this.fi < this.flat.length && this.flat[this.fi].onMs <= now + LOOKAHEAD) {
-        const e = this.flat[this.fi];
-        this.output.send([0x90 | ch, e.midi, 96], e.onMs);
-        this.output.send([0x80 | ch, e.midi, 0], e.offMs);
-        this.fi++;
+
+      if (!this.loop && this.totalTicks > 0 && this.posTicks >= this.totalTicks) {
+        this.onTick(this.totalTicks);
+        this.stop();
+        this.onEnd();
+        return;
       }
-      if (this.fi >= this.flat.length && this.loop && this.totalSec > 0) {
-        this.iter++;
-        this.flat = this.flatten(this.iter);
-        this.fi = 0;
-      }
-      const elapsed = (now - this.t0) / 1000;
-      if (this.loop && this.totalSec > 0) {
-        this.onTick(elapsed <= 0 ? 0 : elapsed % this.totalSec);
-      } else {
-        this.onTick(Math.max(0, elapsed));
-        if (elapsed >= this.totalSec + 0.05) {
-          this.stop();
-          this.onEnd();
-          return;
+
+      const target = this.posTicks + MidiPlayer.LOOKAHEAD_SEC / this.secPerTick;
+      if (target > this.scheduledTick) {
+        for (const n of this.notes) {
+          for (const g of occurrences(n.startTick, this.totalTicks, this.loop, this.scheduledTick, target)) {
+            const onMs = now + Math.max(0, (g - this.posTicks) * this.secPerTick * 1000);
+            const offMs = onMs + n.durTicks * this.secPerTick * 1000;
+            for (const m of n.midis) {
+              this.output.send([0x90 | ch, m, 96], onMs);
+              this.output.send([0x80 | ch, m, 0], offMs);
+            }
+          }
         }
+        this.scheduledTick = target;
       }
-      this.raf = requestAnimationFrame(tick);
+
+      const pos = this.loop && this.totalTicks > 0 ? this.posTicks % this.totalTicks : Math.min(this.posTicks, this.totalTicks);
+      this.onTick(Math.max(0, pos));
+      this.raf = requestAnimationFrame(frame);
     };
-    this.raf = requestAnimationFrame(tick);
+    this.raf = requestAnimationFrame(frame);
   }
 
   stop(): void {

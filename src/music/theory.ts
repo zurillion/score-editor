@@ -54,6 +54,15 @@ export function pitchName(p: Pitch): string {
   return `${p.step}${acc}${p.octave}`;
 }
 
+const STEP_NAME_IT: Record<StepName, string> = { C: 'Do', D: 'Re', E: 'Mi', F: 'Fa', G: 'Sol', A: 'La', B: 'Si' };
+
+/** Italian note name with accidental glyph and octave, e.g. "Fa♯4". */
+export function pitchNameIt(p: Pitch): string {
+  const acc =
+    p.alter === 2 ? '𝄪' : p.alter === 1 ? '♯' : p.alter === -1 ? '♭' : p.alter === -2 ? '𝄫' : '';
+  return `${STEP_NAME_IT[p.step]}${acc}${p.octave}`;
+}
+
 export function durationLabel(d: Duration): string {
   const base: Record<number, string> = {
     1: 'intero',

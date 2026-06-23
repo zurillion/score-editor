@@ -1,6 +1,6 @@
 import { Fragment, useRef, useState } from 'react';
-import { Duration, Pitch, ScoreEvent, Staff, TimeSignature } from '../music/types';
-import { diatonicToPitch, durationTicks, measureTicks, pitchToDiatonic, staffForDiatonic } from '../music/theory';
+import { Alter, Duration, Pitch, ScoreEvent, Staff, TimeSignature } from '../music/types';
+import { diatonicToPitch, durationTicks, measureTicks, pitchNameIt, pitchToDiatonic, staffForDiatonic } from '../music/theory';
 import {
   SystemLayout,
   diatonicToY,
@@ -22,7 +22,7 @@ import {
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
 import { keyAlterForStep, keySignatureAccidentals } from '../music/key';
-import { resolveMeasure } from '../music/accidentals';
+import { effectiveAlterForNew, resolveMeasure } from '../music/accidentals';
 import { SMUFL, timeSigString } from '../music/smufl';
 import {
   STAFF_LEFT,
@@ -66,6 +66,7 @@ interface PlaceHover {
   measureIndex: number;
   tick: number;
   diatonic: number;
+  alter: Alter; // effective alteration (key signature + accidentals so far in the measure)
   staff: Staff;
   action: PlaceAction;
 }
@@ -94,6 +95,7 @@ interface SystemProps {
   onAfterApply: () => void;
   onPreviewNote: (pitches: Pitch[]) => void;
   onSetCursor: (tick: number) => void;
+  onHoverNote: (name: string | null) => void;
 }
 
 export function System(props: SystemProps) {
@@ -112,6 +114,7 @@ export function System(props: SystemProps) {
     onAfterApply,
     onPreviewNote,
     onSetCursor,
+    onHoverNote,
   } = props;
 
   // pitch the note tool would create at a diatonic, honouring the key signature
@@ -173,11 +176,27 @@ export function System(props: SystemProps) {
 
     const d = clamp(yToDiatonic(y), 5, 50);
     const staff = staffForDiatonic(d);
+    const base = diatonicToPitch(d, 0);
+    const alter = effectiveAlterForNew(pm.measure.events, keySignature, staff, base.step, base.octave, tick);
     const action =
       tool.kind === 'rest'
         ? classifyRest(pm.measure.events, tick, duration, total, staff)
-        : classifyNote(pm.measure.events, tick, diatonicToPitch(d, 0), duration, total, staff);
-    return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, staff, action };
+        : classifyNote(pm.measure.events, tick, base, duration, total, staff);
+    return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, alter, staff, action };
+  }
+
+  // report the hovered ghost-note's name (key signature + measure accidentals) to the parent
+  const lastHoverName = useRef<string | null>(null);
+  function setHoverState(h: Hover | null) {
+    setHover(h);
+    const name =
+      h?.mode === 'place' && tool.kind === 'note' && (h.action === 'create' || h.action === 'chord')
+        ? pitchNameIt({ ...diatonicToPitch(h.diatonic, 0), alter: h.alter })
+        : null;
+    if (name !== lastHoverName.current) {
+      lastHoverName.current = name;
+      onHoverNote(name);
+    }
   }
 
   // nearest notehead to (x,y); leftPad widens the catch zone to the left (for accidentals)
@@ -222,7 +241,7 @@ export function System(props: SystemProps) {
     if (hit) {
       noteDragRef.current = { measureIndex: hit.measureIndex, eventId: hit.eventId, lastD: hit.diatonic };
       movedRef.current = false;
-      setHover(null);
+      setHoverState(null);
     }
   }
 
@@ -245,9 +264,9 @@ export function System(props: SystemProps) {
       }
       return;
     }
-    if (placing) setHover(computePlace(pt.x, pt.y));
-    else if (modal) setHover(computeTarget(pt.x, pt.y));
-    else setHover(null);
+    if (placing) setHoverState(computePlace(pt.x, pt.y));
+    else if (modal) setHoverState(computeTarget(pt.x, pt.y));
+    else setHoverState(null);
   }
 
   function handleMouseUp() {
@@ -259,7 +278,7 @@ export function System(props: SystemProps) {
   }
 
   function handleMouseLeave() {
-    setHover(null);
+    setHoverState(null);
     setCursorDrag(false);
     if (noteDragRef.current) {
       noteDragRef.current = null;
@@ -300,7 +319,9 @@ export function System(props: SystemProps) {
         // accidental already in effect in the measure
         const pitch = diatonicToPitch(target.diatonic, 0);
         onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration });
-        if (previewOnCreate && (target.action === 'create' || target.action === 'chord')) onPreviewNote([keyedPitch(target.diatonic)]);
+        if (previewOnCreate && (target.action === 'create' || target.action === 'chord'))
+          onPreviewNote([{ ...pitch, alter: target.alter }]); // sound it with its effective alteration
+
       }
       return;
     }
@@ -311,6 +332,8 @@ export function System(props: SystemProps) {
     if (tool.kind === 'accidental') {
       if (hit.diatonic === null) return;
       onAction({ type: 'SET_ACCIDENTAL', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic, alter: tool.alter });
+      // sound the note with its new alteration, like creating a note does
+      if (previewOnCreate) onPreviewNote([diatonicToPitch(hit.diatonic, tool.alter)]);
     } else if (tool.kind === 'eraser') {
       onAction({ type: 'ERASE', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic });
     }
@@ -330,7 +353,7 @@ export function System(props: SystemProps) {
         tool.kind === 'rest' ? (
           <RestView duration={duration} x={gx} color={color} middle={gMiddle} opacity={op} />
         ) : (
-          <NoteView pitches={[keyedPitch(hover.diatonic)]} duration={duration} staff={hover.staff} keySignature={keySignature} x={gx} color={color} opacity={op} />
+          <NoteView pitches={[{ ...diatonicToPitch(hover.diatonic, 0), alter: hover.alter }]} duration={duration} staff={hover.staff} keySignature={keySignature} x={gx} color={color} opacity={op} />
         );
     }
   } else if (hover?.mode === 'target') {

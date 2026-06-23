@@ -43,23 +43,22 @@ export function playPreview(pitches: Pitch[], durSec = 0.5): void {
 }
 
 export interface ScheduledNote {
-  startSec: number;
-  durSec: number;
+  startTick: number; // global, across measures
+  durTicks: number;
   freqs: number[];
   midis: number[];
 }
 
 export interface Schedule {
-  notes: ScheduledNote[];
-  totalSec: number;
+  notes: ScheduledNote[]; // sorted by startTick
   totalTicks: number;
-  secPerTick: number;
 }
 
-/** BPM counts quarter notes per minute. */
-export function buildSchedule(score: ScoreState, bpm: number): Schedule {
-  const secPerQuarter = 60 / bpm;
-  const secPerTick = secPerQuarter / TICKS_PER_QUARTER;
+/**
+ * Builds a tempo-independent schedule (positions in ticks). The players turn
+ * ticks into real time on the fly, so the tempo can change during playback.
+ */
+export function buildSchedule(score: ScoreState): Schedule {
   const mTicks = measureTicks(score.timeSignature);
   const notes: ScheduledNote[] = [];
   let measureStart = 0;
@@ -68,24 +67,38 @@ export function buildSchedule(score: ScoreState, bpm: number): Schedule {
     const resolved = resolveMeasure(m.events, score.keySignature);
     for (const ev of m.events) {
       if (ev.kind !== 'note') continue;
-      const startSec = (measureStart + ev.startTick) * secPerTick;
-      const durSec = durationTicks(ev.duration) * secPerTick;
+      const startTick = measureStart + ev.startTick;
+      const durTicks = durationTicks(ev.duration);
       const eff = ev.pitches.map((p) => {
         const r = resolved.get(`${ev.id}|${p.step}${p.octave}`);
         return r ? { ...p, alter: r.alter } : p;
       });
-      notes.push({ startSec, durSec, freqs: eff.map(pitchToFrequency), midis: eff.map(pitchToMidi) });
+      notes.push({ startTick, durTicks, freqs: eff.map(pitchToFrequency), midis: eff.map(pitchToMidi) });
     }
     measureStart += mTicks;
   }
-  const totalTicks = measureStart;
-  return { notes, totalSec: totalTicks * secPerTick, totalTicks, secPerTick };
+  notes.sort((a, b) => a.startTick - b.startTick);
+  return { notes, totalTicks: measureStart };
+}
+
+/** Enumerate the global ticks at which a note starting at `startTick` falls within [lo, hi). */
+export function occurrences(startTick: number, totalTicks: number, loop: boolean, lo: number, hi: number): number[] {
+  if (!loop) return startTick >= lo && startTick < hi ? [startTick] : [];
+  if (totalTicks <= 0) return [];
+  const out: number[] = [];
+  let k = Math.ceil((lo - startTick) / totalTicks);
+  if (k < 0) k = 0;
+  for (let g = startTick + k * totalTicks; g < hi; g += totalTicks) {
+    if (g >= lo) out.push(g);
+  }
+  return out;
 }
 
 /**
- * Simple polyphonic Web Audio player. Each note is a short triangle-wave
- * oscillator with an attack/release envelope. A requestAnimationFrame loop
- * reports elapsed playback time so the UI can drive the playhead.
+ * Polyphonic Web Audio player. Playback position is tracked in ticks and turned
+ * into real time using the *current* tempo each animation frame, scheduling a
+ * short window ahead. Because nothing far in the future is committed, the BPM
+ * can be changed live (setBpm) and the speed adapts immediately.
  */
 export class Player {
   private ctx: AudioContext | null = null;
@@ -93,18 +106,25 @@ export class Player {
   private sources = new Set<OscillatorNode>();
   private raf = 0;
 
-  // scheduling state for the current run
-  private notes: ScheduledNote[] = [];
-  private totalSec = 0;
-  private t0 = 0;
-  private scheduledIters = 0;
+  private notes: ScheduledNote[] = []; // sorted by startTick
+  private totalTicks = 0;
+  private posTicks = 0; // continuous musical position (counts across loops)
+  private scheduledTick = 0; // global tick we've scheduled up to
+  private lastTime = 0; // ctx.currentTime at the previous frame
+  private secPerTick = 60 / 96 / TICKS_PER_QUARTER;
+
+  private static readonly LOOKAHEAD_SEC = 0.1;
 
   loop = false;
-  onTick: (sec: number) => void = () => {};
+  onTick: (tick: number) => void = () => {};
   onEnd: () => void = () => {};
 
   get playing(): boolean {
     return this.ctx !== null;
+  }
+
+  setBpm(bpm: number): void {
+    this.secPerTick = 60 / bpm / TICKS_PER_QUARTER;
   }
 
   play(score: ScoreState, bpm: number): void {
@@ -119,43 +139,45 @@ export class Player {
     master.connect(ctx.destination);
     this.master = master;
 
-    const sched = buildSchedule(score, bpm);
+    const sched = buildSchedule(score);
     this.notes = sched.notes;
-    this.totalSec = sched.totalSec;
-    this.t0 = ctx.currentTime + 0.12;
-    this.scheduledIters = 0;
-    this.scheduleUpTo(this.loop ? 2 : 1); // pre-schedule an extra iteration for a seamless loop
+    this.totalTicks = sched.totalTicks;
+    this.setBpm(bpm);
+    this.posTicks = 0;
+    this.scheduledTick = 0;
+    this.lastTime = ctx.currentTime;
 
-    const tick = () => {
-      if (!this.ctx) return;
-      const elapsed = this.ctx.currentTime - this.t0;
-      if (this.loop && this.totalSec > 0) {
-        const pos = elapsed <= 0 ? 0 : elapsed % this.totalSec;
-        this.onTick(pos);
-        const cur = Math.max(0, Math.floor(elapsed / this.totalSec));
-        this.scheduleUpTo(cur + 2); // keep one iteration scheduled ahead
-      } else {
-        this.onTick(Math.max(0, elapsed));
-        if (elapsed >= this.totalSec + 0.05) {
-          this.stop();
-          this.onEnd();
-          return;
+    const frame = () => {
+      const c = this.ctx;
+      if (!c) return;
+      const now = c.currentTime;
+      this.posTicks += (now - this.lastTime) / this.secPerTick;
+      this.lastTime = now;
+
+      const tail = 0.12 / this.secPerTick; // let the final note's release ring out
+      if (!this.loop && this.totalTicks > 0 && this.posTicks >= this.totalTicks + tail) {
+        this.onTick(this.totalTicks);
+        this.stop();
+        this.onEnd();
+        return;
+      }
+
+      const target = this.posTicks + Player.LOOKAHEAD_SEC / this.secPerTick;
+      if (target > this.scheduledTick) {
+        for (const n of this.notes) {
+          for (const g of occurrences(n.startTick, this.totalTicks, this.loop, this.scheduledTick, target)) {
+            const start = Math.max(now, now + (g - this.posTicks) * this.secPerTick);
+            for (const f of n.freqs) this.scheduleNote(start, n.durTicks * this.secPerTick, f);
+          }
         }
+        this.scheduledTick = target;
       }
-      this.raf = requestAnimationFrame(tick);
-    };
-    this.raf = requestAnimationFrame(tick);
-  }
 
-  private scheduleUpTo(n: number): void {
-    if (this.totalSec <= 0) return;
-    while (this.scheduledIters < n) {
-      const base = this.t0 + this.scheduledIters * this.totalSec;
-      for (const note of this.notes) {
-        for (const f of note.freqs) this.scheduleNote(base + note.startSec, note.durSec, f);
-      }
-      this.scheduledIters++;
-    }
+      const pos = this.loop && this.totalTicks > 0 ? this.posTicks % this.totalTicks : Math.min(this.posTicks, this.totalTicks);
+      this.onTick(Math.max(0, pos));
+      this.raf = requestAnimationFrame(frame);
+    };
+    this.raf = requestAnimationFrame(frame);
   }
 
   private scheduleNote(start: number, dur: number, freq: number): void {

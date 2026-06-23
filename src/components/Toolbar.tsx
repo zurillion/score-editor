@@ -59,6 +59,7 @@ interface ToolbarProps {
   setTool: (t: Tool) => void;
   duration: Duration;
   setDuration: (d: Duration) => void;
+  hoverNote: string | null;
   previewOnCreate: boolean;
   setPreviewOnCreate: (v: boolean) => void;
   timeSignature: TimeSignature;
@@ -94,6 +95,7 @@ export function Toolbar(props: ToolbarProps) {
     setTool,
     duration,
     setDuration,
+    hoverNote,
     previewOnCreate,
     setPreviewOnCreate,
     timeSignature,
@@ -172,6 +174,13 @@ export function Toolbar(props: ToolbarProps) {
               </button>
             ))}
           </div>
+        </div>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>Nota</legend>
+        <div className="note-readout" title="Nota che verrebbe inserita (armatura e alterazioni della battuta incluse)">
+          {hoverNote ?? '—'}
         </div>
       </fieldset>
 

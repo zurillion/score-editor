@@ -1,4 +1,4 @@
-import { Alter, ScoreEvent, Staff } from './types';
+import { Alter, ScoreEvent, Staff, StepName } from './types';
 import { keyAlterForStep } from './key';
 
 export interface Resolved {
@@ -42,4 +42,31 @@ export function resolveMeasure(events: ScoreEvent[], keySig: number): Map<string
     }
   }
   return out;
+}
+
+/**
+ * The alteration a *new* note of (step, octave) on `staff` would take if placed
+ * at `atTick` in this measure: the key-signature default unless an explicit
+ * accidental earlier in the measure (same step+octave, same staff) overrides it.
+ */
+export function effectiveAlterForNew(
+  events: ScoreEvent[],
+  keySig: number,
+  staff: Staff,
+  step: StepName,
+  octave: number,
+  atTick: number,
+): Alter {
+  let alter: Alter = keyAlterForStep(step, keySig);
+  const before = events
+    .filter((e) => e.kind === 'note' && e.staff === staff && e.startTick < atTick)
+    .slice()
+    .sort((a, b) => a.startTick - b.startTick);
+  for (const ev of before) {
+    if (ev.kind !== 'note') continue;
+    for (const p of ev.pitches) {
+      if (p.explicit && p.step === step && p.octave === octave) alter = p.alter;
+    }
+  }
+  return alter;
 }
