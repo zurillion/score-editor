@@ -1,6 +1,7 @@
 import { Pitch, ScoreState } from './types';
-import { durationTicks, measureTicks, pitchToFrequency, pitchToMidi } from './theory';
+import { durationTicks, pitchToFrequency, pitchToMidi } from './theory';
 import { resolveMeasure } from './accidentals';
+import { scoreMeta } from './meta';
 import { TICKS_PER_QUARTER } from './constants';
 
 // ---- One-shot audio preview ----
@@ -59,15 +60,15 @@ export interface Schedule {
  * ticks into real time on the fly, so the tempo can change during playback.
  */
 export function buildSchedule(score: ScoreState): Schedule {
-  const mTicks = measureTicks(score.timeSignature);
+  const meta = scoreMeta(score);
   const notes: ScheduledNote[] = [];
-  let measureStart = 0;
-  for (const m of score.measures) {
-    // accidentals (key signature + "lasts for the measure") resolved per measure
-    const resolved = resolveMeasure(m.events, score.keySignature);
+  for (const mm of meta.measures) {
+    const m = score.measures[mm.index];
+    // accidentals (key signature + "lasts for the measure") resolved per measure, per its own key
+    const resolved = resolveMeasure(m.events, mm.keySig);
     for (const ev of m.events) {
       if (ev.kind !== 'note') continue;
-      const startTick = measureStart + ev.startTick;
+      const startTick = mm.startTick + ev.startTick;
       const durTicks = durationTicks(ev.duration);
       const eff = ev.pitches.map((p) => {
         const r = resolved.get(`${ev.id}|${p.step}${p.octave}`);
@@ -75,10 +76,9 @@ export function buildSchedule(score: ScoreState): Schedule {
       });
       notes.push({ startTick, durTicks, freqs: eff.map(pitchToFrequency), midis: eff.map(pitchToMidi) });
     }
-    measureStart += mTicks;
   }
   notes.sort((a, b) => a.startTick - b.startTick);
-  return { notes, totalTicks: measureStart };
+  return { notes, totalTicks: meta.totalTicks };
 }
 
 /** Enumerate the global ticks at which a note starting at `startTick` falls within [lo, hi). */

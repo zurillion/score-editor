@@ -1,12 +1,13 @@
 import { Fragment, useRef, useState } from 'react';
 import { Alter, Duration, Pitch, ScoreEvent, Staff, TimeSignature } from '../music/types';
-import { diatonicToPitch, durationTicks, measureTicks, pitchNameIt, pitchToDiatonic, staffForDiatonic } from '../music/theory';
+import { diatonicToPitch, durationTicks, pitchNameIt, pitchToDiatonic, staffForDiatonic } from '../music/theory';
 import {
   SystemLayout,
+  PlacedMeasure,
   diatonicToY,
   yToDiatonic,
-  tickToX,
-  xToTickRaw,
+  measureTickToX,
+  measureXToTickRaw,
   clamp,
   TREBLE_LINES,
   BASS_LINES,
@@ -21,7 +22,7 @@ import {
 } from '../music/layout';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
-import { keyAlterForStep, keySignatureAccidentals } from '../music/key';
+import { keyAlterForStep, keySignatureAccidentals, keyChangeNaturals } from '../music/key';
 import { effectiveAlterForNew, resolveMeasure } from '../music/accidentals';
 import { SMUFL, timeSigString } from '../music/smufl';
 import {
@@ -82,8 +83,8 @@ type Hover = PlaceHover | TargetHover;
 
 interface SystemProps {
   layout: SystemLayout;
-  ts: TimeSignature;
-  keySignature: number;
+  headerTs: TimeSignature;
+  headerKeySig: number;
   showTimeSig: boolean;
   tool: Tool;
   duration: Duration;
@@ -101,8 +102,8 @@ interface SystemProps {
 export function System(props: SystemProps) {
   const {
     layout,
-    ts,
-    keySignature,
+    headerTs,
+    headerKeySig,
     showTimeSig,
     tool,
     duration,
@@ -117,10 +118,14 @@ export function System(props: SystemProps) {
     onHoverNote,
   } = props;
 
-  // pitch the note tool would create at a diatonic, honouring the key signature
-  function keyedPitch(d: number): Pitch {
+  // effective key signature of a given measure index in this system
+  function keyAt(index: number): number {
+    return layout.measures.find((p) => p.index === index)?.keySig ?? headerKeySig;
+  }
+  // pitch the note tool would create at a diatonic, honouring a measure's key signature
+  function keyedPitch(d: number, keySig: number): Pitch {
     const p = diatonicToPitch(d, 0);
-    return { ...p, alter: keyAlterForStep(p.step, keySignature) };
+    return { ...p, alter: keyAlterForStep(p.step, keySig) };
   }
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -129,7 +134,6 @@ export function System(props: SystemProps) {
   const noteDragRef = useRef<{ measureIndex: number; eventId: string; lastD: number } | null>(null);
   const movedRef = useRef(false);
   const suppressClickRef = useRef(false);
-  const total = measureTicks(ts);
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
@@ -150,9 +154,9 @@ export function System(props: SystemProps) {
   function globalTickAt(x: number): number | null {
     const pm = measureAt(x);
     if (!pm) return null;
-    const raw = xToTickRaw(pm.leftX, pm.contentW, x, total);
-    const t = clamp(Math.round(raw / CURSOR_GRID) * CURSOR_GRID, 0, total);
-    return pm.index * total + t;
+    const raw = measureXToTickRaw(pm, x);
+    const t = clamp(Math.round(raw / CURSOR_GRID) * CURSOR_GRID, 0, pm.total);
+    return pm.startTick + t;
   }
 
   // ---- placement tools (note / rest): snap to a grid slot ----
@@ -162,7 +166,7 @@ export function System(props: SystemProps) {
 
     let tick: number | null = null;
     for (const e of pm.measure.events) {
-      const ex = tickToX(pm.leftX, pm.contentW, e.startTick, total);
+      const ex = measureTickToX(pm, e.startTick);
       if (Math.abs(ex - x) <= 11) {
         tick = e.startTick;
         break;
@@ -170,18 +174,18 @@ export function System(props: SystemProps) {
     }
     if (tick === null) {
       const grid = durationTicks(duration);
-      const raw = xToTickRaw(pm.leftX, pm.contentW, x, total);
-      tick = clamp(Math.round(raw / grid) * grid, 0, Math.max(0, total - grid));
+      const raw = measureXToTickRaw(pm, x);
+      tick = clamp(Math.round(raw / grid) * grid, 0, Math.max(0, pm.total - grid));
     }
 
     const d = clamp(yToDiatonic(y), 5, 50);
     const staff = staffForDiatonic(d);
     const base = diatonicToPitch(d, 0);
-    const alter = effectiveAlterForNew(pm.measure.events, keySignature, staff, base.step, base.octave, tick);
+    const alter = effectiveAlterForNew(pm.measure.events, pm.keySig, staff, base.step, base.octave, tick);
     const action =
       tool.kind === 'rest'
-        ? classifyRest(pm.measure.events, tick, duration, total, staff)
-        : classifyNote(pm.measure.events, tick, base, duration, total, staff);
+        ? classifyRest(pm.measure.events, tick, duration, pm.total, staff)
+        : classifyNote(pm.measure.events, tick, base, duration, pm.total, staff);
     return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, alter, staff, action };
   }
 
@@ -205,7 +209,7 @@ export function System(props: SystemProps) {
     for (const pm of layout.measures) {
       for (const ev of pm.measure.events) {
         if (ev.kind !== 'note') continue;
-        const ex = tickToX(pm.leftX, pm.contentW, ev.startTick, total);
+        const ex = measureTickToX(pm, ev.startTick);
         const ds = ev.pitches.map(pitchToDiatonic);
         const offs = secondOffsets(ds, stemUpForChord(ds, ev.staff), noteheadHalfWidth(ev.duration.value));
         for (let pi = 0; pi < ds.length; pi++) {
@@ -260,7 +264,7 @@ export function System(props: SystemProps) {
         onAction({ type: 'MOVE_NOTE', measureIndex: nd.measureIndex, eventId: nd.eventId, fromDiatonic: nd.lastD, toDiatonic: d });
         nd.lastD = d;
         movedRef.current = true;
-        if (previewOnCreate) onPreviewNote([keyedPitch(d)]);
+        if (previewOnCreate) onPreviewNote([keyedPitch(d, keyAt(nd.measureIndex))]);
       }
       return;
     }
@@ -345,7 +349,7 @@ export function System(props: SystemProps) {
   if (hover?.mode === 'place') {
     const pm = layout.measures.find((p) => p.index === hover.measureIndex);
     if (pm) {
-      const gx = tickToX(pm.leftX, pm.contentW, hover.tick, total);
+      const gx = measureTickToX(pm, hover.tick);
       const color = GHOST_COLOR[hover.action];
       const op = GHOST_OPACITY[hover.action];
       const gMiddle = hover.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE;
@@ -353,7 +357,7 @@ export function System(props: SystemProps) {
         tool.kind === 'rest' ? (
           <RestView duration={duration} x={gx} color={color} middle={gMiddle} opacity={op} />
         ) : (
-          <NoteView pitches={[{ ...diatonicToPitch(hover.diatonic, 0), alter: hover.alter }]} duration={duration} staff={hover.staff} keySignature={keySignature} x={gx} color={color} opacity={op} />
+          <NoteView pitches={[{ ...diatonicToPitch(hover.diatonic, 0), alter: hover.alter }]} duration={duration} staff={hover.staff} keySignature={pm.keySig} x={gx} color={color} opacity={op} />
         );
     }
   } else if (hover?.mode === 'target') {
@@ -374,8 +378,8 @@ export function System(props: SystemProps) {
   const selectedNoteIds = selection?.kind === 'notes' ? new Set(selection.ids) : null;
   const selectedMeasureIdx = selection?.kind === 'measures' ? new Set(selection.indices) : null;
 
-  function noteHighlight(pm: SystemLayout['measures'][number], ev: Extract<ScoreEvent, { kind: 'note' }>) {
-    const ex = tickToX(pm.leftX, pm.contentW, ev.startTick, total);
+  function noteHighlight(pm: PlacedMeasure, ev: Extract<ScoreEvent, { kind: 'note' }>) {
+    const ex = measureTickToX(pm, ev.startTick);
     const ds = ev.pitches.map(pitchToDiatonic);
     const offs = secondOffsets(ds, stemUpForChord(ds, ev.staff), noteheadHalfWidth(ev.duration.value));
     const leftX = ex + Math.min(0, ...offs) - NOTEHEAD_RX - 4;
@@ -395,6 +399,46 @@ export function System(props: SystemProps) {
         strokeWidth={1.2}
         pointerEvents="none"
       />
+    );
+  }
+
+  // mid-line key/time change: double barline, cancellation naturals, new key, new time
+  function renderChange(pm: PlacedMeasure) {
+    const baseX = pm.leftX + 4;
+    const naturalsCount = pm.keyChanged ? keyChangeNaturals(pm.prevKeySig, pm.keySig, 0).length : 0;
+    const newCount = Math.abs(pm.keySig);
+    const timeX = baseX + (pm.keyChanged ? (naturalsCount + newCount) * KEYSIG_STEP + 12 : 6);
+    return (
+      <g pointerEvents="none">
+        <line x1={pm.leftX - 3} x2={pm.leftX - 3} y1={TOP_Y} y2={BOTTOM_Y} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
+        {pm.keyChanged &&
+          [0, -14].flatMap((off) => [
+            ...keyChangeNaturals(pm.prevKeySig, pm.keySig, off).map((n, i) => (
+              <text key={`nat${off}-${i}`} x={baseX + i * KEYSIG_STEP} y={diatonicToY(n.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                {SMUFL.accidentals['0']}
+              </text>
+            )),
+            ...keySignatureAccidentals(pm.keySig, off).map((a, j) => (
+              <text key={`acc${off}-${j}`} x={baseX + (naturalsCount + j) * KEYSIG_STEP} y={diatonicToY(a.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                {SMUFL.accidentals[String(a.alter)]}
+              </text>
+            )),
+          ])}
+        {pm.tsChanged &&
+          [
+            { numY: diatonicToY(36), denY: diatonicToY(32) },
+            { numY: diatonicToY(24), denY: diatonicToY(20) },
+          ].map((r, i) => (
+            <Fragment key={`ts${i}`}>
+              <text x={timeX} y={r.numY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                {timeSigString(pm.ts.numerator)}
+              </text>
+              <text x={timeX} y={r.denY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                {timeSigString(pm.ts.denominator)}
+              </text>
+            </Fragment>
+          ))}
+      </g>
     );
   }
 
@@ -450,9 +494,9 @@ export function System(props: SystemProps) {
         {SMUFL.fClef}
       </text>
 
-      {/* key signature (both staves, every system) */}
+      {/* key signature in the header (both staves, restated on every system) */}
       {[0, -14].flatMap((staffOffset) =>
-        keySignatureAccidentals(keySignature, staffOffset).map((acc, i) => (
+        keySignatureAccidentals(headerKeySig, staffOffset).map((acc, i) => (
           <text
             key={`ks${staffOffset}-${i}`}
             x={KEYSIG_X + i * KEYSIG_STEP}
@@ -473,20 +517,21 @@ export function System(props: SystemProps) {
           { numY: diatonicToY(24), denY: diatonicToY(20) },
         ].map((r, i) => (
           <Fragment key={i}>
-            <text x={TIME_SIG_X + keySigWidth(keySignature)} y={r.numY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-              {timeSigString(ts.numerator)}
+            <text x={TIME_SIG_X + keySigWidth(headerKeySig)} y={r.numY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+              {timeSigString(headerTs.numerator)}
             </text>
-            <text x={TIME_SIG_X + keySigWidth(keySignature)} y={r.denY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-              {timeSigString(ts.denominator)}
+            <text x={TIME_SIG_X + keySigWidth(headerKeySig)} y={r.denY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+              {timeSigString(headerTs.denominator)}
             </text>
           </Fragment>
         ))}
 
       {/* measures: notes + placed rests + auto-derived rests + right barline */}
       {layout.measures.map((pm) => {
-        const resolved = resolveMeasure(pm.measure.events, keySignature);
+        const resolved = resolveMeasure(pm.measure.events, pm.keySig);
         return (
         <Fragment key={pm.measure.id}>
+          {(pm.keyChanged || pm.tsChanged) && renderChange(pm)}
           {pm.measure.events.map((ev) =>
             ev.kind === 'note' ? (
               <NoteView
@@ -494,9 +539,9 @@ export function System(props: SystemProps) {
                 pitches={ev.pitches}
                 duration={ev.duration}
                 staff={ev.staff}
-                keySignature={keySignature}
+                keySignature={pm.keySig}
                 resolve={(step, octave) => resolved.get(`${ev.id}|${step}${octave}`)}
-                x={tickToX(pm.leftX, pm.contentW, ev.startTick, total)}
+                x={measureTickToX(pm, ev.startTick)}
                 color="#1a1a1a"
               />
             ) : (
@@ -504,17 +549,17 @@ export function System(props: SystemProps) {
                 key={ev.id}
                 duration={ev.duration}
                 middle={ev.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
-                x={tickToX(pm.leftX, pm.contentW, ev.startTick + durationTicks(ev.duration) / 2, total)}
+                x={measureTickToX(pm, ev.startTick + durationTicks(ev.duration) / 2)}
                 color="#1a1a1a"
               />
             ),
           )}
-          {measureRests(pm.measure.events, total).map((r, i) => (
+          {measureRests(pm.measure.events, pm.total).map((r, i) => (
             <RestView
               key={`rest-${i}`}
               duration={r.duration}
               middle={r.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
-              x={tickToX(pm.leftX, pm.contentW, (r.whole ? total / 2 : r.startTick + durationTicks(r.duration) / 2), total)}
+              x={measureTickToX(pm, r.whole ? pm.total / 2 : r.startTick + durationTicks(r.duration) / 2)}
               color="#1a1a1a"
             />
           ))}

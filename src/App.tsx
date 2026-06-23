@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { Duration, DurationValue, NoteEvent, Pitch, ScoreState } from './music/types';
-import { LayoutMode, clamp } from './music/layout';
-import { durationTicks, measureTicks } from './music/theory';
+import { LayoutMode } from './music/layout';
+import { durationTicks } from './music/theory';
+import { scoreMeta, measureIndexAtTick } from './music/meta';
 import { Player, playPreview } from './music/audio';
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
 import { LIBRARY } from './music/library';
@@ -176,8 +177,8 @@ export default function App() {
     if (raw === null) return;
     const n = parseInt(raw, 10);
     if (!Number.isFinite(n) || n <= 0) return;
-    const total = measureTicks(score.timeSignature);
-    const idx = clamp(Math.floor(cursorTick / total), 0, score.measures.length);
+    const m = scoreMeta(score);
+    const idx = cursorTick >= m.totalTicks ? score.measures.length : measureIndexAtTick(m, cursorTick);
     pushUndo();
     dispatch({ type: 'PASTE_MEASURES', index: idx, measures: Array.from({ length: n }, () => ({ id: '', events: [] })) });
   }, [score, cursorTick, pushUndo]);
@@ -193,6 +194,7 @@ export default function App() {
 
   // keyboard shortcuts
   useEffect(() => {
+    const meta = scoreMeta(score);
     const copyOf = (): Clipboard | null => {
       if (!selection) return null;
       if (selection.kind === 'measures') {
@@ -200,11 +202,10 @@ export default function App() {
         return { kind: 'measures', measures: score.measures.filter((_, i) => idx.has(i)).map(clone) };
       }
       const ids = new Set(selection.ids);
-      const total = measureTicks(score.timeSignature);
       const picked: { g: number; staff: NoteEvent['staff']; duration: NoteEvent['duration']; pitches: NoteEvent['pitches'] }[] = [];
       score.measures.forEach((m, mi) =>
         m.events.forEach((e) => {
-          if (e.kind === 'note' && ids.has(e.id)) picked.push({ g: mi * total + e.startTick, staff: e.staff, duration: e.duration, pitches: e.pitches });
+          if (e.kind === 'note' && ids.has(e.id)) picked.push({ g: meta.measures[mi].startTick + e.startTick, staff: e.staff, duration: e.duration, pitches: e.pitches });
         }),
       );
       if (picked.length === 0) return null;
@@ -250,14 +251,13 @@ export default function App() {
         e.preventDefault();
         const cb = clipboardRef.current;
         if (!cb) return;
-        const total = measureTicks(score.timeSignature);
         if (cb.kind === 'notes') {
           if (cb.events.length === 0) return;
           pushUndo();
           dispatch({ type: 'PASTE_NOTES', baseTick: Math.round(cursorTick), events: cb.events });
         } else {
           if (cb.measures.length === 0) return;
-          const idx = clamp(Math.floor(cursorTick / total), 0, score.measures.length);
+          const idx = cursorTick >= meta.totalTicks ? score.measures.length : measureIndexAtTick(meta, cursorTick);
           pushUndo();
           dispatch({ type: 'PASTE_MEASURES', index: idx, measures: cb.measures });
         }
@@ -285,21 +285,21 @@ export default function App() {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
         const dir = e.key === 'ArrowRight' ? 1 : -1;
-        const total = measureTicks(score.timeSignature);
-        const maxTick = score.measures.length * total;
-        const curMi = Math.floor(cursorTick / total);
+        const maxTick = meta.totalTicks;
+        const startOf = (mi: number) => (mi >= meta.measures.length ? maxTick : meta.measures[Math.max(0, mi)].startTick);
+        const curMi = measureIndexAtTick(meta, cursorTick);
         let next: number;
         if (e.ctrlKey || e.metaKey) {
           // whole system / row
           const ranges = systemRangesRef.current;
           const si = ranges.findIndex((r) => curMi >= r.first && curMi <= r.last);
           const target = ranges[Math.max(0, Math.min((si < 0 ? 0 : si) + dir, ranges.length - 1))];
-          next = target ? target.first * total : cursorTick;
+          next = target ? startOf(target.first) : cursorTick;
         } else if (e.altKey) {
           // one measure
-          const onBoundary = cursorTick === curMi * total;
+          const onBoundary = cursorTick === meta.measures[curMi].startTick;
           const targetMi = dir > 0 ? curMi + 1 : onBoundary ? curMi - 1 : curMi;
-          next = Math.max(0, Math.min(targetMi, score.measures.length)) * total;
+          next = startOf(Math.max(0, targetMi));
         } else {
           next = cursorTick + dir * durationTicks(duration);
         }
@@ -325,6 +325,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isPlaying, handlePlay, handleStop, selection, score, cursorTick, duration, pushUndo]);
 
+  // time/key shown in the tools follow the measure under the playhead (or the cursor)
+  const meta = scoreMeta(score);
+  const activeMeasure = measureIndexAtTick(meta, playheadTick ?? cursorTick);
+  const activeTs = meta.measures[activeMeasure]?.ts ?? score.timeSignature;
+  const activeKey = meta.measures[activeMeasure]?.keySig ?? score.keySignature;
+
   return (
     <div className="app">
       <header className="app-header">
@@ -340,10 +346,11 @@ export default function App() {
         hoverNote={hoverNote}
         previewOnCreate={previewOnCreate}
         setPreviewOnCreate={setPreviewOnCreate}
-        timeSignature={score.timeSignature}
-        setTimeSignature={(ts) => dispatch({ type: 'SET_TIME_SIGNATURE', timeSignature: ts })}
-        keySignature={score.keySignature}
-        setKeySignature={(k) => dispatch({ type: 'SET_KEY_SIGNATURE', keySignature: k })}
+        measureNumber={activeMeasure + 1}
+        timeSignature={activeTs}
+        setTimeSignature={(ts) => dispatch({ type: 'SET_TIME_SIGNATURE_AT', measureIndex: activeMeasure, timeSignature: ts })}
+        keySignature={activeKey}
+        setKeySignature={(k) => dispatch({ type: 'SET_KEY_SIGNATURE_AT', measureIndex: activeMeasure, keySignature: k })}
         mode={mode}
         setMode={setMode}
         bpm={bpm}

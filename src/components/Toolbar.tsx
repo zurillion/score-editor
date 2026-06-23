@@ -62,6 +62,7 @@ interface ToolbarProps {
   hoverNote: string | null;
   previewOnCreate: boolean;
   setPreviewOnCreate: (v: boolean) => void;
+  measureNumber: number;
   timeSignature: TimeSignature;
   setTimeSignature: (ts: TimeSignature) => void;
   keySignature: number;
@@ -98,6 +99,7 @@ export function Toolbar(props: ToolbarProps) {
     hoverNote,
     previewOnCreate,
     setPreviewOnCreate,
+    measureNumber,
     timeSignature,
     setTimeSignature,
     keySignature,
@@ -266,13 +268,14 @@ export function Toolbar(props: ToolbarProps) {
       </fieldset>
 
       <fieldset className="group">
-        <legend>Battuta</legend>
+        <legend>Tempo · batt. {measureNumber}</legend>
         <select
           value={`${timeSignature.numerator}/${timeSignature.denominator}`}
           onChange={(e) => {
             const [n, d] = e.target.value.split('/').map(Number);
             setTimeSignature({ numerator: n, denominator: d });
           }}
+          title={`Tempo dalla battuta ${measureNumber} in poi`}
         >
           {TIME_PRESETS.map((ts) => {
             const key = `${ts.numerator}/${ts.denominator}`;
@@ -286,8 +289,12 @@ export function Toolbar(props: ToolbarProps) {
       </fieldset>
 
       <fieldset className="group">
-        <legend>Armatura</legend>
-        <select value={keySignature} onChange={(e) => setKeySignature(Number(e.target.value))} title="Numero di diesis/bemolli o tonalità">
+        <legend>Armatura · batt. {measureNumber}</legend>
+        <select
+          value={keySignature}
+          onChange={(e) => setKeySignature(Number(e.target.value))}
+          title={`Tonalità dalla battuta ${measureNumber} in poi`}
+        >
           {KEY_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}

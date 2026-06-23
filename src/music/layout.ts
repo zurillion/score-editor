@@ -1,5 +1,7 @@
 import { Measure, Staff, TimeSignature } from './types';
 import { measureTicks } from './theory';
+import { MeasureMeta } from './meta';
+import { keyChangeNaturals } from './key';
 import { HALF_SPACE, Y_MIDDLE_C, HEADER_WIDTH, MEASURE_PAD, PX_PER_TICK } from './constants';
 
 // ---- Vertical mapping (diatonic position <-> y) ----
@@ -72,13 +74,12 @@ export function measureContentWidth(ts: TimeSignature): number {
   return Math.max(150, measureTicks(ts) * PX_PER_TICK + 2 * MEASURE_PAD);
 }
 
-export function tickToX(leftX: number, contentW: number, tick: number, total: number): number {
-  const usable = contentW - 2 * MEASURE_PAD;
-  return leftX + MEASURE_PAD + (tick / total) * usable;
+/** x of a local tick inside a placed measure (notes start past any left inset). */
+export function measureTickToX(pm: PlacedMeasure, tick: number): number {
+  return pm.noteLeft + (tick / pm.total) * pm.noteSpan;
 }
-export function xToTickRaw(leftX: number, contentW: number, x: number, total: number): number {
-  const usable = contentW - 2 * MEASURE_PAD;
-  return ((x - leftX - MEASURE_PAD) / usable) * total;
+export function measureXToTickRaw(pm: PlacedMeasure, x: number): number {
+  return ((x - pm.noteLeft) / pm.noteSpan) * pm.total;
 }
 
 // ---- System layout ----
@@ -87,49 +88,26 @@ export type LayoutMode = 'horizontal' | 'page';
 export interface PlacedMeasure {
   measure: Measure;
   index: number; // global measure index
-  leftX: number; // x of the measure's left edge
-  contentW: number;
+  leftX: number; // x of the measure's left edge (= previous measure's right edge)
+  contentW: number; // full measure width, including any left inset
+  total: number; // ticks in this measure
+  keySig: number; // effective key signature
+  ts: TimeSignature; // effective time signature
+  startTick: number; // global cumulative start tick
+  firstInSystem: boolean;
+  leftInset: number; // px reserved at the left for a mid-line key/time change (0 otherwise)
+  keyChanged: boolean; // draw a mid-line key change here
+  tsChanged: boolean; // draw a mid-line time change here
+  prevKeySig: number; // previous measure's key (for cancellation naturals)
+  noteLeft: number; // x at tick 0
+  noteSpan: number; // usable px for ticks
 }
 export interface SystemLayout {
   measures: PlacedMeasure[];
   width: number; // total svg width of the system
-}
-
-export function layoutSystems(
-  measures: Measure[],
-  ts: TimeSignature,
-  mode: LayoutMode,
-  availableWidth: number,
-  header: number = HEADER_WIDTH,
-): SystemLayout[] {
-  const cw = measureContentWidth(ts);
-
-  if (mode === 'horizontal') {
-    const placed = measures.map((m, i) => ({
-      measure: m,
-      index: i,
-      leftX: header + i * cw,
-      contentW: cw,
-    }));
-    return [{ measures: placed, width: header + measures.length * cw + 2 }];
-  }
-
-  // page mode: wrap measures into systems by available width
-  const usable = Math.max(cw, availableWidth - header - 6);
-  const perSystem = Math.max(1, Math.floor(usable / cw));
-  const systems: SystemLayout[] = [];
-  for (let i = 0; i < measures.length; i += perSystem) {
-    const slice = measures.slice(i, i + perSystem);
-    const placed = slice.map((m, j) => ({
-      measure: m,
-      index: i + j,
-      leftX: header + j * cw,
-      contentW: cw,
-    }));
-    systems.push({ measures: placed, width: header + slice.length * cw + 2 });
-  }
-  if (systems.length === 0) systems.push({ measures: [], width: header + cw });
-  return systems;
+  header: number; // header width (brace + clefs + key signature)
+  headerKeySig: number; // key signature shown in this system's header
+  headerTs: TimeSignature; // time signature for the header (drawn only on the first system)
 }
 
 // key-signature layout
@@ -140,6 +118,93 @@ export function keySigWidth(keySig: number): number {
 }
 export function headerWidthFor(keySig: number): number {
   return HEADER_WIDTH + keySigWidth(keySig);
+}
+
+const CHANGE_PAD = 9; // padding around a mid-line key/time change
+
+/** Width reserved at a measure's left for a mid-line key/time change. */
+export function changeInsetWidth(meta: MeasureMeta): number {
+  let w = 0;
+  if (meta.keyChanged) {
+    const naturals = keyChangeNaturals(meta.prevKeySig, meta.keySig, 0).length;
+    w += (naturals + Math.abs(meta.keySig)) * KEYSIG_STEP + CHANGE_PAD;
+  }
+  if (meta.tsChanged) w += 26;
+  return w > 0 ? w + CHANGE_PAD : 0;
+}
+
+function buildSystem(
+  measures: Measure[],
+  metas: MeasureMeta[],
+  from: number,
+  to: number, // exclusive
+): SystemLayout {
+  const headerKeySig = metas[from].keySig;
+  const header = headerWidthFor(headerKeySig);
+  let x = header;
+  const placed: PlacedMeasure[] = [];
+  for (let i = from; i < to; i++) {
+    const mm = metas[i];
+    const firstInSystem = i === from;
+    const leftInset = firstInSystem ? 0 : changeInsetWidth(mm); // line starts show the key in the header
+    const contentW = measureContentWidth(mm.ts) + leftInset;
+    const noteLeft = x + MEASURE_PAD + leftInset;
+    const noteSpan = contentW - 2 * MEASURE_PAD - leftInset;
+    placed.push({
+      measure: measures[i],
+      index: i,
+      leftX: x,
+      contentW,
+      total: mm.total,
+      keySig: mm.keySig,
+      ts: mm.ts,
+      startTick: mm.startTick,
+      firstInSystem,
+      leftInset,
+      keyChanged: !firstInSystem && mm.keyChanged,
+      tsChanged: !firstInSystem && mm.tsChanged,
+      prevKeySig: mm.prevKeySig,
+      noteLeft,
+      noteSpan,
+    });
+    x += contentW;
+  }
+  return { measures: placed, width: x + 2, header, headerKeySig, headerTs: metas[from].ts };
+}
+
+export function layoutSystems(
+  measures: Measure[],
+  metas: MeasureMeta[],
+  mode: LayoutMode,
+  availableWidth: number,
+): SystemLayout[] {
+  if (measures.length === 0) {
+    return [{ measures: [], width: HEADER_WIDTH + 150, header: HEADER_WIDTH, headerKeySig: 0, headerTs: { numerator: 4, denominator: 4 } }];
+  }
+
+  if (mode === 'horizontal') {
+    return [buildSystem(measures, metas, 0, measures.length)];
+  }
+
+  // page mode: greedily pack measures into systems by their individual widths
+  const systems: SystemLayout[] = [];
+  let i = 0;
+  while (i < measures.length) {
+    const header = headerWidthFor(metas[i].keySig);
+    const usable = Math.max(0, availableWidth - header - 6);
+    let sum = 0;
+    let j = i;
+    while (j < measures.length) {
+      const inset = j !== i && (metas[j].keyChanged || metas[j].tsChanged) ? changeInsetWidth(metas[j]) : 0;
+      const w = measureContentWidth(metas[j].ts) + inset;
+      if (j > i && sum + w > usable) break;
+      sum += w;
+      j++;
+    }
+    systems.push(buildSystem(measures, metas, i, j));
+    i = j;
+  }
+  return systems;
 }
 
 export function clamp(v: number, lo: number, hi: number): number {

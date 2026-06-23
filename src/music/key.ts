@@ -17,6 +17,7 @@ export function keyAlterForStep(step: StepName, keySig: number): Alter {
 }
 
 export interface KeyAccidental {
+  step: StepName;
   diatonic: number;
   alter: 1 | -1;
 }
@@ -24,12 +25,24 @@ export interface KeyAccidental {
 /** The accidentals to draw for a key signature on a staff (treble offset = 0, bass = −14). */
 export function keySignatureAccidentals(keySig: number, staffOffset: number): KeyAccidental[] {
   if (keySig > 0) {
-    return SHARP_POS_TREBLE.slice(0, keySig).map((d) => ({ diatonic: d + staffOffset, alter: 1 as const }));
+    return SHARP_ORDER.slice(0, keySig).map((step, i) => ({ step, diatonic: SHARP_POS_TREBLE[i] + staffOffset, alter: 1 as const }));
   }
   if (keySig < 0) {
-    return FLAT_POS_TREBLE.slice(0, -keySig).map((d) => ({ diatonic: d + staffOffset, alter: -1 as const }));
+    return FLAT_ORDER.slice(0, -keySig).map((step, i) => ({ step, diatonic: FLAT_POS_TREBLE[i] + staffOffset, alter: -1 as const }));
   }
   return [];
+}
+
+/**
+ * Naturals to draw when changing from `prevKey` to `newKey`: one for each
+ * accidental of the OLD key whose step becomes natural in the new key. Steps
+ * that stay altered (or merely change accidental) are not cancelled — the new
+ * key signature states them. Positions follow the old key's accidental order.
+ */
+export function keyChangeNaturals(prevKey: number, newKey: number, staffOffset: number): { step: StepName; diatonic: number }[] {
+  return keySignatureAccidentals(prevKey, staffOffset)
+    .filter((e) => keyAlterForStep(e.step, newKey) === 0)
+    .map((e) => ({ step: e.step, diatonic: e.diatonic }));
 }
 
 // ---- Friendly key names (Italian), for the toolbar selector ----

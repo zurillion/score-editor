@@ -1,5 +1,6 @@
 import { Alter, Duration, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, Staff, ScoreState, TimeSignature } from '../music/types';
 import { diatonicToPitch, durationTicks, measureTicks, pitchEquals, pitchToDiatonic, staffForDiatonic } from '../music/theory';
+import { effectiveTimeSignatureAt, scoreMeta } from '../music/meta';
 import { classifyNote, classifyRest } from '../music/placement';
 import { ClipNote } from './selection';
 
@@ -29,8 +30,8 @@ export type ScoreAction =
   | { type: 'MOVE_NOTE'; measureIndex: number; eventId: string; fromDiatonic: number; toDiatonic: number }
   | { type: 'PASTE_NOTES'; baseTick: number; events: ClipNote[] }
   | { type: 'PASTE_MEASURES'; index: number; measures: Measure[] }
-  | { type: 'SET_TIME_SIGNATURE'; timeSignature: TimeSignature }
-  | { type: 'SET_KEY_SIGNATURE'; keySignature: number }
+  | { type: 'SET_TIME_SIGNATURE_AT'; measureIndex: number; timeSignature: TimeSignature }
+  | { type: 'SET_KEY_SIGNATURE_AT'; measureIndex: number; keySignature: number }
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
   | { type: 'CLEAR' }
@@ -54,7 +55,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
     case 'CLICK_NOTE': {
       const m = state.measures[action.measureIndex];
       if (!m) return state;
-      const total = measureTicks(state.timeSignature);
+      const total = measureTicks(effectiveTimeSignatureAt(state, action.measureIndex));
       const staff = staffForDiatonic(pitchToDiatonic(action.pitch));
       const verdict = classifyNote(m.events, action.tick, action.pitch, action.duration, total, staff);
       if (verdict === 'blocked') return state;
@@ -93,7 +94,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
     case 'CLICK_REST': {
       const m = state.measures[action.measureIndex];
       if (!m) return state;
-      const total = measureTicks(state.timeSignature);
+      const total = measureTicks(effectiveTimeSignatureAt(state, action.measureIndex));
       const verdict = classifyRest(m.events, action.tick, action.duration, total, action.staff);
       if (verdict === 'blocked') return state;
       if (verdict === 'delete') {
@@ -207,16 +208,28 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
 
     case 'PASTE_NOTES': {
       if (action.events.length === 0) return state;
-      const total = measureTicks(state.timeSignature);
+      // map a global tick to its measure, extending past the end with the
+      // trailing time signature so per-measure lengths are respected
+      const meta = scoreMeta(state);
+      const tailTs = meta.measures.length ? meta.measures[meta.measures.length - 1].ts : state.timeSignature;
+      const tailTotal = measureTicks(tailTs);
+      const locate = (g: number): { mi: number; local: number } => {
+        for (const mm of meta.measures) if (g < mm.startTick + mm.total) return { mi: mm.index, local: g - mm.startTick };
+        const last = meta.measures[meta.measures.length - 1];
+        const base = last ? last.startTick + last.total : 0;
+        const nextIdx = last ? last.index + 1 : 0;
+        const extra = Math.floor((g - base) / tailTotal);
+        return { mi: nextIdx + extra, local: g - (base + extra * tailTotal) };
+      };
       // group pasted notes by target measure, preserving their relative offsets
       type Item = { tick: number; staff: Staff; duration: Duration; pitches: Pitch[] };
       const groups = new Map<number, Item[]>();
       for (const ev of action.events) {
         const g = action.baseTick + ev.offset;
-        const mi = Math.floor(g / total);
-        if (mi < 0) continue;
+        if (g < 0) continue;
+        const { mi, local } = locate(g);
         const list = groups.get(mi) ?? [];
-        list.push({ tick: g - mi * total, staff: ev.staff, duration: ev.duration, pitches: ev.pitches });
+        list.push({ tick: local, staff: ev.staff, duration: ev.duration, pitches: ev.pitches });
         groups.set(mi, list);
       }
       if (groups.size === 0) return state;
@@ -250,6 +263,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
 
     case 'PASTE_MEASURES': {
       const fresh = action.measures.map((m) => ({
+        ...m,
         id: uid('m'),
         events: m.events.map((e) => ({ ...e, id: uid('e') })),
       }));
@@ -258,17 +272,28 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       return { ...state, measures };
     }
 
-    case 'SET_TIME_SIGNATURE': {
-      const total = measureTicks(action.timeSignature);
-      const measures = state.measures.map((m) => ({
-        ...m,
-        events: m.events.filter((e) => e.startTick + durationTicks(e.duration) <= total),
-      }));
-      return { ...state, timeSignature: action.timeSignature, measures };
+    case 'SET_TIME_SIGNATURE_AT': {
+      const m = state.measures[action.measureIndex];
+      if (!m) return state;
+      const measures = state.measures.slice();
+      measures[action.measureIndex] = { ...m, timeSignature: action.timeSignature };
+      // trim events that no longer fit in any measure whose effective length shrank
+      const meta = scoreMeta({ ...state, measures });
+      const trimmed = measures.map((mm, i) => {
+        const total = meta.measures[i].total;
+        const events = mm.events.filter((e) => e.startTick + durationTicks(e.duration) <= total);
+        return events.length === mm.events.length ? mm : { ...mm, events };
+      });
+      return { ...state, measures: trimmed };
     }
 
-    case 'SET_KEY_SIGNATURE':
-      return { ...state, keySignature: Math.max(-7, Math.min(7, action.keySignature)) };
+    case 'SET_KEY_SIGNATURE_AT': {
+      const m = state.measures[action.measureIndex];
+      if (!m) return state;
+      const measures = state.measures.slice();
+      measures[action.measureIndex] = { ...m, keySignature: Math.max(-7, Math.min(7, action.keySignature)) };
+      return { ...state, measures };
+    }
 
     case 'ADD_MEASURE':
       return { ...state, measures: [...state.measures, emptyMeasure()] };

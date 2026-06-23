@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Duration, Pitch, ScoreState } from '../music/types';
-import { measureTicks, pitchToDiatonic } from '../music/theory';
-import { LayoutMode, layoutSystems, tickToX, diatonicToY, clamp, headerWidthFor } from '../music/layout';
+import { pitchToDiatonic } from '../music/theory';
+import { scoreMeta, measureIndexAtTick } from '../music/meta';
+import { LayoutMode, layoutSystems, measureTickToX, diatonicToY, clamp } from '../music/layout';
 import { SYSTEM_HEIGHT, SYSTEM_GAP } from '../music/constants';
 import type { ScoreAction } from '../state/scoreReducer';
 import { Tool } from '../state/tool';
@@ -77,8 +78,8 @@ export function Score({
     return () => ro.disconnect();
   }, []);
 
-  const systems = layoutSystems(state.measures, state.timeSignature, mode, containerWidth, headerWidthFor(state.keySignature));
-  const total = measureTicks(state.timeSignature);
+  const meta = scoreMeta(state);
+  const systems = layoutSystems(state.measures, meta.measures, mode, containerWidth);
 
   // report system measure-ranges so the parent can move the cursor by whole rows
   const rangesKey = systems.map((s) => (s.measures.length ? `${s.measures[0].index}-${s.measures[s.measures.length - 1].index}` : '')).join('|');
@@ -95,13 +96,14 @@ export function Score({
   let barSystem = -1;
   let barX: number | null = null;
   if (state.measures.length > 0) {
-    const mi = clamp(Math.floor(barTick / total), 0, state.measures.length - 1);
-    const tin = clamp(barTick - mi * total, 0, total);
+    const mi = measureIndexAtTick(meta, barTick);
+    const mm = meta.measures[mi];
+    const tin = clamp(barTick - mm.startTick, 0, mm.total);
     for (let s = 0; s < systems.length; s++) {
       const pm = systems[s].measures.find((p) => p.index === mi);
       if (pm) {
         barSystem = s;
-        barX = tickToX(pm.leftX, pm.contentW, tin, total);
+        barX = measureTickToX(pm, tin);
         break;
       }
     }
@@ -140,7 +142,7 @@ export function Score({
       sys.measures.forEach((pm) => {
         pm.measure.events.forEach((ev) => {
           if (ev.kind !== 'note') return;
-          const ncx = PAD + tickToX(pm.leftX, pm.contentW, ev.startTick, total);
+          const ncx = PAD + measureTickToX(pm, ev.startTick);
           for (const p of ev.pitches) {
             const ncy = top + diatonicToY(pitchToDiatonic(p));
             if (ncx >= r.left && ncx <= r.left + r.width && ncy >= r.top && ncy <= r.top + r.height) {
@@ -217,8 +219,8 @@ export function Score({
           <System
             key={i}
             layout={sys}
-            ts={state.timeSignature}
-            keySignature={state.keySignature}
+            headerTs={sys.headerTs}
+            headerKeySig={sys.headerKeySig}
             showTimeSig={i === 0}
             tool={tool}
             duration={duration}

@@ -42,6 +42,8 @@ export type ScoreEvent = NoteEvent | RestEvent;
 export interface Measure {
   id: string;
   events: ScoreEvent[];
+  timeSignature?: TimeSignature; // override that starts here and lasts until the next override
+  keySignature?: number; // key-signature override that starts here and lasts until the next override
 }
 
 export interface TimeSignature {
