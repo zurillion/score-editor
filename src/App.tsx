@@ -348,6 +348,13 @@ export default function App() {
   const activeMeasure = measureIndexAtTick(meta, playheadTick ?? cursorTick);
   const activeTs = meta.measures[activeMeasure]?.ts ?? score.timeSignature;
   const activeKey = meta.measures[activeMeasure]?.keySig ?? score.keySignature;
+  const hasPickup = !!score.measures[0]?.pickup; // the anacrusis is the (uncounted) first measure
+  const measureLabel = hasPickup ? (activeMeasure === 0 ? 'levare' : `batt. ${activeMeasure}`) : `batt. ${activeMeasure + 1}`;
+
+  const handleToggleAnacrusis = useCallback(() => {
+    pushUndo();
+    dispatch({ type: 'SET_PICKUP', on: !score.measures[0]?.pickup });
+  }, [score, pushUndo]);
 
   return (
     <div className="app">
@@ -364,7 +371,9 @@ export default function App() {
         hoverNote={hoverNote}
         previewOnCreate={previewOnCreate}
         setPreviewOnCreate={setPreviewOnCreate}
-        measureNumber={activeMeasure + 1}
+        measureLabel={measureLabel}
+        hasPickup={hasPickup}
+        onToggleAnacrusis={handleToggleAnacrusis}
         timeSignature={activeTs}
         setTimeSignature={(ts) => dispatch({ type: 'SET_TIME_SIGNATURE_AT', measureIndex: activeMeasure, timeSignature: ts })}
         keySignature={activeKey}

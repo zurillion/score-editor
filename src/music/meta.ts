@@ -1,16 +1,27 @@
-import { ScoreState, TimeSignature } from './types';
-import { measureTicks } from './theory';
+import { Measure, ScoreState, TimeSignature } from './types';
+import { durationTicks, measureTicks } from './theory';
+import { TICKS_PER_QUARTER } from './constants';
+
+const PICKUP_MARGIN = TICKS_PER_QUARTER; // clickable room (a beat) past the anacrusis content, to append
 
 /** Effective metadata for one measure once per-measure time/key overrides are resolved. */
 export interface MeasureMeta {
   index: number;
   ts: TimeSignature;
   keySig: number;
-  total: number; // ticks in this measure
+  total: number; // canonical length in ticks (where the next measure starts; what plays)
+  spanTicks: number; // ticks spanned by the drawn width (= total, except an anacrusis adds editing room)
+  capacityTicks: number; // max ticks that may be placed here (a full bar even for an anacrusis)
   startTick: number; // global cumulative start
+  pickup: boolean;
   tsChanged: boolean; // time signature differs from the previous measure
   keyChanged: boolean; // key signature differs from the previous measure
   prevKeySig: number; // previous measure's effective key (for cancellation naturals)
+}
+
+/** End tick of the last event across both staves (the anacrusis "content length"). */
+export function contentEndTicks(m: Measure): number {
+  return m.events.reduce((mx, e) => Math.max(mx, e.startTick + durationTicks(e.duration)), 0);
 }
 
 export interface ScoreMeta {
@@ -37,13 +48,24 @@ export function scoreMeta(score: ScoreState): ScoreMeta {
     const prevKey = curKey;
     if (m.timeSignature) curTs = m.timeSignature;
     if (m.keySignature !== undefined) curKey = m.keySignature;
-    const total = measureTicks(curTs);
+    const full = measureTicks(curTs);
+    let total = full;
+    let spanTicks = full;
+    if (m.pickup) {
+      const content = Math.min(full, contentEndTicks(m));
+      total = content; // an anacrusis is only as long as its content (the rest "doesn't exist")
+      spanTicks = m.events.length ? Math.min(full, content + PICKUP_MARGIN) : full; // empty -> full width to start filling
+      spanTicks = Math.max(spanTicks, PICKUP_MARGIN);
+    }
     const meta: MeasureMeta = {
       index: i,
       ts: curTs,
       keySig: curKey,
       total,
+      spanTicks,
+      capacityTicks: full,
       startTick: start,
+      pickup: !!m.pickup,
       tsChanged: i !== 0 && !sameTs(curTs, prevTs),
       keyChanged: i !== 0 && curKey !== prevKey,
       prevKeySig: prevKey,

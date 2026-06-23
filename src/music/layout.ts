@@ -71,15 +71,19 @@ export function ledgerLineDiatonics(d: number): number[] {
 
 // ---- Horizontal mapping ----
 export function measureContentWidth(ts: TimeSignature): number {
-  return Math.max(150, measureTicks(ts) * PX_PER_TICK + 2 * MEASURE_PAD);
+  return widthForTicks(measureTicks(ts));
+}
+/** Drawn content width for a measure spanning `ticks` (a short anacrusis is narrower). */
+export function widthForTicks(ticks: number): number {
+  return Math.max(96, ticks * PX_PER_TICK + 2 * MEASURE_PAD);
 }
 
 /** x of a local tick inside a placed measure (notes start past any left inset). */
 export function measureTickToX(pm: PlacedMeasure, tick: number): number {
-  return pm.noteLeft + (tick / pm.total) * pm.noteSpan;
+  return pm.noteLeft + (tick / pm.spanTicks) * pm.noteSpan;
 }
 export function measureXToTickRaw(pm: PlacedMeasure, x: number): number {
-  return ((x - pm.noteLeft) / pm.noteSpan) * pm.total;
+  return ((x - pm.noteLeft) / pm.noteSpan) * pm.spanTicks;
 }
 
 // ---- System layout ----
@@ -90,7 +94,10 @@ export interface PlacedMeasure {
   index: number; // global measure index
   leftX: number; // x of the measure's left edge (= previous measure's right edge)
   contentW: number; // full measure width, including any left inset
-  total: number; // ticks in this measure
+  total: number; // canonical ticks (rests, playhead clamp, where the next bar starts)
+  spanTicks: number; // ticks the drawn width covers (= total, except an anacrusis adds editing room)
+  capacityTicks: number; // max ticks that may be placed here
+  pickup: boolean;
   keySig: number; // effective key signature
   ts: TimeSignature; // effective time signature
   startTick: number; // global cumulative start tick
@@ -149,7 +156,7 @@ function buildSystem(
     const mm = metas[i];
     const firstInSystem = i === from;
     const leftInset = firstInSystem ? 0 : changeInsetWidth(mm); // line starts show the key in the header
-    const contentW = measureContentWidth(mm.ts) + leftInset;
+    const contentW = widthForTicks(mm.spanTicks) + leftInset;
     const noteLeft = x + MEASURE_PAD + leftInset;
     const noteSpan = contentW - 2 * MEASURE_PAD - leftInset;
     placed.push({
@@ -158,6 +165,9 @@ function buildSystem(
       leftX: x,
       contentW,
       total: mm.total,
+      spanTicks: mm.spanTicks,
+      capacityTicks: mm.capacityTicks,
+      pickup: mm.pickup,
       keySig: mm.keySig,
       ts: mm.ts,
       startTick: mm.startTick,
@@ -211,7 +221,7 @@ export function layoutSystems(
     let j = i;
     while (j < measures.length) {
       const inset = j !== i && (metas[j].keyChanged || metas[j].tsChanged) ? changeInsetWidth(metas[j]) : 0;
-      const w = measureContentWidth(metas[j].ts) + inset;
+      const w = widthForTicks(metas[j].spanTicks) + inset;
       if (j > i && sum + w > usable) break;
       sum += w;
       j++;

@@ -67,7 +67,9 @@ interface ToolbarProps {
   hoverNote: string | null;
   previewOnCreate: boolean;
   setPreviewOnCreate: (v: boolean) => void;
-  measureNumber: number;
+  measureLabel: string;
+  hasPickup: boolean;
+  onToggleAnacrusis: () => void;
   timeSignature: TimeSignature;
   setTimeSignature: (ts: TimeSignature) => void;
   keySignature: number;
@@ -114,7 +116,9 @@ export function Toolbar(props: ToolbarProps) {
     hoverNote,
     previewOnCreate,
     setPreviewOnCreate,
-    measureNumber,
+    measureLabel,
+    hasPickup,
+    onToggleAnacrusis,
     timeSignature,
     setTimeSignature,
     keySignature,
@@ -296,7 +300,7 @@ export function Toolbar(props: ToolbarProps) {
       </fieldset>
 
       <fieldset className="group">
-        <legend>Tempo · batt. {measureNumber}</legend>
+        <legend>Tempo · {measureLabel}</legend>
         <select
           value={`${timeSignature.numerator}/${timeSignature.denominator}`}
           onChange={(e) => {
@@ -304,7 +308,7 @@ export function Toolbar(props: ToolbarProps) {
             setTimeSignature({ numerator: n, denominator: d });
             e.currentTarget.blur(); // give focus back so arrow keys still move the playhead
           }}
-          title={`Tempo dalla battuta ${measureNumber} in poi`}
+          title={`Tempo da ${measureLabel} in poi`}
         >
           {TIME_PRESETS.map((ts) => {
             const key = `${ts.numerator}/${ts.denominator}`;
@@ -318,14 +322,14 @@ export function Toolbar(props: ToolbarProps) {
       </fieldset>
 
       <fieldset className="group">
-        <legend>Armatura · batt. {measureNumber}</legend>
+        <legend>Armatura · {measureLabel}</legend>
         <select
           value={keySignature}
           onChange={(e) => {
             setKeySignature(Number(e.target.value));
             e.currentTarget.blur();
           }}
-          title={`Tonalità dalla battuta ${measureNumber} in poi`}
+          title={`Tonalità da ${measureLabel} in poi`}
         >
           {KEY_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -373,6 +377,13 @@ export function Toolbar(props: ToolbarProps) {
           <button onClick={onAddMeasure} title="Aggiungi una battuta">+ Battuta</button>
           <button onClick={onRemoveMeasure} title="Rimuovi l'ultima battuta">− Battuta</button>
           <button onClick={onClear} title="Svuota tutte le battute">Pulisci</button>
+          <button
+            className={hasPickup ? 'on' : ''}
+            onClick={onToggleAnacrusis}
+            title="Anacrusi (battuta in levare): battuta iniziale incompleta che si adatta alle note"
+          >
+            ⅃ Anacrusi
+          </button>
         </div>
       </fieldset>
 

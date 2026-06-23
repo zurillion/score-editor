@@ -44,6 +44,7 @@ export interface Measure {
   events: ScoreEvent[];
   timeSignature?: TimeSignature; // override that starts here and lasts until the next override
   keySignature?: number; // key-signature override that starts here and lasts until the next override
+  pickup?: boolean; // anacrusis: an incomplete initial measure whose length follows its content
 }
 
 export interface TimeSignature {

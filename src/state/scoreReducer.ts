@@ -33,6 +33,7 @@ export type ScoreAction =
   | { type: 'PASTE_MEASURES'; index: number; measures: Measure[] }
   | { type: 'SET_TIME_SIGNATURE_AT'; measureIndex: number; timeSignature: TimeSignature }
   | { type: 'SET_KEY_SIGNATURE_AT'; measureIndex: number; keySignature: number }
+  | { type: 'SET_PICKUP'; on: boolean }
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
   | { type: 'CLEAR' }
@@ -320,6 +321,19 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const measures = state.measures.slice();
       measures[action.measureIndex] = { ...m, keySignature: Math.max(-7, Math.min(7, action.keySignature)) };
       return { ...state, measures };
+    }
+
+    case 'SET_PICKUP': {
+      const has = !!state.measures[0]?.pickup;
+      if (action.on && !has) {
+        // insert an empty anacrusis before the first measure
+        return { ...state, measures: [{ id: uid('m'), events: [], pickup: true }, ...state.measures] };
+      }
+      if (!action.on && has) {
+        const rest = state.measures.slice(1);
+        return { ...state, measures: rest.length ? rest : [emptyMeasure()] };
+      }
+      return state;
     }
 
     case 'ADD_MEASURE':

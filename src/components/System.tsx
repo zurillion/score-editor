@@ -270,7 +270,7 @@ export function System(props: SystemProps) {
     if (tick === null) {
       const grid = durationTicks(duration);
       const raw = measureXToTickRaw(pm, x);
-      tick = clamp(Math.round(raw / grid) * grid, 0, Math.max(0, pm.total - grid));
+      tick = clamp(Math.round(raw / grid) * grid, 0, Math.max(0, pm.capacityTicks - grid));
     }
 
     const d = clamp(yToDiatonic(y), 5, 50);
@@ -279,8 +279,8 @@ export function System(props: SystemProps) {
     const alter = effectiveAlterForNew(pm.measure.events, pm.keySig, staff, base.step, base.octave, tick);
     const action =
       tool.kind === 'rest'
-        ? classifyRest(pm.measure.events, tick, duration, pm.total, staff)
-        : classifyNote(pm.measure.events, tick, base, duration, pm.total, staff);
+        ? classifyRest(pm.measure.events, tick, duration, pm.capacityTicks, staff)
+        : classifyNote(pm.measure.events, tick, base, duration, pm.capacityTicks, staff);
     return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, alter, staff, action };
   }
 
@@ -665,7 +665,7 @@ export function System(props: SystemProps) {
               />
             ),
           )}
-          {measureRests(pm.measure.events, pm.total).map((r, i) => (
+          {measureRests(pm.measure.events, pm.total, !pm.pickup).map((r, i) => (
             <RestView
               key={`rest-${i}`}
               duration={r.duration}

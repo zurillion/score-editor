@@ -42,7 +42,7 @@ const STAVES: Staff[] = ['treble', 'bass'];
  * empty staff gets a single whole-measure rest, but only when the *other* staff
  * has at least one note (so a fully empty measure stays blank).
  */
-export function measureRests(events: ScoreEvent[], total: number): RestSeg[] {
+export function measureRests(events: ScoreEvent[], total: number, allowWhole = true): RestSeg[] {
   const out: RestSeg[] = [];
   for (const staff of STAVES) {
     const se = events.filter((e) => e.staff === staff).slice().sort((a, b) => a.startTick - b.startTick);
@@ -54,7 +54,9 @@ export function measureRests(events: ScoreEvent[], total: number): RestSeg[] {
       }
       if (pos < total) out.push(...fillGap(staff, pos, total - pos));
     } else if (events.some((e) => e.staff !== staff && e.kind === 'note')) {
-      out.push({ staff, startTick: 0, duration: { value: 1, dots: 0 }, whole: true });
+      // the other staff has notes: this one needs filler rests
+      if (allowWhole) out.push({ staff, startTick: 0, duration: { value: 1, dots: 0 }, whole: true });
+      else if (total > 0) out.push(...fillGap(staff, 0, total)); // anacrusis: no whole-bar rest
     }
   }
   return out;
