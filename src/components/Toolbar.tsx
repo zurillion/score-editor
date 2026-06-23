@@ -154,6 +154,11 @@ export function Toolbar(props: ToolbarProps) {
     else if (tool.kind === 'eraser') setTool({ kind: 'note' });
     else setTool({ kind: 'eraser', sticky: false });
   }
+  function clickDot(dots: 1 | 2, detail: number) {
+    if (detail >= 2) setTool({ kind: 'dot', dots, sticky: true });
+    else if (tool.kind === 'dot' && tool.dots === dots) setTool({ kind: 'note' });
+    else setTool({ kind: 'dot', dots, sticky: false });
+  }
 
   const eraserClass = tool.kind === 'eraser' ? (tool.sticky ? 'on sticky' : 'on') : '';
 
@@ -208,16 +213,20 @@ export function Toolbar(props: ToolbarProps) {
       <fieldset className="group">
         <legend>Punti</legend>
         <div className="btn-row">
-          {[0, 1, 2].map((n) => (
-            <button
-              key={n}
-              className={duration.dots === n ? 'on' : ''}
-              onClick={() => setDuration({ ...duration, dots: n as 0 | 1 | 2 })}
-              title={`${n} punti di valore`}
-            >
-              {n === 0 ? '—' : '•'.repeat(n)}
-            </button>
-          ))}
+          {([1, 2] as const).map((n) => {
+            const active = tool.kind === 'dot' && tool.dots === n;
+            const cls = active ? (tool.sticky ? 'on sticky' : 'on') : '';
+            return (
+              <button
+                key={n}
+                className={cls}
+                onClick={(e) => clickDot(n, e.detail)}
+                title={`Punto${n === 2 ? ' doppio' : ''} — 1 click: una volta · doppio click: modalità fissa. Clicca sulla nota.`}
+              >
+                {'•'.repeat(n)}
+              </button>
+            );
+          })}
         </div>
       </fieldset>
 

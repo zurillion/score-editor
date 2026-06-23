@@ -6,6 +6,7 @@ import { Alter } from '../music/types';
  * `note` / `rest` are the placement tools (hover + click on the staff); the
  * active duration comes from the palette.
  * `accidental` / `eraser` act on existing notes (one-shot or persistent).
+ * `dot` sets the augmentation dots of an existing note (one-shot or persistent).
  * `select-measures` / `select-notes` select content for copy/cut/delete.
  */
 export type Tool =
@@ -13,6 +14,7 @@ export type Tool =
   | { kind: 'rest' }
   | { kind: 'accidental'; alter: Alter; sticky: boolean }
   | { kind: 'eraser'; sticky: boolean }
+  | { kind: 'dot'; dots: 1 | 2; sticky: boolean }
   | { kind: 'select-measures' }
   | { kind: 'select-notes' };
 

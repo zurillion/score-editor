@@ -23,6 +23,7 @@ export type ScoreAction =
   | { type: 'CLICK_NOTE'; measureIndex: number; tick: number; pitch: Pitch; duration: Duration }
   | { type: 'CLICK_REST'; measureIndex: number; tick: number; duration: Duration; staff: Staff }
   | { type: 'SET_ACCIDENTAL'; measureIndex: number; eventId: string; diatonic: number; alter: Alter }
+  | { type: 'SET_DOTS'; measureIndex: number; eventId: string; dots: 1 | 2 }
   | { type: 'ERASE'; measureIndex: number; eventId: string; diatonic: number | null }
   | { type: 'DELETE_MEASURES'; indices: number[] }
   | { type: 'DELETE_NOTES'; ids: string[] }
@@ -120,6 +121,32 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       });
       if (!changed) return state;
       const events = m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));
+      return withMeasureEvents(state, action.measureIndex, events);
+    }
+
+    case 'SET_DOTS': {
+      const m = state.measures[action.measureIndex];
+      if (!m) return state;
+      const target = m.events.find((e) => e.id === action.eventId);
+      if (!target || target.kind !== 'note') return state;
+      // toggle: clicking the same dot count again removes the dots
+      const newDots = target.duration.dots === action.dots ? 0 : action.dots;
+      if (newDots === target.duration.dots) return state;
+      const total = measureTicks(effectiveTimeSignatureAt(state, action.measureIndex));
+      const oldDur = durationTicks(target.duration);
+      const newDuration = { ...target.duration, dots: newDots as 0 | 1 | 2 };
+      const delta = durationTicks(newDuration) - oldDur;
+      // same-staff events after this one ripple to keep the rhythm contiguous
+      const later = m.events.filter((e) => e.staff === target.staff && e.startTick > target.startTick);
+      if (delta > 0) {
+        const lastEnd = later.reduce((mx, e) => Math.max(mx, e.startTick + durationTicks(e.duration)), target.startTick + oldDur);
+        if (lastEnd + delta > total) return state; // no room for the longer note
+      }
+      const events = m.events.map((e) => {
+        if (e.id === target.id) return { ...target, duration: newDuration };
+        if (e.staff === target.staff && e.startTick > target.startTick) return { ...e, startTick: Math.max(0, e.startTick + delta) };
+        return e;
+      });
       return withMeasureEvents(state, action.measureIndex, events);
     }
 

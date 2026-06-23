@@ -232,7 +232,7 @@ export function System(props: SystemProps) {
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
-  const modal = tool.kind === 'accidental' || tool.kind === 'eraser';
+  const modal = tool.kind === 'accidental' || tool.kind === 'eraser' || tool.kind === 'dot';
 
   function localPoint(clientX: number, clientY: number): { x: number; y: number } | null {
     const svg = svgRef.current;
@@ -430,7 +430,7 @@ export function System(props: SystemProps) {
       return;
     }
 
-    // accidental / eraser
+    // accidental / eraser / dot
     const hit = computeTarget(pt.x, pt.y);
     if (!hit) return;
     if (tool.kind === 'accidental') {
@@ -440,6 +440,8 @@ export function System(props: SystemProps) {
       if (previewOnCreate) onPreviewNote([diatonicToPitch(hit.diatonic, tool.alter)]);
     } else if (tool.kind === 'eraser') {
       onAction({ type: 'ERASE', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic });
+    } else if (tool.kind === 'dot') {
+      onAction({ type: 'SET_DOTS', measureIndex: hit.measureIndex, eventId: hit.eventId, dots: tool.dots });
     }
     onAfterApply();
   }
@@ -461,15 +463,21 @@ export function System(props: SystemProps) {
         );
     }
   } else if (hover?.mode === 'target') {
-    const isAcc = tool.kind === 'accidental';
-    const color = isAcc ? '#2563eb' : '#dc2626';
+    const color = tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : '#dc2626';
     overlay = (
       <g pointerEvents="none">
         <circle cx={hover.hx} cy={hover.hy} r={NOTEHEAD_RX + 3} fill={`${color}22`} stroke={color} strokeWidth={1.4} />
-        {isAcc && tool.kind === 'accidental' && (
+        {tool.kind === 'accidental' && (
           <text x={hover.hx - NOTEHEAD_RX - 3} y={hover.hy} textAnchor="end" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color} opacity={0.85}>
             {SMUFL.accidentals[String(tool.alter)]}
           </text>
+        )}
+        {tool.kind === 'dot' && (
+          <g fill={color}>
+            {Array.from({ length: tool.dots }, (_, i) => (
+              <circle key={i} cx={hover.hx + NOTEHEAD_RX + 5 + i * 5} cy={hover.hy} r={2.1} />
+            ))}
+          </g>
         )}
       </g>
     );

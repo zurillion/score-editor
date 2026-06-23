@@ -159,7 +159,7 @@ export default function App() {
 
   // After a one-shot accidental/eraser is applied, revert to the note tool.
   const handleAfterApply = useCallback(() => {
-    setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser') && !t.sticky ? NOTE_TOOL : t));
+    setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser' || t.kind === 'dot') && !t.sticky ? NOTE_TOOL : t));
   }, []);
 
   const handlePreviewNote = useCallback((pitches: Pitch[]) => playPreview(pitches), []);
@@ -332,7 +332,7 @@ export default function App() {
         const map: DurationValue[] = [1, 2, 4, 8, 16, 32];
         setDuration((d) => ({ ...d, value: map[Number(e.key) - 1] }));
       } else if (e.key === '.') {
-        setDuration((d) => ({ ...d, dots: ((d.dots + 1) % 3) as 0 | 1 | 2 }));
+        setTool((t) => (t.kind === 'dot' && t.dots === 1 ? NOTE_TOOL : { kind: 'dot', dots: 1, sticky: false }));
       } else if (e.key.toLowerCase() === 'e') {
         setTool((t) => (t.kind === 'eraser' ? NOTE_TOOL : { kind: 'eraser', sticky: false }));
       } else if (e.key === 'Escape') {
@@ -417,7 +417,7 @@ export default function App() {
       <footer className="hint">
         Palette: <strong>note</strong> sopra, <strong>pause</strong> sotto. Le pause riempiono automaticamente lo spazio
         libero. Trascina una nota per spostarla; <kbd>Alt</kbd>+clic la cancella.{' '}
-        <strong>Alterazioni</strong> e <strong>gomma</strong>: clic su una nota (1 = una volta, doppio = fisso).
+        <strong>Alterazioni</strong>, <strong>punti</strong> e <strong>gomma</strong>: clic su una nota (1 = una volta, doppio = fisso).
         <strong> Selezione</strong> battute o note (lazo): <kbd>⌘C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> · <kbd>Backspace</kbd>{' '}
         elimina · <kbd>⌘Z</kbd> annulla. <kbd>← →</kbd> sposta cursore (<kbd>Alt</kbd> battuta, <kbd>Ctrl</kbd> rigo) ·{' '}
         <kbd>↑ ↓</kbd> traspone le note selezionate. <kbd>1-6</kbd> durata · <kbd>.</kbd> punto · <kbd>E</kbd> gomma ·{' '}
