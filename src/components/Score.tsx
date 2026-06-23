@@ -19,6 +19,7 @@ interface ScoreProps {
   mode: LayoutMode;
   tool: Tool;
   duration: Duration;
+  diagonalBeams: boolean;
   previewOnCreate: boolean;
   selection: Selection | null;
   playheadTick: number | null;
@@ -49,6 +50,7 @@ export function Score({
   mode,
   tool,
   duration,
+  diagonalBeams,
   previewOnCreate,
   selection,
   playheadTick,
@@ -222,6 +224,7 @@ export function Score({
             headerTs={sys.headerTs}
             headerKeySig={sys.headerKeySig}
             showTimeSig={i === 0 || sys.headerTsChanged}
+            diagonalBeams={diagonalBeams}
             tool={tool}
             duration={duration}
             previewOnCreate={previewOnCreate}

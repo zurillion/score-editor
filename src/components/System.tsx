@@ -39,6 +39,7 @@ import {
   NOTEHEAD_RX,
   NOTEHEAD_RY,
   STEM_LENGTH,
+  STAFF_SPACE,
   TICKS_PER_QUARTER,
 } from '../music/constants';
 import type { ScoreAction } from '../state/scoreReducer';
@@ -53,32 +54,70 @@ const SEL_FILL = 'rgba(37,99,235,0.13)';
 const SEL_STROKE = 'rgba(37,99,235,0.7)';
 const BEAM_THICK = 5;
 const BEAM_GAP = 3.5;
+const BEAM_MAX_SLOPE = 0.25; // px per px
+const BEAM_MAX_RISE = 2.5 * STAFF_SPACE; // total rise across a group
+const BEAM_MIN_CLEAR = 2.3 * STAFF_SPACE; // shortest stem from the outer notehead to the beam
 
-/** Horizontal beams for one measure: stem-end y for each beamed note + the beam rects. */
-function computeMeasureBeams(pm: PlacedMeasure): { beamProps: Map<string, { stemUp: boolean; tipY: number }>; elements: JSX.Element[] } {
+/**
+ * Beams for one measure: the stem-end y for each beamed note plus the beam
+ * polygons. Beams are horizontal by default; when `diagonal` is set they slope
+ * to follow the outer pitches (clamped, and kept clear of the noteheads).
+ */
+function computeMeasureBeams(pm: PlacedMeasure, diagonal: boolean): { beamProps: Map<string, { stemUp: boolean; tipY: number }>; elements: JSX.Element[] } {
   const beamProps = new Map<string, { stemUp: boolean; tipY: number }>();
   const elements: JSX.Element[] = [];
   for (const staff of ['treble', 'bass'] as Staff[]) {
     for (const group of beamGroups(pm.measure.events, staff, pm.ts)) {
       const allDs = group.flatMap((ev) => ev.pitches.map(pitchToDiatonic));
       const stemUp = stemUpForChord(allDs, staff);
-      const dir = stemUp ? 1 : -1;
+      const dir = stemUp ? 1 : -1; // +1 = beam above the noteheads (smaller y)
       const items = group.map((ev) => {
         const x = measureTickToX(pm, ev.startTick);
         const headHW = noteheadHalfWidth(ev.duration.value);
         const ds = ev.pitches.map(pitchToDiatonic);
-        const tipBase = stemUp ? diatonicToY(Math.max(...ds)) - STEM_LENGTH : diatonicToY(Math.min(...ds)) + STEM_LENGTH;
-        return { ev, stemX: stemUp ? x + headHW - STEM_INSET : x - headHW + STEM_INSET, tipBase, count: beamCount(ev.duration.value) };
+        const outerY = stemUp ? diatonicToY(Math.max(...ds)) : diatonicToY(Math.min(...ds));
+        return {
+          ev,
+          stemX: stemUp ? x + headHW - STEM_INSET : x - headHW + STEM_INSET,
+          outerY,
+          tipBase: outerY - dir * STEM_LENGTH, // ideal beam y giving a standard-length stem
+          count: beamCount(ev.duration.value),
+        };
       });
-      const beamY = stemUp ? Math.min(...items.map((it) => it.tipBase)) : Math.max(...items.map((it) => it.tipBase));
-      for (const it of items) beamProps.set(it.ev.id, { stemUp, tipY: beamY });
+
+      // beam line  y = m*x + b
+      let m = 0;
+      let b: number;
+      if (diagonal && items.length >= 2) {
+        const x0 = items[0].stemX;
+        const xN = items[items.length - 1].stemX;
+        const span = xN - x0 || 1;
+        let rise = items[items.length - 1].tipBase - items[0].tipBase;
+        rise = Math.max(-BEAM_MAX_RISE, Math.min(BEAM_MAX_RISE, rise));
+        m = Math.max(-BEAM_MAX_SLOPE, Math.min(BEAM_MAX_SLOPE, rise / span));
+        b = items[0].tipBase - m * x0;
+        // keep the shortest stem from clipping into the noteheads
+        let worst = Infinity;
+        for (const it of items) worst = Math.min(worst, dir * (it.outerY - (m * it.stemX + b)));
+        if (worst < BEAM_MIN_CLEAR) b -= dir * (BEAM_MIN_CLEAR - worst);
+      } else {
+        b = stemUp ? Math.min(...items.map((it) => it.tipBase)) : Math.max(...items.map((it) => it.tipBase));
+      }
+      const lineY = (x: number) => m * x + b;
+      for (const it of items) beamProps.set(it.ev.id, { stemUp, tipY: lineY(it.stemX) });
+
       const k = (s: string) => `bm-${pm.index}-${staff}-${group[0].id}-${s}`;
-      const xa = items[0].stemX;
-      const xb = items[items.length - 1].stemX;
-      elements.push(<rect key={k('1')} x={Math.min(xa, xb)} y={beamY - BEAM_THICK / 2} width={Math.abs(xb - xa)} height={BEAM_THICK} fill="#1a1a1a" />);
+      const poly = (xa: number, xb: number, off: number) => {
+        const ya = lineY(xa) + off;
+        const yb = lineY(xb) + off;
+        return `${xa},${ya - BEAM_THICK / 2} ${xb},${yb - BEAM_THICK / 2} ${xb},${yb + BEAM_THICK / 2} ${xa},${ya + BEAM_THICK / 2}`;
+      };
+      // primary beam
+      elements.push(<polygon key={k('1')} points={poly(items[0].stemX, items[items.length - 1].stemX, 0)} fill="#1a1a1a" />);
+      // secondary beams / beamlets (16th, 32nd)
       const maxLevel = Math.max(...items.map((it) => it.count));
       for (let L = 2; L <= maxLevel; L++) {
-        const y = beamY + dir * (L - 1) * (BEAM_THICK + BEAM_GAP);
+        const off = dir * (L - 1) * (BEAM_THICK + BEAM_GAP);
         let i = 0;
         while (i < items.length) {
           if (items[i].count < L) {
@@ -88,13 +127,11 @@ function computeMeasureBeams(pm: PlacedMeasure): { beamProps: Map<string, { stem
           let end = i;
           while (end + 1 < items.length && items[end + 1].count >= L) end++;
           if (end > i) {
-            const a = items[i].stemX;
-            const b = items[end].stemX;
-            elements.push(<rect key={k(`${L}-${i}`)} x={Math.min(a, b)} y={y - BEAM_THICK / 2} width={Math.abs(b - a)} height={BEAM_THICK} fill="#1a1a1a" />);
+            elements.push(<polygon key={k(`${L}-${i}`)} points={poly(items[i].stemX, items[end].stemX, off)} fill="#1a1a1a" />);
           } else {
             const a = items[i].stemX;
-            const b = i > 0 ? a - 8 : a + 8; // beamlet stub toward the neighbour
-            elements.push(<rect key={k(`${L}-${i}b`)} x={Math.min(a, b)} y={y - BEAM_THICK / 2} width={8} height={BEAM_THICK} fill="#1a1a1a" />);
+            const stub = i > 0 ? a - 8 : a + 8; // beamlet stub toward the neighbour
+            elements.push(<polygon key={k(`${L}-${i}b`)} points={poly(Math.min(a, stub), Math.max(a, stub), off)} fill="#1a1a1a" />);
           }
           i = end + 1;
         }
@@ -141,6 +178,7 @@ interface SystemProps {
   headerTs: TimeSignature;
   headerKeySig: number;
   showTimeSig: boolean;
+  diagonalBeams: boolean;
   tool: Tool;
   duration: Duration;
   previewOnCreate: boolean;
@@ -160,6 +198,7 @@ export function System(props: SystemProps) {
     headerTs,
     headerKeySig,
     showTimeSig,
+    diagonalBeams,
     tool,
     duration,
     previewOnCreate,
@@ -590,7 +629,7 @@ export function System(props: SystemProps) {
       {/* measures: notes + placed rests + auto-derived rests + right barline */}
       {layout.measures.map((pm) => {
         const resolved = resolveMeasure(pm.measure.events, pm.keySig);
-        const { beamProps, elements: beamEls } = computeMeasureBeams(pm);
+        const { beamProps, elements: beamEls } = computeMeasureBeams(pm, diagonalBeams);
         return (
         <Fragment key={pm.measure.id}>
           {(pm.keyChanged || pm.tsChanged) && renderChange(pm)}

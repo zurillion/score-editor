@@ -11,6 +11,7 @@ import { Tool, NOTE_TOOL } from './state/tool';
 import { ClipNote, Clipboard, Selection } from './state/selection';
 import { Toolbar } from './components/Toolbar';
 import { Score, SystemRange } from './components/Score';
+import { OptionsDialog } from './components/OptionsDialog';
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -28,6 +29,23 @@ export default function App() {
   const [cursorTick, setCursorTick] = useState(0); // persistent playback/insertion cursor
   const [hoverNote, setHoverNote] = useState<string | null>(null); // name of the ghost note under the cursor
   const [selection, setSelection] = useState<Selection | null>(null);
+
+  // ---- application options (persisted) ----
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [diagonalBeams, setDiagonalBeams] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('opt.diagonalBeams') === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('opt.diagonalBeams', diagonalBeams ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [diagonalBeams]);
   const clipboardRef = useRef<Clipboard | null>(null);
   const undoRef = useRef<ScoreState[]>([]);
   const systemRangesRef = useRef<SystemRange[]>([]);
@@ -372,6 +390,7 @@ export default function App() {
         onClear={() => dispatch({ type: 'CLEAR' })}
         onLoadPiece={handleLoadPiece}
         onInsertMeasures={handleInsertMeasures}
+        onOpenOptions={() => setOptionsOpen(true)}
       />
 
       <Score
@@ -379,6 +398,7 @@ export default function App() {
         mode={mode}
         tool={tool}
         duration={duration}
+        diagonalBeams={diagonalBeams}
         previewOnCreate={previewOnCreate}
         selection={selection}
         playheadTick={playheadTick}
@@ -403,6 +423,13 @@ export default function App() {
         <kbd>↑ ↓</kbd> traspone le note selezionate. <kbd>1-6</kbd> durata · <kbd>.</kbd> punto · <kbd>E</kbd> gomma ·{' '}
         <kbd>Esc</kbd> note · <kbd>Spazio</kbd> play/stop.
       </footer>
+
+      <OptionsDialog
+        open={optionsOpen}
+        onClose={() => setOptionsOpen(false)}
+        diagonalBeams={diagonalBeams}
+        setDiagonalBeams={setDiagonalBeams}
+      />
     </div>
   );
 }
