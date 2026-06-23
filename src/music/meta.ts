@@ -48,6 +48,13 @@ export function scoreMeta(score: ScoreState): ScoreMeta {
     const prevKey = curKey;
     if (m.timeSignature) curTs = m.timeSignature;
     if (m.keySignature !== undefined) curKey = m.keySignature;
+    // an anacrusis is the upbeat of the bar it leads into: it shares that bar's
+    // meter/key (shown once at the start) rather than introducing one of its own.
+    if (i === 0 && m.pickup && score.measures.length > 1) {
+      const next = score.measures[1];
+      if (next.timeSignature) curTs = next.timeSignature;
+      if (next.keySignature !== undefined) curKey = next.keySignature;
+    }
     const full = measureTicks(curTs);
     let total = full;
     let spanTicks = full;

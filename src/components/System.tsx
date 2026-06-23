@@ -272,6 +272,12 @@ export function System(props: SystemProps) {
       const raw = measureXToTickRaw(pm, x);
       tick = clamp(Math.round(raw / grid) * grid, 0, Math.max(0, pm.capacityTicks - grid));
     }
+    if (pm.pickup) {
+      // pack the anacrusis from the start: appending never leaves a leading gap,
+      // so the upbeat begins on its first note.
+      const contentEnd = pm.measure.events.reduce((mx, e) => Math.max(mx, e.startTick + durationTicks(e.duration)), 0);
+      tick = Math.min(tick, contentEnd);
+    }
 
     const d = clamp(yToDiatonic(y), 5, 50);
     const staff = staffForDiatonic(d);
