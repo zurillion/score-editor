@@ -24,6 +24,7 @@ import {
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
 import { beamGroups, beamCount } from '../music/beams';
+import { TieConn } from '../music/ties';
 import { keyAlterForStep, keySignatureAccidentals, keyChangeNaturals } from '../music/key';
 import { effectiveAlterForNew, resolveMeasure } from '../music/accidentals';
 import { SMUFL, timeSigString } from '../music/smufl';
@@ -233,6 +234,29 @@ function renderMeasureTuplets(pm: PlacedMeasure, beamProps: Map<string, { stemUp
   return els;
 }
 
+/** Ties of value for one system: a flat arc per tied pitch (split at the line edges when it wraps). */
+function renderSystemTies(layout: SystemLayout, ties: TieConn[]): JSX.Element[] {
+  const els: JSX.Element[] = [];
+  const leftEdge = layout.header + 4;
+  const rightEdge = layout.width - 4;
+  ties.forEach((t, i) => {
+    const pmFrom = layout.measures.find((p) => p.index === t.fromIndex);
+    const pmTo = layout.measures.find((p) => p.index === t.toIndex);
+    if (!pmFrom && !pmTo) return; // neither endpoint is on this line
+    const y = diatonicToY(t.diatonic);
+    const x1 = pmFrom ? measureTickToX(pmFrom, t.fromTick) + NOTEHEAD_RX + 1.5 : leftEdge;
+    const x2 = pmTo ? measureTickToX(pmTo, t.toTick) - NOTEHEAD_RX - 1.5 : rightEdge;
+    if (x2 - x1 < 5) return;
+    const middle = t.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE;
+    const dir = t.diatonic >= middle ? -1 : 1; // higher notes: arc above; lower: below
+    const cx = (x1 + x2) / 2;
+    const bulge = 0.85 * STAFF_SPACE;
+    const d = `M ${x1} ${y} Q ${cx} ${y + dir * bulge} ${x2} ${y} Q ${cx} ${y + dir * (bulge - 2.4)} ${x1} ${y} Z`;
+    els.push(<path key={`tie-${t.fromIndex}-${t.toIndex}-${t.diatonic}-${i}`} d={d} fill="#1a1a1a" pointerEvents="none" />);
+  });
+  return els;
+}
+
 const GHOST_COLOR: Record<PlaceAction, string> = {
   create: '#94a3b8',
   chord: '#2563eb',
@@ -282,6 +306,7 @@ interface SystemProps {
   onPreviewNote: (pitches: Pitch[]) => void;
   onSetCursor: (tick: number) => void;
   onHoverNote: (name: string | null) => void;
+  ties: TieConn[];
 }
 
 export function System(props: SystemProps) {
@@ -302,6 +327,7 @@ export function System(props: SystemProps) {
     onPreviewNote,
     onSetCursor,
     onHoverNote,
+    ties,
   } = props;
 
   // effective key signature of a given measure index in this system
@@ -324,7 +350,7 @@ export function System(props: SystemProps) {
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
-  const modal = tool.kind === 'accidental' || tool.kind === 'eraser' || tool.kind === 'dot' || tool.kind === 'tuplet';
+  const modal = tool.kind === 'accidental' || tool.kind === 'eraser' || tool.kind === 'dot' || tool.kind === 'tuplet' || tool.kind === 'tie';
 
   function localPoint(clientX: number, clientY: number): { x: number; y: number } | null {
     const svg = svgRef.current;
@@ -545,6 +571,8 @@ export function System(props: SystemProps) {
       onAction({ type: 'SET_DOTS', measureIndex: hit.measureIndex, eventId: hit.eventId, dots: tool.dots });
     } else if (tool.kind === 'tuplet') {
       onAction({ type: 'MAKE_TUPLET', measureIndex: hit.measureIndex, eventId: hit.eventId });
+    } else if (tool.kind === 'tie') {
+      onAction({ type: 'TOGGLE_TIE', measureIndex: hit.measureIndex, eventId: hit.eventId });
     }
     onAfterApply();
   }
@@ -566,7 +594,7 @@ export function System(props: SystemProps) {
         );
     }
   } else if (hover?.mode === 'target') {
-    const color = tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : tool.kind === 'tuplet' ? '#7c3aed' : '#dc2626';
+    const color = tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : tool.kind === 'tuplet' ? '#7c3aed' : tool.kind === 'tie' ? '#0ea5e9' : '#dc2626';
     overlay = (
       <g pointerEvents="none">
         <circle cx={hover.hx} cy={hover.hy} r={NOTEHEAD_RX + 3} fill={`${color}22`} stroke={color} strokeWidth={1.4} />
@@ -786,6 +814,9 @@ export function System(props: SystemProps) {
         </Fragment>
         );
       })}
+
+      {/* ties of value */}
+      {renderSystemTies(layout, ties)}
 
       {/* cautionary key change at the end of the line (next system starts in a new key) */}
       {layout.trailingKey &&

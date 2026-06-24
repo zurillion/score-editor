@@ -25,6 +25,7 @@ export type ScoreAction =
   | { type: 'SET_ACCIDENTAL'; measureIndex: number; eventId: string; diatonic: number; alter: Alter }
   | { type: 'SET_DOTS'; measureIndex: number; eventId: string; dots: 1 | 2 }
   | { type: 'MAKE_TUPLET'; measureIndex: number; eventId: string }
+  | { type: 'TOGGLE_TIE'; measureIndex: number; eventId: string }
   | { type: 'ERASE'; measureIndex: number; eventId: string; diatonic: number | null }
   | { type: 'DELETE_MEASURES'; indices: number[] }
   | { type: 'DELETE_NOTES'; ids: string[] }
@@ -202,6 +203,15 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         .filter((e) => e.id !== target.id)
         .map((e) => (e.staff === target.staff && e.startTick > target.startTick ? { ...e, startTick: Math.max(0, e.startTick + delta) } : e))
         .concat(members);
+      return withMeasureEvents(state, action.measureIndex, events);
+    }
+
+    case 'TOGGLE_TIE': {
+      const m = state.measures[action.measureIndex];
+      if (!m) return state;
+      const target = m.events.find((e) => e.id === action.eventId);
+      if (!target || target.kind !== 'note') return state;
+      const events = m.events.map((e) => (e.id === target.id ? { ...target, tieToNext: !target.tieToNext } : e));
       return withMeasureEvents(state, action.measureIndex, events);
     }
 

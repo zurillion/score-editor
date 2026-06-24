@@ -62,20 +62,44 @@ export interface Schedule {
  */
 export function buildSchedule(score: ScoreState): Schedule {
   const meta = scoreMeta(score);
-  const notes: ScheduledNote[] = [];
+  // Flatten to one entry per (pitch) occurrence in global time, so a tie of value
+  // can merge a pitch across consecutive notes (within a bar or across bars).
+  interface Entry { key: string; startG: number; endG: number; freq: number; midi: number; tie: boolean; absorbed: boolean }
+  const entries: Entry[] = [];
   for (const mm of meta.measures) {
     const m = score.measures[mm.index];
     // accidentals (key signature + "lasts for the measure") resolved per measure, per its own key
     const resolved = resolveMeasure(m.events, mm.keySig);
     for (const ev of m.events) {
       if (ev.kind !== 'note') continue;
-      const startTick = mm.startTick + ev.startTick;
-      const durTicks = eventTicks(ev);
-      const eff = ev.pitches.map((p) => {
+      const startG = mm.startTick + ev.startTick;
+      const endG = startG + eventTicks(ev);
+      for (const p of ev.pitches) {
         const r = resolved.get(`${ev.id}|${p.step}${p.octave}`);
-        return r ? { ...p, alter: r.alter } : p;
-      });
-      notes.push({ startTick, durTicks, freqs: eff.map(pitchToFrequency), midis: eff.map(pitchToMidi) });
+        const eff = r ? { ...p, alter: r.alter } : p;
+        entries.push({ key: `${ev.staff}|${p.step}${p.octave}`, startG, endG, freq: pitchToFrequency(eff), midi: pitchToMidi(eff), tie: !!ev.tieToNext, absorbed: false });
+      }
+    }
+  }
+  const byKey = new Map<string, Entry[]>();
+  for (const e of entries) {
+    const a = byKey.get(e.key) ?? [];
+    a.push(e);
+    byKey.set(e.key, a);
+  }
+  const notes: ScheduledNote[] = [];
+  for (const arr of byKey.values()) {
+    arr.sort((a, b) => a.startG - b.startG);
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].absorbed) continue;
+      let end = arr[i].endG;
+      let j = i;
+      while (arr[j].tie && j + 1 < arr.length && arr[j + 1].startG === end) {
+        arr[j + 1].absorbed = true; // tied continuation: don't re-attack it
+        end = arr[j + 1].endG;
+        j++;
+      }
+      notes.push({ startTick: arr[i].startG, durTicks: end - arr[i].startG, freqs: [arr[i].freq], midis: [arr[i].midi] });
     }
   }
   notes.sort((a, b) => a.startTick - b.startTick);

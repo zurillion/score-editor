@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Duration, Pitch, ScoreState } from '../music/types';
 import { pitchToDiatonic } from '../music/theory';
 import { scoreMeta, measureIndexAtTick } from '../music/meta';
+import { resolveTies } from '../music/ties';
 import { LayoutMode, layoutSystems, measureTickToX, diatonicToY, clamp } from '../music/layout';
 import { SYSTEM_HEIGHT, SYSTEM_GAP } from '../music/constants';
 import type { ScoreAction } from '../state/scoreReducer';
@@ -82,6 +83,7 @@ export function Score({
 
   const meta = scoreMeta(state);
   const systems = layoutSystems(state.measures, meta.measures, mode, containerWidth);
+  const ties = resolveTies(state, meta);
 
   // report system measure-ranges so the parent can move the cursor by whole rows
   const rangesKey = systems.map((s) => (s.measures.length ? `${s.measures[0].index}-${s.measures[s.measures.length - 1].index}` : '')).join('|');
@@ -236,6 +238,7 @@ export function Score({
             onPreviewNote={onPreviewNote}
             onSetCursor={onSetCursor}
             onHoverNote={onHoverNote}
+            ties={ties}
           />
         ))}
         {lassoRect && (

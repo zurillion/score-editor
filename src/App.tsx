@@ -184,7 +184,7 @@ export default function App() {
 
   // After a one-shot accidental/eraser is applied, revert to the note tool.
   const handleAfterApply = useCallback(() => {
-    setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser' || t.kind === 'dot' || t.kind === 'tuplet') && !t.sticky ? NOTE_TOOL : t));
+    setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser' || t.kind === 'dot' || t.kind === 'tuplet' || t.kind === 'tie') && !t.sticky ? NOTE_TOOL : t));
   }, []);
 
   const handlePreviewNote = useCallback((pitches: Pitch[]) => playPreview(pitches), []);

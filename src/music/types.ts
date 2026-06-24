@@ -38,6 +38,7 @@ export interface NoteEvent {
   duration: Duration;
   pitches: Pitch[]; // one entry = single note, several = chord (simultaneous notes)
   tuplet?: Tuplet; // set on each member of a tuplet group
+  tieToNext?: boolean; // tie of value: sustain into the next note of the same pitch
 }
 
 export interface RestEvent {

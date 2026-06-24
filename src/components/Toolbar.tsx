@@ -172,9 +172,15 @@ export function Toolbar(props: ToolbarProps) {
     else if (tool.kind === 'tuplet') setTool({ kind: 'note' });
     else setTool({ kind: 'tuplet', sticky: false });
   }
+  function clickTie(detail: number) {
+    if (detail >= 2) setTool({ kind: 'tie', sticky: true });
+    else if (tool.kind === 'tie') setTool({ kind: 'note' });
+    else setTool({ kind: 'tie', sticky: false });
+  }
 
   const eraserClass = tool.kind === 'eraser' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const tupletClass = tool.kind === 'tuplet' ? (tool.sticky ? 'on sticky' : 'on') : '';
+  const tieClass = tool.kind === 'tie' ? (tool.sticky ? 'on sticky' : 'on') : '';
 
   return (
     <div className="toolbar">
@@ -280,6 +286,13 @@ export function Toolbar(props: ToolbarProps) {
             title="Terzina — clicca su una nota per trasformarla in una terzina (3 note nel tempo di 2). 1 click: una volta · doppio click: fissa."
           >
             ³ Terzina
+          </button>
+          <button
+            className={tieClass}
+            onClick={(e) => clickTie(e.detail)}
+            title="Legatura di valore — clicca una nota per legarla alla successiva della stessa altezza (anche tra battute). 1 click: una volta · doppio click: fissa."
+          >
+            ⌣ Legatura
           </button>
           <button
             className={`icon-btn ${tool.kind === 'select-measures' ? 'on' : ''}`}
