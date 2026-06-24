@@ -74,6 +74,12 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       if (verdict === 'blocked') return state;
 
       if (verdict === 'create') {
+        // clicking a tuplet rest turns it back into a note (keeping the tuplet + slot)
+        const restSlot = m.events.find((e) => e.startTick === action.tick && e.staff === staff && e.kind === 'rest' && e.tuplet);
+        if (restSlot) {
+          const note: NoteEvent = { id: uid('n'), kind: 'note', staff, startTick: action.tick, duration: restSlot.duration, tuplet: restSlot.tuplet, pitches: [action.pitch] };
+          return withMeasureEvents(state, action.measureIndex, m.events.map((e) => (e.id === restSlot.id ? note : e)));
+        }
         const note: NoteEvent = {
           id: uid('n'),
           kind: 'note',
@@ -113,7 +119,9 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       if (verdict === 'delete') {
         const target = m.events.find((e) => e.startTick === action.tick && e.staff === action.staff);
         if (!target) return state;
-        return withMeasureEvents(state, action.measureIndex, m.events.filter((e) => e.id !== target.id));
+        // removing a tuplet rest clears the whole tuplet group (no fractional gap left behind)
+        const drop = target.tuplet ? expandTupletIds(m.events, new Set([target.id])) : new Set([target.id]);
+        return withMeasureEvents(state, action.measureIndex, m.events.filter((e) => !drop.has(e.id)));
       }
       const rest: RestEvent = { id: uid('r'), kind: 'rest', staff: action.staff, startTick: action.tick, duration: action.duration };
       return withMeasureEvents(state, action.measureIndex, [...m.events, rest]);
@@ -195,17 +203,25 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const target = m.events.find((e) => e.id === action.eventId);
       if (!target) return state;
 
-      // Erasing a single notehead of a chord removes only that pitch; the last
-      // pitch (or any rest) removes the whole event. Erasing any member of a
-      // tuplet removes the whole tuplet group (so no fractional gap remains).
-      if (target.kind === 'note' && action.diatonic !== null && !target.tuplet) {
+      // A tuplet note turns into a tuplet rest (the triplet stays intact), like in
+      // standard notation; a tuplet rest erased removes the whole group.
+      const toTupletRest = (n: NoteEvent): RestEvent => ({ id: uid('r'), kind: 'rest', staff: n.staff, startTick: n.startTick, duration: n.duration, tuplet: n.tuplet });
+
+      if (target.kind === 'note' && action.diatonic !== null) {
         const pitches = target.pitches.filter((p) => pitchToDiatonic(p) !== action.diatonic);
         if (pitches.length === target.pitches.length) return state; // nothing matched
-        const events =
-          pitches.length === 0
-            ? m.events.filter((e) => e.id !== target.id)
-            : m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));
+        if (pitches.length > 0) {
+          return withMeasureEvents(state, action.measureIndex, m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e)));
+        }
+        // last pitch removed
+        const replaced = target.tuplet ? toTupletRest(target) : null;
+        const events = replaced
+          ? m.events.map((e) => (e.id === target.id ? replaced : e))
+          : m.events.filter((e) => e.id !== target.id);
         return withMeasureEvents(state, action.measureIndex, events);
+      }
+      if (target.kind === 'note' && target.tuplet) {
+        return withMeasureEvents(state, action.measureIndex, m.events.map((e) => (e.id === target.id ? toTupletRest(target) : e)));
       }
       const drop = target.tuplet ? expandTupletIds(m.events, new Set([target.id])) : new Set([target.id]);
       return withMeasureEvents(state, action.measureIndex, m.events.filter((e) => !drop.has(e.id)));

@@ -732,7 +732,7 @@ export function System(props: SystemProps) {
                 key={ev.id}
                 duration={ev.duration}
                 middle={ev.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
-                x={measureTickToX(pm, ev.startTick + eventTicks(ev) / 2)}
+                x={measureTickToX(pm, ev.startTick)}
                 color="#1a1a1a"
               />
             ),
@@ -742,7 +742,7 @@ export function System(props: SystemProps) {
               key={`rest-${i}`}
               duration={r.duration}
               middle={r.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
-              x={measureTickToX(pm, r.whole ? pm.total / 2 : r.startTick + durationTicks(r.duration) / 2)}
+              x={measureTickToX(pm, r.whole ? pm.total / 2 : r.startTick)}
               color="#1a1a1a"
             />
           ))}

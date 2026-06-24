@@ -29,6 +29,7 @@ export default function App() {
   const [cursorTick, setCursorTick] = useState(0); // persistent playback/insertion cursor
   const [hoverNote, setHoverNote] = useState<string | null>(null); // name of the ghost note under the cursor
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [pieceName, setPieceName] = useState(''); // title of the current piece (shown + saved in the file)
 
   // ---- application options (persisted) ----
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -196,6 +197,7 @@ export default function App() {
       setSelection(null);
       dispatch({ type: 'LOAD', score: clone(piece.score) });
       setBpm(piece.bpm);
+      setPieceName(piece.title);
     },
     [handleStop],
   );
@@ -218,19 +220,22 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleSaveFile = useCallback(() => {
-    const data = { format: 'score-composer', version: 1, bpm, score };
+    const name = window.prompt('Nome del brano:', pieceName || 'Brano senza titolo');
+    if (name === null) return; // cancelled
+    const title = name.trim();
+    setPieceName(title);
+    const data = { format: 'score-composer', version: 1, name: title, bpm, score };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
+    const safe = title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
     a.href = url;
-    a.download = `brano-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+    a.download = `${safe || 'brano'}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  }, [bpm, score]);
+  }, [bpm, score, pieceName]);
 
   const handleRequestLoadFile = useCallback(() => fileInputRef.current?.click(), []);
 
@@ -251,6 +256,7 @@ export default function App() {
         pushUndo();
         dispatch({ type: 'LOAD', score: clone(loaded) });
         if (typeof obj?.bpm === 'number') setBpm(obj.bpm);
+        setPieceName(typeof obj?.name === 'string' ? obj.name : '');
       } catch {
         window.alert('Impossibile leggere il file (JSON non valido).');
       }
@@ -429,6 +435,7 @@ export default function App() {
       <header className="app-header">
         <h1>Score Composer</h1>
         <span className="subtitle">endecalineo · composizione &amp; playback</span>
+        {pieceName && <span className="piece-name" title="Brano corrente">{pieceName}</span>}
       </header>
 
       <Toolbar

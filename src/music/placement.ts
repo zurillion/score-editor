@@ -21,7 +21,7 @@ export function classifyNote(
   const staffEvents = events.filter((e) => e.staff === staff);
   const exact = staffEvents.find((e) => e.startTick === tick);
   if (exact) {
-    if (exact.kind !== 'note') return 'blocked';
+    if (exact.kind !== 'note') return exact.tuplet ? 'create' : 'blocked'; // a tuplet rest can be turned back into a note
     return exact.pitches.some((p) => pitchEquals(p, pitch)) ? 'delete' : 'chord';
   }
   const dur = durationTicks(duration);
