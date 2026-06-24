@@ -38,7 +38,9 @@ export type ScoreAction =
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
   | { type: 'CLEAR' }
-  | { type: 'LOAD'; score: ScoreState };
+  | { type: 'LOAD'; score: ScoreState }
+  | { type: 'UNDO' } // handled by the history wrapper
+  | { type: 'COMMIT' }; // close the current coalescing group (e.g. end of a drag)
 
 function withMeasureEvents(state: ScoreState, index: number, events: ScoreEvent[]): ScoreState {
   const measures = state.measures.slice();
@@ -319,6 +321,18 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         groups.set(mi, list);
       }
       if (groups.size === 0) return state;
+      // give every pasted tuplet a fresh id (so copies don't merge with the
+      // original or with each other), preserving grouping within this paste
+      const tupletRemap = new Map<string, Tuplet>();
+      const remapTuplet = (t?: Tuplet): Tuplet | undefined => {
+        if (!t) return undefined;
+        let nt = tupletRemap.get(t.id);
+        if (!nt) {
+          nt = { ...t, id: uid('tp') };
+          tupletRemap.set(t.id, nt);
+        }
+        return nt;
+      };
       const measures = state.measures.slice();
       const maxMi = Math.max(...groups.keys());
       while (measures.length <= maxMi) measures.push(emptyMeasure());
@@ -334,26 +348,45 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
             e.staff === staff && e.startTick >= minT ? { ...e, startTick: e.startTick + span } : e,
           );
         }
-        const pasted: NoteEvent[] = items.map((it) => ({
-          id: uid('n'),
-          kind: 'note',
-          staff: it.staff,
-          startTick: it.tick,
-          duration: it.duration,
-          ...(it.tuplet ? { tuplet: it.tuplet } : {}),
-          pitches: it.pitches.map((p) => ({ ...p })),
-        }));
+        const pasted: NoteEvent[] = items.map((it) => {
+          const tup = remapTuplet(it.tuplet);
+          return {
+            id: uid('n'),
+            kind: 'note',
+            staff: it.staff,
+            startTick: it.tick,
+            duration: it.duration,
+            ...(tup ? { tuplet: tup } : {}),
+            pitches: it.pitches.map((p) => ({ ...p })),
+          };
+        });
         measures[mi] = { ...measures[mi], events: sortEvents([...events, ...pasted]) };
       }
       return { ...state, measures };
     }
 
     case 'PASTE_MEASURES': {
-      const fresh = action.measures.map((m) => ({
-        ...m,
-        id: uid('m'),
-        events: m.events.map((e) => ({ ...e, id: uid('e') })),
-      }));
+      const fresh = action.measures.map((m) => {
+        // fresh tuplet ids per measure so pasted copies don't merge
+        const remap = new Map<string, Tuplet>();
+        const tupletOf = (t?: Tuplet): Tuplet | undefined => {
+          if (!t) return undefined;
+          let nt = remap.get(t.id);
+          if (!nt) {
+            nt = { ...t, id: uid('tp') };
+            remap.set(t.id, nt);
+          }
+          return nt;
+        };
+        return {
+          ...m,
+          id: uid('m'),
+          events: m.events.map((e) => {
+            const tup = tupletOf(e.tuplet);
+            return { ...e, id: uid('e'), ...(tup ? { tuplet: tup } : {}) };
+          }),
+        };
+      });
       const measures = state.measures.slice();
       measures.splice(Math.max(0, Math.min(action.index, measures.length)), 0, ...fresh);
       return { ...state, measures };
@@ -410,4 +443,45 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
     default:
       return state;
   }
+}
+
+// ---- Undo history ----
+// Wraps scoreReducer so that *every* action that actually changes the score is
+// pushed onto an undo stack. Rapid same-target actions (a note drag) coalesce
+// into a single undo step; a COMMIT closes the current group.
+
+export interface HistoryState {
+  present: ScoreState;
+  past: ScoreState[];
+  coalesce: string | null; // key of the in-progress coalescing group
+}
+
+export function initialHistory(measureCount = 4): HistoryState {
+  return { present: initialScore(measureCount), past: [], coalesce: null };
+}
+
+const UNDO_LIMIT = 100;
+
+/** Actions whose rapid repetition should collapse into one undo step. */
+function coalesceKey(action: ScoreAction): string | null {
+  return action.type === 'MOVE_NOTE' ? `move:${action.eventId}` : null;
+}
+
+export function historyReducer(state: HistoryState, action: ScoreAction): HistoryState {
+  if (action.type === 'UNDO') {
+    if (state.past.length === 0) return state;
+    return { present: state.past[state.past.length - 1], past: state.past.slice(0, -1), coalesce: null };
+  }
+  if (action.type === 'COMMIT') {
+    return state.coalesce === null ? state : { ...state, coalesce: null };
+  }
+  const next = scoreReducer(state.present, action);
+  if (next === state.present) return state; // no-op: nothing to record
+  const key = coalesceKey(action);
+  const merge = key !== null && key === state.coalesce; // continue the current group
+  return {
+    present: next,
+    past: merge ? state.past : [...state.past, state.present].slice(-UNDO_LIMIT),
+    coalesce: key,
+  };
 }

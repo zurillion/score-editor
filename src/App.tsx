@@ -6,7 +6,7 @@ import { scoreMeta, measureIndexAtTick } from './music/meta';
 import { Player, playPreview } from './music/audio';
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
 import { LIBRARY } from './music/library';
-import { initialScore, scoreReducer } from './state/scoreReducer';
+import { initialHistory, historyReducer } from './state/scoreReducer';
 import { Tool, NOTE_TOOL } from './state/tool';
 import { ClipNote, Clipboard, Selection } from './state/selection';
 import { Toolbar } from './components/Toolbar';
@@ -16,7 +16,8 @@ import { OptionsDialog } from './components/OptionsDialog';
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 export default function App() {
-  const [score, dispatch] = useReducer(scoreReducer, undefined, () => initialScore(4));
+  const [hist, dispatch] = useReducer(historyReducer, undefined, () => initialHistory(4));
+  const score = hist.present;
 
   const [tool, setTool] = useState<Tool>(NOTE_TOOL);
   const [duration, setDuration] = useState<Duration>({ value: 4, dots: 0 });
@@ -64,7 +65,6 @@ export default function App() {
     }
   }, [loopSkipAnacrusis]);
   const clipboardRef = useRef<Clipboard | null>(null);
-  const undoRef = useRef<ScoreState[]>([]);
   const systemRangesRef = useRef<SystemRange[]>([]);
   const onLayout = useCallback((ranges: SystemRange[]) => {
     systemRangesRef.current = ranges;
@@ -211,11 +211,6 @@ export default function App() {
   const onClearSelection = useCallback(() => setSelection(null), []);
   const onSetCursor = useCallback((tick: number) => setCursorTick(Math.max(0, tick)), []);
 
-  const pushUndo = useCallback(() => {
-    undoRef.current.push(clone(score));
-    if (undoRef.current.length > 50) undoRef.current.shift();
-  }, [score]);
-
   // ---- save / load a piece as a .json file ----
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -253,7 +248,6 @@ export default function App() {
         }
         handleStop();
         setSelection(null);
-        pushUndo();
         dispatch({ type: 'LOAD', score: clone(loaded) });
         if (typeof obj?.bpm === 'number') setBpm(obj.bpm);
         setPieceName(typeof obj?.name === 'string' ? obj.name : '');
@@ -261,7 +255,7 @@ export default function App() {
         window.alert('Impossibile leggere il file (JSON non valido).');
       }
     },
-    [handleStop, pushUndo],
+    [handleStop],
   );
 
   const handleInsertMeasures = useCallback(() => {
@@ -271,9 +265,8 @@ export default function App() {
     if (!Number.isFinite(n) || n <= 0) return;
     const m = scoreMeta(score);
     const idx = cursorTick >= m.totalTicks ? score.measures.length : measureIndexAtTick(m, cursorTick);
-    pushUndo();
     dispatch({ type: 'PASTE_MEASURES', index: idx, measures: Array.from({ length: n }, () => ({ id: '', events: [] })) });
-  }, [score, cursorTick, pushUndo]);
+  }, [score, cursorTick]);
 
   // stop audio when the component unmounts
   useEffect(
@@ -307,7 +300,6 @@ export default function App() {
     };
     const deleteSelection = () => {
       if (!selection) return;
-      pushUndo();
       if (selection.kind === 'measures') dispatch({ type: 'DELETE_MEASURES', indices: selection.indices });
       else dispatch({ type: 'DELETE_NOTES', ids: selection.ids });
       setSelection(null);
@@ -319,11 +311,8 @@ export default function App() {
 
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 'z') {
-        const prev = undoRef.current.pop();
-        if (prev) {
-          dispatch({ type: 'LOAD', score: prev });
-          setSelection(null);
-        }
+        dispatch({ type: 'UNDO' });
+        setSelection(null);
         e.preventDefault();
         return;
       }
@@ -345,12 +334,10 @@ export default function App() {
         if (!cb) return;
         if (cb.kind === 'notes') {
           if (cb.events.length === 0) return;
-          pushUndo();
           dispatch({ type: 'PASTE_NOTES', baseTick: Math.round(cursorTick), events: cb.events });
         } else {
           if (cb.measures.length === 0) return;
           const idx = cursorTick >= meta.totalTicks ? score.measures.length : measureIndexAtTick(meta, cursorTick);
-          pushUndo();
           dispatch({ type: 'PASTE_MEASURES', index: idx, measures: cb.measures });
         }
         return;
@@ -366,7 +353,6 @@ export default function App() {
       // transpose selected notes up/down diatonically
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         if (selection?.kind === 'notes') {
-          pushUndo();
           dispatch({ type: 'TRANSPOSE_NOTES', ids: selection.ids, delta: e.key === 'ArrowUp' ? 1 : -1 });
           e.preventDefault();
         }
@@ -415,7 +401,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isPlaying, handlePlay, handleStop, selection, score, cursorTick, duration, pushUndo]);
+  }, [isPlaying, handlePlay, handleStop, selection, score, cursorTick, duration]);
 
   // time/key shown in the tools follow the measure under the playhead (or the cursor)
   const meta = scoreMeta(score);
@@ -426,9 +412,8 @@ export default function App() {
   const measureLabel = hasPickup ? (activeMeasure === 0 ? 'levare' : `batt. ${activeMeasure}`) : `batt. ${activeMeasure + 1}`;
 
   const handleToggleAnacrusis = useCallback(() => {
-    pushUndo();
     dispatch({ type: 'SET_PICKUP', on: !score.measures[0]?.pickup });
-  }, [score, pushUndo]);
+  }, [score]);
 
   return (
     <div className="app">

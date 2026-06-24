@@ -173,7 +173,9 @@ function renderMeasureTuplets(pm: PlacedMeasure, beamProps: Map<string, { stemUp
         {number}
       </text>
     );
-    const beamed = notes.length >= 2 && notes.every((e) => beamProps.has(e.id));
+    // Only a clean all-note beam shows just the number; if any member is a rest
+    // (or not beamed), draw a bracket spanning the whole tuplet.
+    const beamed = members.length >= 2 && members.every((e) => e.kind === 'note' && beamProps.has(e.id));
     if (beamed) {
       const tipYs = notes.map((e) => beamProps.get(e.id)!.tipY);
       const beamY = tipYs.reduce((a, b) => a + b, 0) / tipYs.length;
@@ -446,7 +448,10 @@ export function System(props: SystemProps) {
     }
     if (noteDragRef.current) {
       noteDragRef.current = null;
-      if (movedRef.current) suppressClickRef.current = true; // a drag happened: don't treat it as a click
+      if (movedRef.current) {
+        suppressClickRef.current = true; // a drag happened: don't treat it as a click
+        onAction({ type: 'COMMIT' }); // close the drag's coalesced undo step
+      }
     }
   }
 
