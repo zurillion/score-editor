@@ -99,10 +99,16 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
 
       if (verdict === 'delete') {
         const pitches = target.pitches.filter((p) => !pitchEquals(p, action.pitch));
-        const events =
-          pitches.length === 0
-            ? m.events.filter((e) => e.id !== target.id)
-            : m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));
+        let events: ScoreEvent[];
+        if (pitches.length > 0) {
+          events = m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));
+        } else if (target.tuplet) {
+          // removing the last pitch of a tuplet note leaves a tuplet rest (keeps the triplet intact)
+          const rest: RestEvent = { id: uid('r'), kind: 'rest', staff: target.staff, startTick: target.startTick, duration: target.duration, tuplet: target.tuplet };
+          events = m.events.map((e) => (e.id === target.id ? rest : e));
+        } else {
+          events = m.events.filter((e) => e.id !== target.id);
+        }
         return withMeasureEvents(state, action.measureIndex, events);
       }
 
