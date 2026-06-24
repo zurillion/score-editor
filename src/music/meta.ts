@@ -2,8 +2,6 @@ import { Measure, ScoreState, TimeSignature } from './types';
 import { eventTicks, measureTicks } from './theory';
 import { TICKS_PER_QUARTER } from './constants';
 
-const PICKUP_MARGIN = TICKS_PER_QUARTER; // clickable room (a beat) past the anacrusis content, to append
-
 /** Effective metadata for one measure once per-measure time/key overrides are resolved. */
 export interface MeasureMeta {
   index: number;
@@ -61,8 +59,8 @@ export function scoreMeta(score: ScoreState): ScoreMeta {
     if (m.pickup) {
       const content = Math.min(full, contentEndTicks(m));
       total = content; // an anacrusis is only as long as its content (the rest "doesn't exist")
-      spanTicks = m.events.length ? Math.min(full, content + PICKUP_MARGIN) : full; // empty -> full width to start filling
-      spanTicks = Math.max(spanTicks, PICKUP_MARGIN);
+      // hug the content (no trailing space); an empty pickup gets a modest clickable width
+      spanTicks = m.events.length ? Math.max(content, 1) : Math.min(full, 2 * TICKS_PER_QUARTER);
     }
     const meta: MeasureMeta = {
       index: i,

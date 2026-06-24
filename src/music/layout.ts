@@ -78,6 +78,12 @@ export function widthForTicks(ticks: number): number {
   return Math.max(96, ticks * PX_PER_TICK + 2 * MEASURE_PAD);
 }
 
+/** Drawn width of a measure: a normal bar has a readable minimum; an anacrusis hugs its content. */
+export function measureWidth(meta: MeasureMeta): number {
+  if (meta.pickup) return Math.max(2 * MEASURE_PAD + 12, meta.spanTicks * PX_PER_TICK + 2 * MEASURE_PAD);
+  return widthForTicks(meta.spanTicks);
+}
+
 /** x of a local tick inside a placed measure (notes start past any left inset). */
 export function measureTickToX(pm: PlacedMeasure, tick: number): number {
   return pm.noteLeft + (tick / pm.spanTicks) * pm.noteSpan;
@@ -156,7 +162,7 @@ function buildSystem(
     const mm = metas[i];
     const firstInSystem = i === from;
     const leftInset = firstInSystem ? 0 : changeInsetWidth(mm); // line starts show the key in the header
-    const contentW = widthForTicks(mm.spanTicks) + leftInset;
+    const contentW = measureWidth(mm) + leftInset;
     const noteLeft = x + MEASURE_PAD + leftInset;
     const noteSpan = contentW - 2 * MEASURE_PAD - leftInset;
     placed.push({
@@ -221,7 +227,7 @@ export function layoutSystems(
     let j = i;
     while (j < measures.length) {
       const inset = j !== i && (metas[j].keyChanged || metas[j].tsChanged) ? changeInsetWidth(metas[j]) : 0;
-      const w = widthForTicks(metas[j].spanTicks) + inset;
+      const w = measureWidth(metas[j]) + inset;
       if (j > i && sum + w > usable) break;
       sum += w;
       j++;
