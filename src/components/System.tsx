@@ -142,6 +142,33 @@ function computeMeasureBeams(pm: PlacedMeasure, diagonal: boolean): { beamProps:
 }
 
 /**
+ * Extra horizontal offset for a rest so an up-stem flag on the preceding note
+ * (which reaches to the right) doesn't overlap it. Only kicks in when the slot
+ * is tight (tuplets); clamped so the rest never collides with the next event.
+ */
+function restClearShift(pm: PlacedMeasure, staff: Staff, startTick: number, beamProps: Map<string, { stemUp: boolean; tipY: number }>): number {
+  let prev: ScoreEvent | null = null;
+  let next: ScoreEvent | null = null;
+  for (const e of pm.measure.events) {
+    if (e.staff !== staff) continue;
+    if (e.startTick < startTick && (!prev || e.startTick > prev.startTick)) prev = e;
+    if (e.startTick > startTick && (!next || e.startTick < next.startTick)) next = e;
+  }
+  if (!prev || prev.kind !== 'note') return 0;
+  const flagged = beamCount(prev.duration.value) >= 1 && !beamProps.has(prev.id); // unbeamed -> has a flag
+  if (!flagged) return 0;
+  if (!stemUpForChord(prev.pitches.map(pitchToDiatonic), staff)) return 0; // down-stem flags stay left of the notehead
+  const slotX = measureTickToX(pm, startTick);
+  const flagRight = measureTickToX(pm, prev.startTick) + 1.9 * STAFF_SPACE; // notehead + stem + flag reach
+  let shift = Math.max(0, flagRight + 0.45 * STAFF_SPACE - slotX);
+  if (next) {
+    const nextLeft = measureTickToX(pm, next.startTick) - (next.kind === 'note' ? noteheadHalfWidth(next.duration.value) : 0.45 * STAFF_SPACE);
+    shift = Math.max(0, Math.min(slotX + shift, nextLeft - 0.45 * STAFF_SPACE - 2) - slotX);
+  }
+  return shift;
+}
+
+/**
  * Tuplet brackets / numbers for one measure. A beamed tuplet (e.g. eighth-note
  * triplets) shows just the number over the beam; an unbeamed one (quarter
  * triplets) gets a bracket with the number, clear of the stems.
@@ -737,7 +764,7 @@ export function System(props: SystemProps) {
                 key={ev.id}
                 duration={ev.duration}
                 middle={ev.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
-                x={measureTickToX(pm, ev.startTick)}
+                x={measureTickToX(pm, ev.startTick) + restClearShift(pm, ev.staff, ev.startTick, beamProps)}
                 color="#1a1a1a"
               />
             ),
@@ -747,7 +774,7 @@ export function System(props: SystemProps) {
               key={`rest-${i}`}
               duration={r.duration}
               middle={r.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
-              x={measureTickToX(pm, r.whole ? pm.total / 2 : r.startTick)}
+              x={r.whole ? measureTickToX(pm, pm.total / 2) : measureTickToX(pm, r.startTick) + restClearShift(pm, r.staff, r.startTick, beamProps)}
               color="#1a1a1a"
             />
           ))}
