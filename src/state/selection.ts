@@ -1,4 +1,4 @@
-import { Duration, Measure, Pitch, Staff } from '../music/types';
+import { Duration, Measure, Pitch, Staff, Tuplet } from '../music/types';
 
 /** Current selection (global measure indices, or global event ids). */
 export type Selection =
@@ -12,6 +12,7 @@ export interface ClipNote {
   staff: Staff;
   duration: Duration;
   pitches: Pitch[];
+  tuplet?: Tuplet;
 }
 
 /** What a copy/cut put aside. */

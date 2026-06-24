@@ -82,10 +82,12 @@ export function beamGroups(events: ScoreEvent[], staff: Staff, ts: TimeSignature
   const out: NoteEvent[][] = [];
   let run: NoteEvent[] = [];
   let runSeg = -1;
+  let runTid: string | null = null; // tuplet id of the current run (null = not a tuplet)
 
   const flush = () => {
     if (run.length === 0) return;
-    const hasShort = sub !== null && run.some((e) => beamCount(e.duration.value) >= 2);
+    const isTuplet = !!run[0].tuplet; // a tuplet beams as one group, never sub-split
+    const hasShort = !isTuplet && sub !== null && run.some((e) => beamCount(e.duration.value) >= 2);
     if (hasShort && sub !== null) {
       let cur: NoteEvent[] = [];
       let curSub = -1;
@@ -106,20 +108,26 @@ export function beamGroups(events: ScoreEvent[], staff: Staff, ts: TimeSignature
     }
     run = [];
     runSeg = -1;
+    runTid = null;
   };
 
   for (const e of staffEvents) {
     if (e.kind === 'note' && beamCount(e.duration.value) >= 1) {
       const seg = segOf(e.startTick);
+      const tid = e.tuplet?.id ?? null;
+      const sameTuplet = tid !== null && tid === runTid;
       if (run.length === 0) {
         run = [e];
         runSeg = seg;
-      } else if (seg === runSeg) {
+        runTid = tid;
+      } else if (sameTuplet || (tid === null && runTid === null && seg === runSeg)) {
+        // same tuplet (any segment), or plain notes within one beat segment
         run.push(e);
       } else {
         flush();
         run = [e];
         runSeg = seg;
+        runTid = tid;
       }
     } else {
       flush();

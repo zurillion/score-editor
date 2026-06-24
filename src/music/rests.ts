@@ -1,5 +1,5 @@
 import { Duration, DurationValue, ScoreEvent, Staff } from './types';
-import { durationTicks } from './theory';
+import { durationTicks, eventTicks } from './theory';
 
 export interface RestSeg {
   staff: Staff;
@@ -50,7 +50,7 @@ export function measureRests(events: ScoreEvent[], total: number, allowWhole = t
       let pos = 0;
       for (const e of se) {
         if (e.startTick > pos) out.push(...fillGap(staff, pos, e.startTick - pos));
-        pos = Math.max(pos, e.startTick + durationTicks(e.duration));
+        pos = Math.max(pos, e.startTick + eventTicks(e));
       }
       if (pos < total) out.push(...fillGap(staff, pos, total - pos));
     } else if (events.some((e) => e.staff !== staff && e.kind === 'note')) {

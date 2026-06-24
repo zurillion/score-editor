@@ -95,6 +95,8 @@ interface ToolbarProps {
   onClear: () => void;
   onLoadPiece: (id: string) => void;
   onInsertMeasures: () => void;
+  onSaveFile: () => void;
+  onLoadFile: () => void;
   onOpenOptions: () => void;
 }
 
@@ -144,6 +146,8 @@ export function Toolbar(props: ToolbarProps) {
     onClear,
     onLoadPiece,
     onInsertMeasures,
+    onSaveFile,
+    onLoadFile,
     onOpenOptions,
   } = props;
 
@@ -163,8 +167,14 @@ export function Toolbar(props: ToolbarProps) {
     else if (tool.kind === 'dot' && tool.dots === dots) setTool({ kind: 'note' });
     else setTool({ kind: 'dot', dots, sticky: false });
   }
+  function clickTuplet(detail: number) {
+    if (detail >= 2) setTool({ kind: 'tuplet', sticky: true });
+    else if (tool.kind === 'tuplet') setTool({ kind: 'note' });
+    else setTool({ kind: 'tuplet', sticky: false });
+  }
 
   const eraserClass = tool.kind === 'eraser' ? (tool.sticky ? 'on sticky' : 'on') : '';
+  const tupletClass = tool.kind === 'tuplet' ? (tool.sticky ? 'on sticky' : 'on') : '';
 
   return (
     <div className="toolbar">
@@ -265,6 +275,13 @@ export function Toolbar(props: ToolbarProps) {
             ⌫ Gomma
           </button>
           <button
+            className={tupletClass}
+            onClick={(e) => clickTuplet(e.detail)}
+            title="Terzina — clicca su una nota per trasformarla in una terzina (3 note nel tempo di 2). 1 click: una volta · doppio click: fissa."
+          >
+            ³ Terzina
+          </button>
+          <button
             className={`icon-btn ${tool.kind === 'select-measures' ? 'on' : ''}`}
             onClick={() => setTool({ kind: 'select-measures' })}
             title="Seleziona battute (trascina). ⌘C/X copia/taglia · Backspace elimina"
@@ -348,6 +365,14 @@ export function Toolbar(props: ToolbarProps) {
           <button className={mode === 'page' ? 'on' : ''} onClick={() => setMode('page')}>
             Pagina
           </button>
+        </div>
+      </fieldset>
+
+      <fieldset className="group">
+        <legend>File</legend>
+        <div className="btn-row">
+          <button onClick={onSaveFile} title="Salva il brano come file .json">⤓ Salva</button>
+          <button onClick={onLoadFile} title="Carica un brano da un file .json">⤒ Carica</button>
         </div>
       </fieldset>
 

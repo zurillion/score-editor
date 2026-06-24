@@ -1,5 +1,5 @@
 import { Measure, ScoreState, TimeSignature } from './types';
-import { durationTicks, measureTicks } from './theory';
+import { eventTicks, measureTicks } from './theory';
 import { TICKS_PER_QUARTER } from './constants';
 
 const PICKUP_MARGIN = TICKS_PER_QUARTER; // clickable room (a beat) past the anacrusis content, to append
@@ -21,7 +21,7 @@ export interface MeasureMeta {
 
 /** End tick of the last event across both staves (the anacrusis "content length"). */
 export function contentEndTicks(m: Measure): number {
-  return m.events.reduce((mx, e) => Math.max(mx, e.startTick + durationTicks(e.duration)), 0);
+  return m.events.reduce((mx, e) => Math.max(mx, e.startTick + eventTicks(e)), 0);
 }
 
 export interface ScoreMeta {

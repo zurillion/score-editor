@@ -1,6 +1,6 @@
 import { Fragment, useRef, useState } from 'react';
-import { Alter, Duration, Pitch, ScoreEvent, Staff, TimeSignature } from '../music/types';
-import { diatonicToPitch, durationTicks, pitchNameIt, pitchToDiatonic, staffForDiatonic } from '../music/theory';
+import { Alter, Duration, NoteEvent, Pitch, ScoreEvent, Staff, TimeSignature } from '../music/types';
+import { diatonicToPitch, durationTicks, eventTicks, pitchNameIt, pitchToDiatonic, staffForDiatonic } from '../music/theory';
 import {
   SystemLayout,
   PlacedMeasure,
@@ -141,6 +141,69 @@ function computeMeasureBeams(pm: PlacedMeasure, diagonal: boolean): { beamProps:
   return { beamProps, elements };
 }
 
+/**
+ * Tuplet brackets / numbers for one measure. A beamed tuplet (e.g. eighth-note
+ * triplets) shows just the number over the beam; an unbeamed one (quarter
+ * triplets) gets a bracket with the number, clear of the stems.
+ */
+function renderMeasureTuplets(pm: PlacedMeasure, beamProps: Map<string, { stemUp: boolean; tipY: number }>): JSX.Element[] {
+  const els: JSX.Element[] = [];
+  const groups = new Map<string, ScoreEvent[]>();
+  for (const ev of pm.measure.events) {
+    if (!ev.tuplet) continue;
+    const arr = groups.get(ev.tuplet.id) ?? [];
+    arr.push(ev);
+    groups.set(ev.tuplet.id, arr);
+  }
+  for (const [tid, raw] of groups) {
+    const members = raw.slice().sort((a, b) => a.startTick - b.startTick);
+    if (members.length === 0) continue;
+    const staff = members[0].staff;
+    const notes = members.filter((e): e is NoteEvent => e.kind === 'note');
+    const allDs = notes.flatMap((e) => e.pitches.map(pitchToDiatonic));
+    const stemUp = allDs.length ? stemUpForChord(allDs, staff) : staff === 'treble';
+    const dir = stemUp ? 1 : -1; // +1 = above the noteheads (smaller y)
+    const xs = members.map((e) => measureTickToX(pm, e.startTick));
+    const x0 = xs[0] - noteheadHalfWidth(members[0].duration.value);
+    const x1 = xs[xs.length - 1] + noteheadHalfWidth(members[members.length - 1].duration.value);
+    const midX = (x0 + x1) / 2;
+    const number = String(members[0].tuplet!.actual);
+    const numEl = (y: number) => (
+      <text key={`tp-${pm.index}-${tid}-n`} x={midX} y={y} textAnchor="middle" dominantBaseline="middle" fontStyle="italic" fontFamily="serif" fontSize={13} fontWeight={700} fill="#1a1a1a" pointerEvents="none">
+        {number}
+      </text>
+    );
+    const beamed = notes.length >= 2 && notes.every((e) => beamProps.has(e.id));
+    if (beamed) {
+      const tipYs = notes.map((e) => beamProps.get(e.id)!.tipY);
+      const beamY = tipYs.reduce((a, b) => a + b, 0) / tipYs.length;
+      els.push(numEl(beamY - dir * 11));
+    } else {
+      const tips = notes.map((e) => {
+        const ds = e.pitches.map(pitchToDiatonic);
+        const headY = stemUp ? diatonicToY(Math.max(...ds)) : diatonicToY(Math.min(...ds));
+        return headY - dir * STEM_LENGTH;
+      });
+      const bracketY = tips.length
+        ? (stemUp ? Math.min(...tips) - 6 : Math.max(...tips) + 6)
+        : (stemUp ? TOP_Y - 14 : BOTTOM_Y + 14);
+      const hookY = bracketY + dir * 5;
+      const gap = 8;
+      const stroke = '#1a1a1a';
+      els.push(
+        <g key={`tp-${pm.index}-${tid}`} pointerEvents="none">
+          <line x1={x0} y1={hookY} x2={x0} y2={bracketY} stroke={stroke} strokeWidth={1.3} />
+          <line x1={x0} y1={bracketY} x2={midX - gap} y2={bracketY} stroke={stroke} strokeWidth={1.3} />
+          <line x1={midX + gap} y1={bracketY} x2={x1} y2={bracketY} stroke={stroke} strokeWidth={1.3} />
+          <line x1={x1} y1={bracketY} x2={x1} y2={hookY} stroke={stroke} strokeWidth={1.3} />
+          {numEl(bracketY)}
+        </g>,
+      );
+    }
+  }
+  return els;
+}
+
 const GHOST_COLOR: Record<PlaceAction, string> = {
   create: '#94a3b8',
   chord: '#2563eb',
@@ -232,7 +295,7 @@ export function System(props: SystemProps) {
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
-  const modal = tool.kind === 'accidental' || tool.kind === 'eraser' || tool.kind === 'dot';
+  const modal = tool.kind === 'accidental' || tool.kind === 'eraser' || tool.kind === 'dot' || tool.kind === 'tuplet';
 
   function localPoint(clientX: number, clientY: number): { x: number; y: number } | null {
     const svg = svgRef.current;
@@ -275,7 +338,7 @@ export function System(props: SystemProps) {
     if (pm.pickup) {
       // pack the anacrusis from the start: appending never leaves a leading gap,
       // so the upbeat begins on its first note.
-      const contentEnd = pm.measure.events.reduce((mx, e) => Math.max(mx, e.startTick + durationTicks(e.duration)), 0);
+      const contentEnd = pm.measure.events.reduce((mx, e) => Math.max(mx, e.startTick + eventTicks(e)), 0);
       tick = Math.min(tick, contentEnd);
     }
 
@@ -448,6 +511,8 @@ export function System(props: SystemProps) {
       onAction({ type: 'ERASE', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic });
     } else if (tool.kind === 'dot') {
       onAction({ type: 'SET_DOTS', measureIndex: hit.measureIndex, eventId: hit.eventId, dots: tool.dots });
+    } else if (tool.kind === 'tuplet') {
+      onAction({ type: 'MAKE_TUPLET', measureIndex: hit.measureIndex, eventId: hit.eventId });
     }
     onAfterApply();
   }
@@ -469,7 +534,7 @@ export function System(props: SystemProps) {
         );
     }
   } else if (hover?.mode === 'target') {
-    const color = tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : '#dc2626';
+    const color = tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : tool.kind === 'tuplet' ? '#7c3aed' : '#dc2626';
     overlay = (
       <g pointerEvents="none">
         <circle cx={hover.hx} cy={hover.hy} r={NOTEHEAD_RX + 3} fill={`${color}22`} stroke={color} strokeWidth={1.4} />
@@ -648,6 +713,7 @@ export function System(props: SystemProps) {
         <Fragment key={pm.measure.id}>
           {(pm.keyChanged || pm.tsChanged) && renderChange(pm)}
           {beamEls}
+          {renderMeasureTuplets(pm, beamProps)}
           {pm.measure.events.map((ev) =>
             ev.kind === 'note' ? (
               <NoteView
@@ -666,7 +732,7 @@ export function System(props: SystemProps) {
                 key={ev.id}
                 duration={ev.duration}
                 middle={ev.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
-                x={measureTickToX(pm, ev.startTick + durationTicks(ev.duration) / 2)}
+                x={measureTickToX(pm, ev.startTick + eventTicks(ev) / 2)}
                 color="#1a1a1a"
               />
             ),

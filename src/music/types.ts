@@ -20,6 +20,16 @@ export interface Duration {
   dots: 0 | 1 | 2;
 }
 
+/**
+ * Tuplet membership: `actual` notes played in the time of `normal` (a triplet is
+ * 3:2). Events sharing an `id` form one bracketed group and beam together.
+ */
+export interface Tuplet {
+  id: string;
+  actual: number; // e.g. 3
+  normal: number; // e.g. 2
+}
+
 export interface NoteEvent {
   id: string;
   kind: 'note';
@@ -27,6 +37,7 @@ export interface NoteEvent {
   startTick: number; // offset from the measure's start
   duration: Duration;
   pitches: Pitch[]; // one entry = single note, several = chord (simultaneous notes)
+  tuplet?: Tuplet; // set on each member of a tuplet group
 }
 
 export interface RestEvent {
@@ -35,6 +46,7 @@ export interface RestEvent {
   staff: Staff;
   startTick: number;
   duration: Duration;
+  tuplet?: Tuplet;
 }
 
 export type ScoreEvent = NoteEvent | RestEvent;

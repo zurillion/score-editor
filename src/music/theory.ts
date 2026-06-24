@@ -1,4 +1,4 @@
-import { Alter, Duration, Pitch, Staff, StepName, TimeSignature } from './types';
+import { Alter, Duration, Pitch, Staff, StepName, TimeSignature, Tuplet } from './types';
 import { TICKS_PER_WHOLE } from './constants';
 
 export const STEP_NAMES: StepName[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
@@ -37,6 +37,16 @@ export function durationTicks(d: Duration): number {
   const base = TICKS_PER_WHOLE / d.value;
   const dotFactor = d.dots === 0 ? 1 : d.dots === 1 ? 1.5 : 1.75;
   return Math.round(base * dotFactor);
+}
+
+/** Tuplet scaling: a triplet (3:2) plays 3 notes in the time of 2 -> factor 2/3. */
+export function tupletFactor(t?: Tuplet): number {
+  return t ? t.normal / t.actual : 1;
+}
+
+/** Actual ticks an event occupies, accounting for any tuplet (e.g. a triplet). */
+export function eventTicks(ev: { duration: Duration; tuplet?: Tuplet }): number {
+  return Math.round(durationTicks(ev.duration) * tupletFactor(ev.tuplet));
 }
 
 export function measureTicks(ts: TimeSignature): number {

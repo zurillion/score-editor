@@ -34,9 +34,10 @@ export default function App() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [diagonalBeams, setDiagonalBeams] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('opt.diagonalBeams') === '1';
+      const stored = localStorage.getItem('opt.diagonalBeams');
+      return stored === null ? true : stored === '1'; // default on; honour an explicit choice
     } catch {
-      return false;
+      return true;
     }
   });
   useEffect(() => {
@@ -46,6 +47,21 @@ export default function App() {
       /* ignore */
     }
   }, [diagonalBeams]);
+  const [loopSkipAnacrusis, setLoopSkipAnacrusis] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem('opt.loopSkipAnacrusis');
+      return stored === null ? true : stored === '1'; // default on
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('opt.loopSkipAnacrusis', loopSkipAnacrusis ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [loopSkipAnacrusis]);
   const clipboardRef = useRef<Clipboard | null>(null);
   const undoRef = useRef<ScoreState[]>([]);
   const systemRangesRef = useRef<SystemRange[]>([]);
@@ -115,6 +131,12 @@ export default function App() {
     if (midiPlayerRef.current?.playing) midiPlayerRef.current.setBpm(bpm);
   }, [bpm]);
 
+  // keep the "skip anacrusis on loop" choice applied to a running player too
+  useEffect(() => {
+    if (playerRef.current) playerRef.current.skipPickupInLoop = loopSkipAnacrusis;
+    if (midiPlayerRef.current) midiPlayerRef.current.skipPickupInLoop = loopSkipAnacrusis;
+  }, [loopSkipAnacrusis]);
+
   const handleStop = useCallback(() => {
     playerRef.current?.stop();
     midiPlayerRef.current?.stop();
@@ -134,6 +156,7 @@ export default function App() {
     if (midiOn && mp?.output) {
       playerRef.current?.stop();
       mp.loop = loopRef.current;
+      mp.skipPickupInLoop = loopSkipAnacrusis;
       mp.channel = midiChannel - 1;
       mp.onTick = onTick;
       mp.onEnd = onEnd;
@@ -144,11 +167,12 @@ export default function App() {
     const player = playerRef.current ?? new Player();
     playerRef.current = player;
     player.loop = loopRef.current; // looping is handled inside the Player (seamless)
+    player.skipPickupInLoop = loopSkipAnacrusis;
     player.onTick = onTick;
     player.onEnd = onEnd;
     player.play(score, bpm);
     setIsPlaying(true);
-  }, [bpm, score, midiOn, midiChannel]);
+  }, [bpm, score, midiOn, midiChannel, loopSkipAnacrusis]);
 
   const handleSetLoop = useCallback((v: boolean) => {
     setLoop(v);
@@ -159,7 +183,7 @@ export default function App() {
 
   // After a one-shot accidental/eraser is applied, revert to the note tool.
   const handleAfterApply = useCallback(() => {
-    setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser' || t.kind === 'dot') && !t.sticky ? NOTE_TOOL : t));
+    setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser' || t.kind === 'dot' || t.kind === 'tuplet') && !t.sticky ? NOTE_TOOL : t));
   }, []);
 
   const handlePreviewNote = useCallback((pitches: Pitch[]) => playPreview(pitches), []);
@@ -189,6 +213,50 @@ export default function App() {
     undoRef.current.push(clone(score));
     if (undoRef.current.length > 50) undoRef.current.shift();
   }, [score]);
+
+  // ---- save / load a piece as a .json file ----
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleSaveFile = useCallback(() => {
+    const data = { format: 'score-composer', version: 1, bpm, score };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    a.href = url;
+    a.download = `brano-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, [bpm, score]);
+
+  const handleRequestLoadFile = useCallback(() => fileInputRef.current?.click(), []);
+
+  const handleLoadFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = ''; // allow re-loading the same file later
+      if (!file) return;
+      try {
+        const obj = JSON.parse(await file.text());
+        const loaded: ScoreState | undefined = obj?.score ?? (Array.isArray(obj?.measures) ? obj : undefined);
+        if (!loaded || !Array.isArray(loaded.measures) || !loaded.timeSignature) {
+          window.alert('File non valido: non sembra un brano di Score Composer.');
+          return;
+        }
+        handleStop();
+        setSelection(null);
+        pushUndo();
+        dispatch({ type: 'LOAD', score: clone(loaded) });
+        if (typeof obj?.bpm === 'number') setBpm(obj.bpm);
+      } catch {
+        window.alert('Impossibile leggere il file (JSON non valido).');
+      }
+    },
+    [handleStop, pushUndo],
+  );
 
   const handleInsertMeasures = useCallback(() => {
     const raw = window.prompt('Quante battute vuote inserire al punto di playback?', '1');
@@ -220,15 +288,15 @@ export default function App() {
         return { kind: 'measures', measures: score.measures.filter((_, i) => idx.has(i)).map(clone) };
       }
       const ids = new Set(selection.ids);
-      const picked: { g: number; staff: NoteEvent['staff']; duration: NoteEvent['duration']; pitches: NoteEvent['pitches'] }[] = [];
+      const picked: { g: number; staff: NoteEvent['staff']; duration: NoteEvent['duration']; pitches: NoteEvent['pitches']; tuplet: NoteEvent['tuplet'] }[] = [];
       score.measures.forEach((m, mi) =>
         m.events.forEach((e) => {
-          if (e.kind === 'note' && ids.has(e.id)) picked.push({ g: meta.measures[mi].startTick + e.startTick, staff: e.staff, duration: e.duration, pitches: e.pitches });
+          if (e.kind === 'note' && ids.has(e.id)) picked.push({ g: meta.measures[mi].startTick + e.startTick, staff: e.staff, duration: e.duration, pitches: e.pitches, tuplet: e.tuplet });
         }),
       );
       if (picked.length === 0) return null;
       const minG = Math.min(...picked.map((p) => p.g));
-      const events: ClipNote[] = picked.map((p) => ({ offset: p.g - minG, staff: p.staff, duration: clone(p.duration), pitches: clone(p.pitches) }));
+      const events: ClipNote[] = picked.map((p) => ({ offset: p.g - minG, staff: p.staff, duration: clone(p.duration), pitches: clone(p.pitches), ...(p.tuplet ? { tuplet: clone(p.tuplet) } : {}) }));
       return { kind: 'notes', events };
     };
     const deleteSelection = () => {
@@ -399,7 +467,17 @@ export default function App() {
         onClear={() => dispatch({ type: 'CLEAR' })}
         onLoadPiece={handleLoadPiece}
         onInsertMeasures={handleInsertMeasures}
+        onSaveFile={handleSaveFile}
+        onLoadFile={handleRequestLoadFile}
         onOpenOptions={() => setOptionsOpen(true)}
+      />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json"
+        style={{ display: 'none' }}
+        onChange={handleLoadFile}
       />
 
       <Score
@@ -438,6 +516,8 @@ export default function App() {
         onClose={() => setOptionsOpen(false)}
         diagonalBeams={diagonalBeams}
         setDiagonalBeams={setDiagonalBeams}
+        loopSkipAnacrusis={loopSkipAnacrusis}
+        setLoopSkipAnacrusis={setLoopSkipAnacrusis}
       />
     </div>
   );

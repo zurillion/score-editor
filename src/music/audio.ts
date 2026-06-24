@@ -1,5 +1,5 @@
 import { Pitch, ScoreState } from './types';
-import { durationTicks, pitchToFrequency, pitchToMidi } from './theory';
+import { eventTicks, pitchToFrequency, pitchToMidi } from './theory';
 import { resolveMeasure } from './accidentals';
 import { scoreMeta } from './meta';
 import { TICKS_PER_QUARTER } from './constants';
@@ -53,6 +53,7 @@ export interface ScheduledNote {
 export interface Schedule {
   notes: ScheduledNote[]; // sorted by startTick
   totalTicks: number;
+  pickupTicks: number; // length of the leading anacrusis (0 if none) — skippable on loop
 }
 
 /**
@@ -69,7 +70,7 @@ export function buildSchedule(score: ScoreState): Schedule {
     for (const ev of m.events) {
       if (ev.kind !== 'note') continue;
       const startTick = mm.startTick + ev.startTick;
-      const durTicks = durationTicks(ev.duration);
+      const durTicks = eventTicks(ev);
       const eff = ev.pitches.map((p) => {
         const r = resolved.get(`${ev.id}|${p.step}${p.octave}`);
         return r ? { ...p, alter: r.alter } : p;
@@ -78,20 +79,42 @@ export function buildSchedule(score: ScoreState): Schedule {
     }
   }
   notes.sort((a, b) => a.startTick - b.startTick);
-  return { notes, totalTicks: meta.totalTicks };
+  const pickupTicks = meta.measures[0]?.pickup ? meta.measures[0].total : 0;
+  return { notes, totalTicks: meta.totalTicks, pickupTicks };
 }
 
-/** Enumerate the global ticks at which a note starting at `startTick` falls within [lo, hi). */
-export function occurrences(startTick: number, totalTicks: number, loop: boolean, lo: number, hi: number): number[] {
-  if (!loop) return startTick >= lo && startTick < hi ? [startTick] : [];
-  if (totalTicks <= 0) return [];
+/**
+ * Enumerate the global ticks at which a note starting at `startTick` falls within
+ * [lo, hi). Every note plays once on the first pass; when looping, only the body
+ * after `loopStart` repeats (so a leading anacrusis is heard once, not every loop).
+ */
+export function occurrences(
+  startTick: number,
+  totalTicks: number,
+  loop: boolean,
+  lo: number,
+  hi: number,
+  loopStart = 0,
+): number[] {
   const out: number[] = [];
-  let k = Math.ceil((lo - startTick) / totalTicks);
+  if (startTick >= lo && startTick < hi) out.push(startTick); // first pass: play once at its own spot
+  if (!loop || totalTicks <= 0) return out;
+  const body = totalTicks - loopStart;
+  if (body <= 0 || startTick < loopStart) return out; // notes before loopStart never repeat
+  const base = totalTicks + (startTick - loopStart);
+  let k = Math.ceil((lo - base) / body);
   if (k < 0) k = 0;
-  for (let g = startTick + k * totalTicks; g < hi; g += totalTicks) {
-    if (g >= lo) out.push(g);
-  }
+  for (let g = base + k * body; g < hi; g += body) if (g >= lo) out.push(g);
   return out;
+}
+
+/** Musical position (tick) of the playhead for a given elapsed `posTicks` when looping. */
+export function loopPos(posTicks: number, totalTicks: number, loopStart: number): number {
+  if (totalTicks <= 0) return 0;
+  if (posTicks < totalTicks) return Math.max(0, posTicks);
+  const body = totalTicks - loopStart;
+  if (body <= 0) return totalTicks;
+  return loopStart + ((posTicks - totalTicks) % body);
 }
 
 /**
@@ -108,6 +131,7 @@ export class Player {
 
   private notes: ScheduledNote[] = []; // sorted by startTick
   private totalTicks = 0;
+  private pickupTicks = 0; // leading anacrusis length
   private posTicks = 0; // continuous musical position (counts across loops)
   private scheduledTick = 0; // global tick we've scheduled up to
   private lastTime = 0; // ctx.currentTime at the previous frame
@@ -116,6 +140,7 @@ export class Player {
   private static readonly LOOKAHEAD_SEC = 0.1;
 
   loop = false;
+  skipPickupInLoop = true; // play a leading anacrusis once, then loop only the body
   onTick: (tick: number) => void = () => {};
   onEnd: () => void = () => {};
 
@@ -142,6 +167,7 @@ export class Player {
     const sched = buildSchedule(score);
     this.notes = sched.notes;
     this.totalTicks = sched.totalTicks;
+    this.pickupTicks = sched.pickupTicks;
     this.setBpm(bpm);
     this.posTicks = 0;
     this.scheduledTick = 0;
@@ -153,6 +179,7 @@ export class Player {
       const now = c.currentTime;
       this.posTicks += (now - this.lastTime) / this.secPerTick;
       this.lastTime = now;
+      const loopStart = this.skipPickupInLoop ? this.pickupTicks : 0;
 
       const tail = 0.12 / this.secPerTick; // let the final note's release ring out
       if (!this.loop && this.totalTicks > 0 && this.posTicks >= this.totalTicks + tail) {
@@ -165,7 +192,7 @@ export class Player {
       const target = this.posTicks + Player.LOOKAHEAD_SEC / this.secPerTick;
       if (target > this.scheduledTick) {
         for (const n of this.notes) {
-          for (const g of occurrences(n.startTick, this.totalTicks, this.loop, this.scheduledTick, target)) {
+          for (const g of occurrences(n.startTick, this.totalTicks, this.loop, this.scheduledTick, target, loopStart)) {
             const start = Math.max(now, now + (g - this.posTicks) * this.secPerTick);
             for (const f of n.freqs) this.scheduleNote(start, n.durTicks * this.secPerTick, f);
           }
@@ -173,7 +200,7 @@ export class Player {
         this.scheduledTick = target;
       }
 
-      const pos = this.loop && this.totalTicks > 0 ? this.posTicks % this.totalTicks : Math.min(this.posTicks, this.totalTicks);
+      const pos = this.loop && this.totalTicks > 0 ? loopPos(this.posTicks, this.totalTicks, loopStart) : Math.min(this.posTicks, this.totalTicks);
       this.onTick(Math.max(0, pos));
       this.raf = requestAnimationFrame(frame);
     };

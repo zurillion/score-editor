@@ -1,11 +1,11 @@
 import { Duration, Pitch, ScoreEvent, Staff } from './types';
-import { durationTicks, pitchEquals } from './theory';
+import { durationTicks, eventTicks, pitchEquals } from './theory';
 
 export type PlaceAction = 'create' | 'chord' | 'delete' | 'blocked';
 
 export function overlaps(events: ScoreEvent[], start: number, dur: number, ignoreId?: string): boolean {
   return events.some(
-    (e) => e.id !== ignoreId && start < e.startTick + durationTicks(e.duration) && e.startTick < start + dur,
+    (e) => e.id !== ignoreId && start < e.startTick + eventTicks(e) && e.startTick < start + dur,
   );
 }
 

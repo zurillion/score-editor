@@ -15,6 +15,7 @@ export type Tool =
   | { kind: 'accidental'; alter: Alter; sticky: boolean }
   | { kind: 'eraser'; sticky: boolean }
   | { kind: 'dot'; dots: 1 | 2; sticky: boolean }
+  | { kind: 'tuplet'; sticky: boolean } // click a note to turn it into a triplet
   | { kind: 'select-measures' }
   | { kind: 'select-notes' };
 
