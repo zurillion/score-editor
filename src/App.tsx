@@ -75,6 +75,7 @@ export default function App() {
   }, []);
 
   const playerRef = useRef<Player | null>(null);
+  const playheadTickRef = useRef<number | null>(null); // latest live playback position (for pause/resume)
   const loopRef = useRef(loop);
   useEffect(() => {
     loopRef.current = loop;
@@ -145,15 +146,24 @@ export default function App() {
   const handleStop = useCallback(() => {
     playerRef.current?.stop();
     midiPlayerRef.current?.stop();
+    // pause/resume: leave the indicator where playback was stopped
+    const at = playheadTickRef.current;
+    playheadTickRef.current = null;
+    if (at !== null) setCursorTick(Math.max(0, Math.round(at)));
     setIsPlaying(false);
     setPlayheadTick(null);
   }, []);
 
   const handlePlay = useCallback(() => {
-    const onTick = (tick: number) => setPlayheadTick(tick);
+    const onTick = (tick: number) => {
+      playheadTickRef.current = tick;
+      setPlayheadTick(tick);
+    };
     const onEnd = () => {
+      playheadTickRef.current = null;
       setIsPlaying(false);
       setPlayheadTick(null);
+      setCursorTick(0); // reached the end: rewind to the start
     };
     const startTick = Math.max(0, Math.round(cursorTick)); // play from the indicator (Player rewinds if it's at/after the end)
     // Drive an external MIDI device when MIDI is enabled and an output is set;
@@ -202,6 +212,7 @@ export default function App() {
       if (!piece) return;
       handleStop();
       setSelection(null);
+      setCursorTick(0);
       dispatch({ type: 'LOAD', score: clone(piece.score) });
       setBpm(piece.bpm);
       setPieceName(piece.title);
@@ -255,6 +266,7 @@ export default function App() {
         }
         handleStop();
         setSelection(null);
+        setCursorTick(0);
         dispatch({ type: 'LOAD', score: clone(loaded) });
         if (typeof obj?.bpm === 'number') setBpm(obj.bpm);
         setPieceName(typeof obj?.name === 'string' ? obj.name : '');
