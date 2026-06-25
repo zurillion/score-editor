@@ -58,7 +58,7 @@
         { "id": "e88", "kind": "note", "staff": "treble", "startTick": 384, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "B", "octave": 3, "alter": 0 }, { "step": "G", "octave": 4, "alter": 0 } ] },
         { "id": "e89", "kind": "note", "staff": "treble", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "C", "octave": 4, "alter": 0 }, { "step": "A", "octave": 4, "alter": 0 } ] },
         { "id": "e90", "kind": "note", "staff": "treble", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
-        { "id": "n30", "kind": "note", "staff": "bass", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 2, "alter": 0 } ] }
+        { "id": "n30", "kind": "note", "staff": "bass", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 2, "alter": 0 } ], "tieToNext": true }
       ], "timeSignature": { "numerator": 7, "denominator": 8 } },
       { "id": "m91", "events": [
         { "id": "e92", "kind": "note", "staff": "treble", "startTick": 0, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 }, { "step": "C", "octave": 5, "alter": 0 } ] },
