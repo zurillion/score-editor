@@ -15,22 +15,26 @@ import { OptionsDialog } from './components/OptionsDialog';
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
+const DEFAULT_PIECE = LIBRARY.find((p) => p.id === 'tubular-bells') ?? LIBRARY[0];
+
 export default function App() {
-  const [hist, dispatch] = useReducer(historyReducer, undefined, () => initialHistory(4));
+  const [hist, dispatch] = useReducer(historyReducer, undefined, () =>
+    DEFAULT_PIECE ? { present: clone(DEFAULT_PIECE.score), past: [], coalesce: null } : initialHistory(4),
+  );
   const score = hist.present;
 
   const [tool, setTool] = useState<Tool>(NOTE_TOOL);
   const [duration, setDuration] = useState<Duration>({ value: 4, dots: 0 });
   const [previewOnCreate, setPreviewOnCreate] = useState(true);
   const [mode, setMode] = useState<LayoutMode>('page');
-  const [bpm, setBpm] = useState(96);
+  const [bpm, setBpm] = useState(DEFAULT_PIECE?.bpm ?? 96);
   const [loop, setLoop] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playheadTick, setPlayheadTick] = useState<number | null>(null);
   const [cursorTick, setCursorTick] = useState(0); // persistent playback/insertion cursor
   const [hoverNote, setHoverNote] = useState<string | null>(null); // name of the ghost note under the cursor
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [pieceName, setPieceName] = useState(''); // title of the current piece (shown + saved in the file)
+  const [pieceName, setPieceName] = useState(DEFAULT_PIECE?.title ?? ''); // title of the current piece (shown + saved in the file)
 
   // ---- application options (persisted) ----
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -151,6 +155,7 @@ export default function App() {
       setIsPlaying(false);
       setPlayheadTick(null);
     };
+    const startTick = Math.max(0, Math.round(cursorTick)); // play from the indicator (Player rewinds if it's at/after the end)
     // Drive an external MIDI device when MIDI is enabled and an output is set;
     // otherwise fall back to the built-in Web Audio synth.
     const mp = midiPlayerRef.current;
@@ -161,7 +166,7 @@ export default function App() {
       mp.channel = midiChannel - 1;
       mp.onTick = onTick;
       mp.onEnd = onEnd;
-      mp.play(score, bpm);
+      mp.play(score, bpm, startTick);
       setIsPlaying(true);
       return;
     }
@@ -171,9 +176,11 @@ export default function App() {
     player.skipPickupInLoop = loopSkipAnacrusis;
     player.onTick = onTick;
     player.onEnd = onEnd;
-    player.play(score, bpm);
+    player.play(score, bpm, startTick);
     setIsPlaying(true);
-  }, [bpm, score, midiOn, midiChannel, loopSkipAnacrusis]);
+  }, [bpm, score, midiOn, midiChannel, loopSkipAnacrusis, cursorTick]);
+
+  const handleToStart = useCallback(() => setCursorTick(0), []);
 
   const handleSetLoop = useCallback((v: boolean) => {
     setLoop(v);
@@ -454,6 +461,7 @@ export default function App() {
         isPlaying={isPlaying}
         onPlay={handlePlay}
         onStop={handleStop}
+        onToStart={handleToStart}
         onAddMeasure={() => dispatch({ type: 'ADD_MEASURE' })}
         onRemoveMeasure={() => dispatch({ type: 'REMOVE_LAST_MEASURE' })}
         onClear={() => dispatch({ type: 'CLEAR' })}

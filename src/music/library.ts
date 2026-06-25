@@ -1,5 +1,6 @@
 import { Alter, Measure, NoteEvent, Pitch, ScoreEvent, ScoreState, Staff, StepName, TimeSignature } from './types';
 import { durationTicks, measureTicks } from './theory';
+import tubularBells from './tubularBells.json';
 
 // ---------------------------------------------------------------------------
 // Tiny authoring DSL for the built-in library.
@@ -237,4 +238,19 @@ const DEFS: PieceDef[] = [
   },
 ];
 
-export const LIBRARY: LibraryPiece[] = DEFS.map(buildScore);
+export const LIBRARY: LibraryPiece[] = [tubularBellsPiece(), ...DEFS.map(buildScore)];
+
+/** The Tubular Bells excerpt, imported from JSON. Ids are reassigned so they're globally unique. */
+function tubularBellsPiece(): LibraryPiece {
+  const src = tubularBells.score as unknown as ScoreState;
+  let c = 0;
+  const score: ScoreState = {
+    ...src,
+    measures: src.measures.map((m) => ({
+      ...m,
+      id: `tb-m${c++}`,
+      events: m.events.map((e) => ({ ...e, id: `tb-e${c++}` })),
+    })),
+  };
+  return { id: 'tubular-bells', title: tubularBells.name, subtitle: 'Mike Oldfield — apertura', bpm: tubularBells.bpm, score };
+}

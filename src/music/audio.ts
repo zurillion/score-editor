@@ -176,7 +176,7 @@ export class Player {
     this.secPerTick = 60 / bpm / TICKS_PER_QUARTER;
   }
 
-  play(score: ScoreState, bpm: number): void {
+  play(score: ScoreState, bpm: number, startTick = 0): void {
     this.stop();
     const AudioCtx: typeof AudioContext =
       window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -193,8 +193,9 @@ export class Player {
     this.totalTicks = sched.totalTicks;
     this.pickupTicks = sched.pickupTicks;
     this.setBpm(bpm);
-    this.posTicks = 0;
-    this.scheduledTick = 0;
+    const from = sched.totalTicks > 0 && startTick >= sched.totalTicks ? 0 : Math.max(0, startTick);
+    this.posTicks = from;
+    this.scheduledTick = from;
     this.lastTime = ctx.currentTime;
 
     const frame = () => {

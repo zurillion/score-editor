@@ -1,0 +1,109 @@
+{
+  "format": "score-composer",
+  "version": 1,
+  "name": "Tubular Bells",
+  "bpm": 147,
+  "score": {
+    "timeSignature": { "numerator": 4, "denominator": 4 },
+    "keySignature": 0,
+    "measures": [
+      { "id": "m76", "events": [
+        { "id": "n77", "kind": "note", "staff": "treble", "startTick": 0, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] }
+      ], "pickup": true },
+      { "id": "m39", "events": [
+        { "id": "n44", "kind": "note", "staff": "treble", "startTick": 0, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 4, "alter": 0 } ] },
+        { "id": "n45", "kind": "note", "staff": "treble", "startTick": 96, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n46", "kind": "note", "staff": "treble", "startTick": 192, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "B", "octave": 4, "alter": 0 } ] },
+        { "id": "n47", "kind": "note", "staff": "treble", "startTick": 288, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n48", "kind": "note", "staff": "treble", "startTick": 384, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "G", "octave": 4, "alter": 0 } ] },
+        { "id": "n49", "kind": "note", "staff": "treble", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 4, "alter": 0 } ] },
+        { "id": "n50", "kind": "note", "staff": "treble", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] }
+      ], "timeSignature": { "numerator": 7, "denominator": 8 } },
+      { "id": "m40", "events": [
+        { "id": "n51", "kind": "note", "staff": "treble", "startTick": 0, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "C", "octave": 5, "alter": 0 } ] },
+        { "id": "n52", "kind": "note", "staff": "treble", "startTick": 96, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n53", "kind": "note", "staff": "treble", "startTick": 192, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "D", "octave": 5, "alter": 0 } ] },
+        { "id": "n54", "kind": "note", "staff": "treble", "startTick": 288, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n55", "kind": "note", "staff": "treble", "startTick": 384, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "B", "octave": 4, "alter": 0 } ] },
+        { "id": "n56", "kind": "note", "staff": "treble", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "C", "octave": 5, "alter": 0 } ] },
+        { "id": "n59", "kind": "note", "staff": "treble", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] }
+      ] },
+      { "id": "m41", "events": [
+        { "id": "n60", "kind": "note", "staff": "treble", "startTick": 0, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 4, "alter": 0 } ] },
+        { "id": "n61", "kind": "note", "staff": "treble", "startTick": 96, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n62", "kind": "note", "staff": "treble", "startTick": 192, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "B", "octave": 4, "alter": 0 } ] },
+        { "id": "n63", "kind": "note", "staff": "treble", "startTick": 288, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n64", "kind": "note", "staff": "treble", "startTick": 384, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "G", "octave": 4, "alter": 0 } ] },
+        { "id": "n65", "kind": "note", "staff": "treble", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 4, "alter": 0 } ] },
+        { "id": "n66", "kind": "note", "staff": "treble", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] }
+      ] },
+      { "id": "m42", "events": [
+        { "id": "n67", "kind": "note", "staff": "treble", "startTick": 0, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "C", "octave": 5, "alter": 0 } ] },
+        { "id": "n68", "kind": "note", "staff": "treble", "startTick": 96, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n69", "kind": "note", "staff": "treble", "startTick": 192, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "D", "octave": 5, "alter": 0 } ] },
+        { "id": "n70", "kind": "note", "staff": "treble", "startTick": 288, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n71", "kind": "note", "staff": "treble", "startTick": 384, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "B", "octave": 4, "alter": 0 } ] },
+        { "id": "n72", "kind": "note", "staff": "treble", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "C", "octave": 5, "alter": 0 } ] },
+        { "id": "n73", "kind": "note", "staff": "treble", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n74", "kind": "note", "staff": "treble", "startTick": 672, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "B", "octave": 4, "alter": 0 } ] },
+        { "id": "n75", "kind": "note", "staff": "treble", "startTick": 768, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] }
+      ], "timeSignature": { "numerator": 9, "denominator": 8 } },
+      { "id": "m83", "events": [
+        { "id": "e84", "kind": "note", "staff": "treble", "startTick": 0, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "C", "octave": 4, "alter": 0 }, { "step": "A", "octave": 4, "alter": 0 } ] },
+        { "id": "n28", "kind": "note", "staff": "bass", "startTick": 0, "duration": { "value": 4, "dots": 0 }, "pitches": [ { "step": "A", "octave": 2, "alter": 0 } ] },
+        { "id": "e85", "kind": "note", "staff": "treble", "startTick": 96, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "e86", "kind": "note", "staff": "treble", "startTick": 192, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "D", "octave": 4, "alter": 0 }, { "step": "B", "octave": 4, "alter": 0 } ] },
+        { "id": "n29", "kind": "note", "staff": "bass", "startTick": 192, "duration": { "value": 2, "dots": 0 }, "pitches": [ { "step": "A", "octave": 2, "alter": 0 } ] },
+        { "id": "e87", "kind": "note", "staff": "treble", "startTick": 288, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "e88", "kind": "note", "staff": "treble", "startTick": 384, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "B", "octave": 3, "alter": 0 }, { "step": "G", "octave": 4, "alter": 0 } ] },
+        { "id": "e89", "kind": "note", "staff": "treble", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "C", "octave": 4, "alter": 0 }, { "step": "A", "octave": 4, "alter": 0 } ] },
+        { "id": "e90", "kind": "note", "staff": "treble", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n30", "kind": "note", "staff": "bass", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 2, "alter": 0 } ] }
+      ], "timeSignature": { "numerator": 7, "denominator": 8 } },
+      { "id": "m91", "events": [
+        { "id": "e92", "kind": "note", "staff": "treble", "startTick": 0, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 }, { "step": "C", "octave": 5, "alter": 0 } ] },
+        { "id": "n31", "kind": "note", "staff": "bass", "startTick": 0, "duration": { "value": 4, "dots": 0 }, "pitches": [ { "step": "A", "octave": 2, "alter": 0 } ] },
+        { "id": "e93", "kind": "note", "staff": "treble", "startTick": 96, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "e94", "kind": "note", "staff": "treble", "startTick": 192, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "F", "octave": 4, "alter": 0 }, { "step": "D", "octave": 5, "alter": 0 } ] },
+        { "id": "n32", "kind": "note", "staff": "bass", "startTick": 192, "duration": { "value": 16, "dots": 0 }, "pitches": [ { "step": "B", "octave": 2, "alter": 0 } ] },
+        { "id": "n33", "kind": "note", "staff": "bass", "startTick": 240, "duration": { "value": 16, "dots": 0 }, "pitches": [ { "step": "C", "octave": 3, "alter": 0 } ] },
+        { "id": "e95", "kind": "note", "staff": "treble", "startTick": 288, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n34", "kind": "note", "staff": "bass", "startTick": 288, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "D", "octave": 3, "alter": 0 } ] },
+        { "id": "e96", "kind": "note", "staff": "treble", "startTick": 384, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "D", "octave": 4, "alter": 0 }, { "step": "B", "octave": 4, "alter": 0 } ] },
+        { "id": "n35", "kind": "note", "staff": "bass", "startTick": 384, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 3, "alter": 0 } ] },
+        { "id": "e97", "kind": "note", "staff": "treble", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 }, { "step": "C", "octave": 5, "alter": 0 } ] },
+        { "id": "n36", "kind": "note", "staff": "bass", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "D", "octave": 3, "alter": 0 } ] },
+        { "id": "e98", "kind": "note", "staff": "treble", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n37", "kind": "note", "staff": "bass", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "G", "octave": 3, "alter": 0 } ] }
+      ] },
+      { "id": "m99", "events": [
+        { "id": "e100", "kind": "note", "staff": "treble", "startTick": 0, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "C", "octave": 4, "alter": 0 }, { "step": "A", "octave": 4, "alter": 0 } ] },
+        { "id": "n38", "kind": "note", "staff": "bass", "startTick": 0, "duration": { "value": 4, "dots": 0 }, "pitches": [ { "step": "G", "octave": 2, "alter": 0 } ] },
+        { "id": "e101", "kind": "note", "staff": "treble", "startTick": 96, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "e102", "kind": "note", "staff": "treble", "startTick": 192, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "D", "octave": 4, "alter": 0 }, { "step": "B", "octave": 4, "alter": 0 } ] },
+        { "id": "n39", "kind": "note", "staff": "bass", "startTick": 192, "duration": { "value": 2, "dots": 0 }, "pitches": [ { "step": "G", "octave": 2, "alter": 0 } ] },
+        { "id": "e103", "kind": "note", "staff": "treble", "startTick": 288, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "e104", "kind": "note", "staff": "treble", "startTick": 384, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "B", "octave": 3, "alter": 0 }, { "step": "G", "octave": 4, "alter": 0 } ] },
+        { "id": "e105", "kind": "note", "staff": "treble", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "C", "octave": 4, "alter": 0 }, { "step": "A", "octave": 4, "alter": 0 } ] },
+        { "id": "e106", "kind": "note", "staff": "treble", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n40", "kind": "note", "staff": "bass", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "G", "octave": 3, "alter": 0 } ], "tieToNext": true }
+      ] },
+      { "id": "m107", "events": [
+        { "id": "e108", "kind": "note", "staff": "treble", "startTick": 0, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 }, { "step": "C", "octave": 5, "alter": 0 } ] },
+        { "id": "n41", "kind": "note", "staff": "bass", "startTick": 0, "duration": { "value": 4, "dots": 1 }, "pitches": [ { "step": "G", "octave": 3, "alter": 0 } ] },
+        { "id": "e109", "kind": "note", "staff": "treble", "startTick": 96, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "e110", "kind": "note", "staff": "treble", "startTick": 192, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "F", "octave": 4, "alter": 0 }, { "step": "D", "octave": 5, "alter": 0 } ] },
+        { "id": "e111", "kind": "note", "staff": "treble", "startTick": 288, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n42", "kind": "note", "staff": "bass", "startTick": 288, "duration": { "value": 4, "dots": 0 }, "pitches": [ { "step": "D", "octave": 3, "alter": 0 } ] },
+        { "id": "e112", "kind": "note", "staff": "treble", "startTick": 384, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "D", "octave": 4, "alter": 0 }, { "step": "B", "octave": 4, "alter": 0 } ] },
+        { "id": "e113", "kind": "note", "staff": "treble", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "E", "octave": 4, "alter": 0 }, { "step": "C", "octave": 5, "alter": 0 } ] },
+        { "id": "n43", "kind": "note", "staff": "bass", "startTick": 480, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "C", "octave": 3, "alter": 0 } ] },
+        { "id": "e114", "kind": "note", "staff": "treble", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] },
+        { "id": "n44", "kind": "note", "staff": "bass", "startTick": 576, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "B", "octave": 2, "alter": 0 } ] },
+        { "id": "e115", "kind": "note", "staff": "treble", "startTick": 672, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "D", "octave": 4, "alter": 0 }, { "step": "B", "octave": 4, "alter": 0 } ] },
+        { "id": "n45", "kind": "note", "staff": "bass", "startTick": 672, "duration": { "value": 4, "dots": 0 }, "pitches": [ { "step": "G", "octave": 2, "alter": 0 } ] },
+        { "id": "e116", "kind": "note", "staff": "treble", "startTick": 768, "duration": { "value": 8, "dots": 0 }, "pitches": [ { "step": "A", "octave": 3, "alter": 0 }, { "step": "E", "octave": 4, "alter": 0 } ] }
+      ], "timeSignature": { "numerator": 9, "denominator": 8 } }
+    ]
+  }
+}

@@ -73,7 +73,7 @@ export class MidiPlayer {
     this.secPerTick = 60 / bpm / TICKS_PER_QUARTER;
   }
 
-  play(score: ScoreState, bpm: number): void {
+  play(score: ScoreState, bpm: number, startTick = 0): void {
     this.stop();
     if (!this.output) return;
     const sched = buildSchedule(score);
@@ -81,8 +81,9 @@ export class MidiPlayer {
     this.totalTicks = sched.totalTicks;
     this.pickupTicks = sched.pickupTicks;
     this.setBpm(bpm);
-    this.posTicks = 0;
-    this.scheduledTick = 0;
+    const from = sched.totalTicks > 0 && startTick >= sched.totalTicks ? 0 : Math.max(0, startTick);
+    this.posTicks = from;
+    this.scheduledTick = from;
     this.lastTime = performance.now();
     this.playingFlag = true;
 

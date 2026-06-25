@@ -90,6 +90,7 @@ interface ToolbarProps {
   isPlaying: boolean;
   onPlay: () => void;
   onStop: () => void;
+  onToStart: () => void;
   onAddMeasure: () => void;
   onRemoveMeasure: () => void;
   onClear: () => void;
@@ -141,6 +142,7 @@ export function Toolbar(props: ToolbarProps) {
     isPlaying,
     onPlay,
     onStop,
+    onToStart,
     onAddMeasure,
     onRemoveMeasure,
     onClear,
@@ -428,6 +430,9 @@ export function Toolbar(props: ToolbarProps) {
       <fieldset className="group transport">
         <legend>Playback</legend>
         <div className="btn-row">
+          <button onClick={onToStart} title="Torna all'inizio del brano" aria-label="Torna all'inizio">
+            ⏮
+          </button>
           <button className={`play ${isPlaying ? 'stop' : ''}`} onClick={isPlaying ? onStop : onPlay}>
             {isPlaying ? '■ Stop' : '▶ Play'}
           </button>
