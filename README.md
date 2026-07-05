@@ -54,7 +54,7 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
 ```bash
 cd score-composer
 npm install
-npm run dev      # server di sviluppo (http://localhost:5173)
+npm run dev      # server di sviluppo (http://localhost:5173) — solo frontend
 ```
 
 Altri comandi:
@@ -64,6 +64,31 @@ npm run build     # type-check + build di produzione in dist/
 npm run preview   # anteprima della build
 npm run typecheck # solo controllo dei tipi
 ```
+
+### Backend (lista brani condivisa)
+
+I brani della lista condivisa vivono in **Netlify Blobs**, serviti dalla
+funzione `netlify/functions/api.mts` (rotte `/api/*`). Per lo sviluppo con
+il backend attivo:
+
+```bash
+npx netlify dev    # frontend + funzioni + Blobs locali (richiede netlify-cli)
+```
+
+Sul sito Netlify va impostata la variabile d'ambiente **`ADMIN_PASSWORD`**:
+è la password della pagina di gestione (`#/admin`). Senza variabile le
+scritture sono disabilitate (le letture restano pubbliche).
+
+### Pagine
+
+- `#/` — l'editor. Chiunque può aprire un brano della lista, modificarlo in
+  locale ed esportarlo in JSON; la lista sul server non cambia.
+- `#/admin` — gestione della lista (con password): aggiungi il brano
+  corrente, importa/esporta JSON, rinomina, riordina, elimina, copia il
+  link di ascolto.
+- `#/play/:id` — versione **solo ascolto** di un brano, pensata per essere
+  condivisa: partitura e controlli di playback, nessuno strumento di
+  modifica.
 
 ## Scorciatoie da tastiera
 
@@ -116,8 +141,7 @@ alterazioni, code e cifre di tempo usano i glifi del font musicale **Bravura**
 - Niente armatura di chiave; le alterazioni sono per singola nota.
 - Le note contemporanee sono modellate come accordi (stessa durata), non come
   voci indipendenti.
-- Salvataggio/caricamento e export MIDI/MusicXML non ancora presenti
-  (il reducer prevede già un'azione `LOAD`).
+- Export MIDI/MusicXML non ancora presente.
 
 ## Licenze
 

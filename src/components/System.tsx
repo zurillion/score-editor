@@ -309,6 +309,7 @@ interface SystemProps {
   selection: Selection | null;
   playheadX: number | null;
   showHandle: boolean;
+  playOnly?: boolean; // shared "listen" view: clicking only moves the playback cursor
   onAction: (action: ScoreAction) => void;
   onAfterApply: () => void;
   onPreviewNote: (pitches: Pitch[]) => void;
@@ -330,6 +331,7 @@ export function System(props: SystemProps) {
     selection,
     playheadX,
     showHandle,
+    playOnly = false,
     onAction,
     onAfterApply,
     onPreviewNote,
@@ -480,7 +482,7 @@ export function System(props: SystemProps) {
   // mousedown on a notehead with the note tool starts a diatonic drag-to-move
   function handleMouseDown(e: React.MouseEvent) {
     suppressClickRef.current = false; // fresh press: clear any stale click suppression
-    if (e.altKey || tool.kind !== 'note') return;
+    if (playOnly || e.altKey || tool.kind !== 'note') return;
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
     const hit = pickNotehead(pt.x, pt.y, 0);
@@ -499,6 +501,7 @@ export function System(props: SystemProps) {
       if (g !== null) onSetCursor(g);
       return;
     }
+    if (playOnly) return; // no hover ghosts or drags in the listen-only view
     const rd = repeatDragRef.current;
     if (rd) {
       const steps = Math.round((rd.startY - e.clientY) / 16); // up = more plays; below 1 = 0 = ∞
@@ -572,6 +575,12 @@ export function System(props: SystemProps) {
     }
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
+    if (playOnly) {
+      // listen-only view: any click just repositions the playback cursor
+      const g = globalTickAt(pt.x);
+      if (g !== null) onSetCursor(g);
+      return;
+    }
     if (e.altKey) {
       // alt-click on a notehead (note tool) deletes it; on empty space it
       // moves the playback/insertion cursor instead.
@@ -850,7 +859,7 @@ export function System(props: SystemProps) {
     <svg
       ref={svgRef}
       className="system"
-      data-tool={tool.kind}
+      data-tool={playOnly ? 'play' : tool.kind}
       width={layout.width}
       height={SYSTEM_HEIGHT}
       onMouseDown={handleMouseDown}

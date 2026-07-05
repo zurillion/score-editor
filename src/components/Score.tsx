@@ -25,6 +25,7 @@ interface ScoreProps {
   selection: Selection | null;
   playheadTick: number | null;
   cursorTick: number;
+  playOnly?: boolean; // shared "listen" view: no editing interactions
   onAction: (action: ScoreAction) => void;
   onAfterApply: () => void;
   onPreviewNote: (pitches: Pitch[]) => void;
@@ -56,6 +57,7 @@ export function Score({
   selection,
   playheadTick,
   cursorTick,
+  playOnly = false,
   onAction,
   onAfterApply,
   onPreviewNote,
@@ -171,7 +173,7 @@ export function Score({
   }
 
   function onInnerMouseDown(e: React.MouseEvent) {
-    if (e.button !== 0 || e.altKey) return;
+    if (playOnly || e.button !== 0 || e.altKey) return;
     if (tool.kind !== 'select-measures' && tool.kind !== 'select-notes') return;
     const start = clientToContent(e.clientX, e.clientY);
     const isMeasures = tool.kind === 'select-measures';
@@ -233,6 +235,7 @@ export function Score({
             selection={selection}
             playheadX={i === barSystem ? barX : null}
             showHandle={showHandle}
+            playOnly={playOnly}
             onAction={onAction}
             onAfterApply={onAfterApply}
             onPreviewNote={onPreviewNote}

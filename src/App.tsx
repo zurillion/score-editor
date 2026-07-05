@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { MutableRefObject, useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { Duration, DurationValue, NoteEvent, Pitch, ScoreState } from './music/types';
 import { LayoutMode } from './music/layout';
 import { durationTicks } from './music/theory';
@@ -13,29 +13,42 @@ import { ClipNote, Clipboard, Selection } from './state/selection';
 import { Toolbar } from './components/Toolbar';
 import { Score, SystemRange } from './components/Score';
 import { OptionsDialog } from './components/OptionsDialog';
+import { PieceSummary, getPiece, listPieces } from './api';
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
-const DEFAULT_PIECE = LIBRARY.find((p) => p.id === 'tubular-bells') ?? LIBRARY[0];
+/** Editor state exposed to the admin page ("add current piece to the list"). */
+export interface EditorSnapshot {
+  name: string;
+  bpm: number;
+  score: ScoreState;
+  sourceId: string | null; // server id the piece was loaded from (null = new/local)
+}
 
-export default function App() {
-  const [hist, dispatch] = useReducer(historyReducer, undefined, () =>
-    DEFAULT_PIECE ? { present: clone(DEFAULT_PIECE.score), past: [], coalesce: null } : initialHistory(4),
-  );
+interface AppProps {
+  /** False while another page (admin) covers the editor: keyboard shortcuts pause. */
+  active?: boolean;
+  snapshotRef?: MutableRefObject<EditorSnapshot | null>;
+}
+
+export default function App({ active = true, snapshotRef }: AppProps) {
+  const [hist, dispatch] = useReducer(historyReducer, undefined, () => initialHistory(4));
   const score = hist.present;
 
   const [tool, setTool] = useState<Tool>(NOTE_TOOL);
   const [duration, setDuration] = useState<Duration>({ value: 4, dots: 0 });
   const [previewOnCreate, setPreviewOnCreate] = useState(true);
   const [mode, setMode] = useState<LayoutMode>('page');
-  const [bpm, setBpm] = useState(DEFAULT_PIECE?.bpm ?? 96);
+  const [bpm, setBpm] = useState(96);
   const [loop, setLoop] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playheadTick, setPlayheadTick] = useState<number | null>(null);
   const [cursorTick, setCursorTick] = useState(0); // persistent playback/insertion cursor
   const [hoverNote, setHoverNote] = useState<string | null>(null); // name of the ghost note under the cursor
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [pieceName, setPieceName] = useState(DEFAULT_PIECE?.title ?? ''); // title of the current piece (shown + saved in the file)
+  const [pieceName, setPieceName] = useState(''); // title of the current piece (shown + saved in the file)
+  const [sourceId, setSourceId] = useState<string | null>(null); // server piece this was loaded from
+  const [serverPieces, setServerPieces] = useState<PieceSummary[]>([]);
 
   // ---- application options (persisted) ----
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -69,6 +82,24 @@ export default function App() {
       /* ignore */
     }
   }, [loopSkipAnacrusis]);
+  // expose the current piece to the admin page ("add current to the list")
+  useEffect(() => {
+    if (snapshotRef) snapshotRef.current = { name: pieceName, bpm, score, sourceId };
+  }, [snapshotRef, pieceName, bpm, score, sourceId]);
+
+  // server-side piece list for the Libreria dropdown (refreshed when the
+  // editor regains the foreground, e.g. coming back from the admin page)
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    listPieces()
+      .then((pieces) => alive && setServerPieces(pieces))
+      .catch(() => {}); // no server (plain vite dev): built-in examples only
+    return () => {
+      alive = false;
+    };
+  }, [active]);
+
   // ---- playback instrument (persisted) ----
   const [instrument, setInstrument] = useState<string>(() => {
     try {
@@ -263,18 +294,41 @@ export default function App() {
   const handlePreviewNote = useCallback((pitches: Pitch[]) => playPreview(pitches, 0.5, getLoadedSampler(instrument)), [instrument]);
 
   const handleLoadPiece = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      const applyLoaded = (loaded: ScoreState, loadedBpm: number, title: string, src: string | null) => {
+        handleStop();
+        setSelection(null);
+        setCursorTick(0);
+        dispatch({ type: 'LOAD', score: clone(loaded) });
+        setBpm(loadedBpm);
+        setPieceName(title);
+        setSourceId(src);
+      };
+      if (id.startsWith('srv:')) {
+        const sid = id.slice(4);
+        try {
+          const p = await getPiece(sid);
+          applyLoaded(p.score, p.bpm, p.title, sid);
+        } catch {
+          window.alert('Impossibile caricare il brano dal server.');
+        }
+        return;
+      }
       const piece = LIBRARY.find((p) => p.id === id);
       if (!piece) return;
-      handleStop();
-      setSelection(null);
-      setCursorTick(0);
-      dispatch({ type: 'LOAD', score: clone(piece.score) });
-      setBpm(piece.bpm);
-      setPieceName(piece.title);
+      applyLoaded(piece.score, piece.bpm, piece.title, null);
     },
     [handleStop],
   );
+
+  // the admin page's "Apri nell'editor" hands the piece over via sessionStorage
+  useEffect(() => {
+    if (!active) return;
+    const pending = sessionStorage.getItem('pending.load');
+    if (!pending) return;
+    sessionStorage.removeItem('pending.load');
+    void handleLoadPiece(`srv:${pending}`);
+  }, [active, handleLoadPiece]);
 
   const onSelectMeasures = useCallback((indices: number[]) => {
     setSelection(indices.length ? { kind: 'measures', indices } : null);
@@ -289,10 +343,14 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleSaveFile = useCallback(() => {
-    const name = window.prompt('Nome del brano:', pieceName || 'Brano senza titolo');
-    if (name === null) return; // cancelled
-    const title = name.trim();
-    setPieceName(title);
+    // a piece started from scratch has no title yet: ask for one on first save
+    let title = pieceName;
+    if (!title) {
+      const name = window.prompt('Nome del brano:', '');
+      if (name === null) return; // cancelled
+      title = name.trim();
+      setPieceName(title);
+    }
     const data = { format: 'score-composer', version: 1, name: title, bpm, score };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -326,6 +384,7 @@ export default function App() {
         dispatch({ type: 'LOAD', score: clone(loaded) });
         if (typeof obj?.bpm === 'number') setBpm(obj.bpm);
         setPieceName(typeof obj?.name === 'string' ? obj.name : '');
+        setSourceId(null);
       } catch {
         window.alert('Impossibile leggere il file (JSON non valido).');
       }
@@ -352,8 +411,9 @@ export default function App() {
     [],
   );
 
-  // keyboard shortcuts
+  // keyboard shortcuts (paused while another page covers the editor)
   useEffect(() => {
+    if (!active) return;
     const meta = scoreMeta(score);
     const copyOf = (): Clipboard | null => {
       if (!selection) return null;
@@ -476,7 +536,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isPlaying, handlePlay, handleStop, selection, score, cursorTick, duration]);
+  }, [active, isPlaying, handlePlay, handleStop, selection, score, cursorTick, duration]);
 
   // time/key shown in the tools follow the measure under the playhead (or the cursor)
   const meta = scoreMeta(score);
@@ -496,6 +556,9 @@ export default function App() {
         <h1>Score Composer</h1>
         <span className="subtitle">endecalineo · composizione &amp; playback</span>
         {pieceName && <span className="piece-name" title="Brano corrente">{pieceName}</span>}
+        <a className="admin-link" href="#/admin" title="Gestione della lista dei brani (solo admin)">
+          Gestione brani
+        </a>
       </header>
 
       <Toolbar
@@ -535,8 +598,14 @@ export default function App() {
         onToStart={handleToStart}
         onAddMeasure={() => dispatch({ type: 'ADD_MEASURE' })}
         onRemoveMeasure={() => dispatch({ type: 'REMOVE_LAST_MEASURE' })}
-        onClear={() => dispatch({ type: 'CLEAR' })}
+        onClear={() => {
+          // wiping the music also wipes the identity: title and server origin
+          dispatch({ type: 'CLEAR' });
+          setPieceName('');
+          setSourceId(null);
+        }}
         onLoadPiece={handleLoadPiece}
+        serverPieces={serverPieces}
         onInsertMeasures={handleInsertMeasures}
         onSaveFile={handleSaveFile}
         onLoadFile={handleRequestLoadFile}

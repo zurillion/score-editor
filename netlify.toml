@@ -1,0 +1,12 @@
+# Netlify: static build (Vite) + API function backed by Netlify Blobs.
+# Set the ADMIN_PASSWORD environment variable in the site settings to
+# enable the admin API (list management); reads stay public.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[functions]
+  directory = "netlify/functions"
