@@ -20,6 +20,7 @@ import {
   KEYSIG_X,
   KEYSIG_STEP,
   keySigWidth,
+  REPEAT_START_PAD,
 } from '../music/layout';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
@@ -705,8 +706,8 @@ export function System(props: SystemProps) {
   // ---- repeat signs (|: / :|) ----
   function repeatSignEls(pm: PlacedMeasure, edge: 'start' | 'end', color: string, opacity: number, keyPrefix: string) {
     const start = edge === 'start';
-    // a |: sits after any mid-line key/time change drawn in the measure's inset
-    const x = start ? pm.leftX + pm.leftInset + 2.5 : pm.leftX + pm.contentW - 2.5;
+    // a |: hugs the barline; any mid-line key/time change is drawn after it
+    const x = start ? pm.leftX + 2.5 : pm.leftX + pm.contentW - 2.5;
     const dir = start ? 1 : -1; // thin line + dots sit inside the measure
     return (
       <g key={`${keyPrefix}-${pm.index}-${edge}`} opacity={opacity} pointerEvents="none">
@@ -727,7 +728,7 @@ export function System(props: SystemProps) {
     return (
       <text
         key={`rptc-${pm.index}`}
-        x={pm.leftX + pm.leftInset + 7.5}
+        x={pm.leftX + 7.5}
         y={TOP_Y - 16}
         textAnchor="middle"
         fontSize={times === 0 ? 17 : 13}
@@ -758,7 +759,7 @@ export function System(props: SystemProps) {
       zones.push(
         <rect
           key={`rz-s-${pm.index}`}
-          x={pm.leftX + pm.leftInset - 2}
+          x={pm.leftX - 2}
           y={TOP_Y - 32}
           width={19}
           height={BOTTOM_Y - TOP_Y + 44}
@@ -802,8 +803,9 @@ export function System(props: SystemProps) {
   }
 
   // mid-line key/time change: double barline, cancellation naturals, new key, new time
+  // (drawn after the |: sign when the measure also starts a repeat)
   function renderChange(pm: PlacedMeasure) {
-    const baseX = pm.leftX + 4;
+    const baseX = pm.leftX + 4 + (pm.measure.repeatStart ? REPEAT_START_PAD : 0);
     const naturalsCount = pm.keyChanged ? keyChangeNaturals(pm.prevKeySig, pm.keySig, 0).length : 0;
     const newCount = Math.abs(pm.keySig);
     const timeX = baseX + (pm.keyChanged ? (naturalsCount + newCount) * KEYSIG_STEP + 12 : 16); // keep the digits clear of the barline
