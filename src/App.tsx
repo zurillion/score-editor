@@ -4,6 +4,7 @@ import { LayoutMode } from './music/layout';
 import { durationTicks } from './music/theory';
 import { scoreMeta, measureIndexAtTick } from './music/meta';
 import { Player, playPreview } from './music/audio';
+import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, Sampler, ensureInstrument, getInstrument, getLoadedSampler, isSynth } from './music/instruments';
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
 import { LIBRARY } from './music/library';
 import { initialHistory, historyReducer } from './state/scoreReducer';
@@ -68,6 +69,38 @@ export default function App() {
       /* ignore */
     }
   }, [loopSkipAnacrusis]);
+  // ---- playback instrument (persisted) ----
+  const [instrument, setInstrument] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('opt.instrument');
+      return stored && INSTRUMENTS.some((i) => i.id === stored) ? stored : DEFAULT_INSTRUMENT_ID;
+    } catch {
+      return DEFAULT_INSTRUMENT_ID;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('opt.instrument', instrument);
+    } catch {
+      /* ignore */
+    }
+  }, [instrument]);
+  const [instrumentLoading, setInstrumentLoading] = useState(false);
+  // fetch the sample set as soon as the instrument is picked, so Play starts instantly
+  useEffect(() => {
+    if (isSynth(instrument)) return;
+    let alive = true;
+    setInstrumentLoading(true);
+    ensureInstrument(instrument)
+      .catch(() => {}) // Play reports the failure; a later attempt retries
+      .finally(() => {
+        if (alive) setInstrumentLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [instrument]);
+
   const clipboardRef = useRef<Clipboard | null>(null);
   const systemRangesRef = useRef<SystemRange[]>([]);
   const onLayout = useCallback((ranges: SystemRange[]) => {
@@ -143,7 +176,10 @@ export default function App() {
     if (midiPlayerRef.current) midiPlayerRef.current.skipPickupInLoop = loopSkipAnacrusis;
   }, [loopSkipAnacrusis]);
 
+  const playReqRef = useRef(0); // invalidates a Play still waiting on samples when Stop arrives first
+
   const handleStop = useCallback(() => {
+    playReqRef.current++;
     playerRef.current?.stop();
     midiPlayerRef.current?.stop();
     // pause/resume: leave the indicator where playback was stopped
@@ -154,7 +190,7 @@ export default function App() {
     setPlayheadTick(null);
   }, []);
 
-  const handlePlay = useCallback(() => {
+  const handlePlay = useCallback(async () => {
     const onTick = (tick: number) => {
       playheadTickRef.current = tick;
       setPlayheadTick(tick);
@@ -180,15 +216,33 @@ export default function App() {
       setIsPlaying(true);
       return;
     }
+    let sampler: Sampler | null = null;
+    if (!isSynth(instrument)) {
+      const req = ++playReqRef.current;
+      setInstrumentLoading(true);
+      try {
+        sampler = await ensureInstrument(instrument);
+      } catch {
+        window.alert(
+          `Impossibile scaricare i campioni di "${getInstrument(instrument)?.name ?? instrument}".\n` +
+            'Controlla la connessione, oppure scegli "8 bit sound".',
+        );
+        return;
+      } finally {
+        setInstrumentLoading(false);
+      }
+      if (req !== playReqRef.current) return; // Stop pressed while loading
+    }
     const player = playerRef.current ?? new Player();
     playerRef.current = player;
+    player.sampler = sampler;
     player.loop = loopRef.current; // looping is handled inside the Player (seamless)
     player.skipPickupInLoop = loopSkipAnacrusis;
     player.onTick = onTick;
     player.onEnd = onEnd;
     player.play(score, bpm, startTick);
     setIsPlaying(true);
-  }, [bpm, score, midiOn, midiChannel, loopSkipAnacrusis, cursorTick]);
+  }, [bpm, score, midiOn, midiChannel, loopSkipAnacrusis, cursorTick, instrument]);
 
   const handleToStart = useCallback(() => setCursorTick(0), []);
 
@@ -204,7 +258,9 @@ export default function App() {
     setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser' || t.kind === 'dot' || t.kind === 'tuplet' || t.kind === 'tie') && !t.sticky ? NOTE_TOOL : t));
   }, []);
 
-  const handlePreviewNote = useCallback((pitches: Pitch[]) => playPreview(pitches), []);
+  // preview with the selected instrument when its samples are already in memory
+  // (they load in the background on selection); synth otherwise
+  const handlePreviewNote = useCallback((pitches: Pitch[]) => playPreview(pitches, 0.5, getLoadedSampler(instrument)), [instrument]);
 
   const handleLoadPiece = useCallback(
     (id: string) => {
@@ -463,6 +519,9 @@ export default function App() {
         setBpm={setBpm}
         loop={loop}
         setLoop={handleSetLoop}
+        instrument={instrument}
+        setInstrument={setInstrument}
+        instrumentLoading={instrumentLoading}
         midiOn={midiOn}
         onToggleMidi={handleToggleMidi}
         midiOutputs={midiOutputs}

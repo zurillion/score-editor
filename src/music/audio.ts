@@ -3,6 +3,61 @@ import { eventTicks, pitchToFrequency, pitchToMidi } from './theory';
 import { resolveMeasure } from './accidentals';
 import { scoreMeta } from './meta';
 import { TICKS_PER_QUARTER } from './constants';
+import { Sampler, nearestZone } from './instruments';
+
+/**
+ * Start one note at `start` for `dur` seconds on `dest`: an AudioBufferSource
+ * pitch-shifted from the nearest sampled zone when a sampler is given, the
+ * classic triangle oscillator ("8 bit sound") otherwise.
+ */
+function startVoice(
+  ctx: BaseAudioContext,
+  dest: AudioNode,
+  sampler: Sampler | null,
+  start: number,
+  dur: number,
+  freq: number,
+  midi: number,
+): AudioScheduledSourceNode {
+  const gain = ctx.createGain();
+  gain.connect(dest);
+  let src: AudioScheduledSourceNode;
+  let stopAt: number;
+  if (sampler) {
+    const zone = nearestZone(sampler, midi);
+    const node = ctx.createBufferSource();
+    node.buffer = zone.buffer;
+    node.playbackRate.value = Math.pow(2, (midi - zone.midi) / 12);
+    // Samples carry their own attack/decay: sustain for the full value, then
+    // a short release past the end so the cutoff doesn't click.
+    const release = 0.12;
+    const peak = 0.8;
+    gain.gain.setValueAtTime(peak, start);
+    gain.gain.setValueAtTime(peak, start + dur);
+    gain.gain.linearRampToValueAtTime(0, start + dur + release);
+    node.connect(gain);
+    src = node;
+    stopAt = start + dur + release + 0.03;
+  } else {
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    const attack = 0.006;
+    const release = Math.min(0.12, dur * 0.4);
+    const peak = 0.28;
+    const susEnd = Math.max(start + attack, start + dur - release);
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(peak, start + attack);
+    gain.gain.setValueAtTime(peak, susEnd);
+    gain.gain.linearRampToValueAtTime(0, start + dur);
+    osc.connect(gain);
+    src = osc;
+    stopAt = start + dur + 0.03;
+  }
+  src.start(start);
+  src.stop(stopAt);
+  return src;
+}
 
 // ---- One-shot audio preview ----
 // Used by the "play note on creation" option. Keeps a single shared
@@ -10,7 +65,7 @@ import { TICKS_PER_QUARTER } from './constants';
 let previewCtx: AudioContext | null = null;
 
 /** Play the given pitches immediately with a short, fixed-length envelope. */
-export function playPreview(pitches: Pitch[], durSec = 0.5): void {
+export function playPreview(pitches: Pitch[], durSec = 0.5, sampler: Sampler | null = null): void {
   if (pitches.length === 0) return;
   const AudioCtx: typeof AudioContext =
     window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -19,28 +74,11 @@ export function playPreview(pitches: Pitch[], durSec = 0.5): void {
   if (ctx.state === 'suspended') void ctx.resume();
 
   const t0 = ctx.currentTime + 0.005;
-  const end = t0 + durSec;
   const master = ctx.createGain();
   master.gain.value = 0.8;
   master.connect(ctx.destination);
 
-  for (const p of pitches) {
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.value = pitchToFrequency(p);
-    const gain = ctx.createGain();
-    const attack = 0.006;
-    const release = Math.min(0.14, durSec * 0.4);
-    const peak = 0.3;
-    gain.gain.setValueAtTime(0, t0);
-    gain.gain.linearRampToValueAtTime(peak, t0 + attack);
-    gain.gain.setValueAtTime(peak, Math.max(t0 + attack, end - release));
-    gain.gain.linearRampToValueAtTime(0, end);
-    osc.connect(gain);
-    gain.connect(master);
-    osc.start(t0);
-    osc.stop(end + 0.03);
-  }
+  for (const p of pitches) startVoice(ctx, master, sampler, t0, durSec, pitchToFrequency(p), pitchToMidi(p));
 }
 
 export interface ScheduledNote {
@@ -150,7 +188,7 @@ export function loopPos(posTicks: number, totalTicks: number, loopStart: number)
 export class Player {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private sources = new Set<OscillatorNode>();
+  private sources = new Set<AudioScheduledSourceNode>();
   private raf = 0;
 
   private notes: ScheduledNote[] = []; // sorted by startTick
@@ -165,6 +203,7 @@ export class Player {
 
   loop = false;
   skipPickupInLoop = true; // play a leading anacrusis once, then loop only the body
+  sampler: Sampler | null = null; // sampled instrument; null = built-in synth ("8 bit sound")
   onTick: (tick: number) => void = () => {};
   onEnd: () => void = () => {};
 
@@ -219,7 +258,7 @@ export class Player {
         for (const n of this.notes) {
           for (const g of occurrences(n.startTick, this.totalTicks, this.loop, this.scheduledTick, target, loopStart)) {
             const start = Math.max(now, now + (g - this.posTicks) * this.secPerTick);
-            for (const f of n.freqs) this.scheduleNote(start, n.durTicks * this.secPerTick, f);
+            for (let i = 0; i < n.freqs.length; i++) this.scheduleNote(start, n.durTicks * this.secPerTick, n.freqs[i], n.midis[i]);
           }
         }
         this.scheduledTick = target;
@@ -232,30 +271,13 @@ export class Player {
     this.raf = requestAnimationFrame(frame);
   }
 
-  private scheduleNote(start: number, dur: number, freq: number): void {
+  private scheduleNote(start: number, dur: number, freq: number, midi: number): void {
     const ctx = this.ctx;
     const dest = this.master;
     if (!ctx || !dest) return;
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.value = freq;
-
-    const gain = ctx.createGain();
-    const attack = 0.006;
-    const release = Math.min(0.12, dur * 0.4);
-    const peak = 0.28;
-    const susEnd = Math.max(start + attack, start + dur - release);
-    gain.gain.setValueAtTime(0, start);
-    gain.gain.linearRampToValueAtTime(peak, start + attack);
-    gain.gain.setValueAtTime(peak, susEnd);
-    gain.gain.linearRampToValueAtTime(0, start + dur);
-
-    osc.connect(gain);
-    gain.connect(dest);
-    osc.start(start);
-    osc.stop(start + dur + 0.03);
-    this.sources.add(osc);
-    osc.onended = () => this.sources.delete(osc); // prune so a long loop doesn't accumulate
+    const src = startVoice(ctx, dest, this.sampler, start, dur, freq, midi);
+    this.sources.add(src);
+    src.onended = () => this.sources.delete(src); // prune so a long loop doesn't accumulate
   }
 
   stop(): void {

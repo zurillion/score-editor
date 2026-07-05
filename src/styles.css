@@ -199,6 +199,23 @@ input[type='number'] {
   background: #dc2626;
   border-color: #dc2626;
 }
+.transport .instrument {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.inst-icon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+.inst-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .bpm,
 .midi-out,
 .midi-ch {

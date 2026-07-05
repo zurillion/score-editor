@@ -5,6 +5,8 @@ import { Tool } from '../state/tool';
 import { LIBRARY } from '../music/library';
 import { KEY_OPTIONS } from '../music/key';
 import { MidiOutputInfo } from '../music/midi';
+import { INSTRUMENTS } from '../music/instruments';
+import { InstrumentIcon } from './InstrumentIcon';
 
 const DURATIONS: DurationValue[] = [1, 2, 4, 8, 16, 32];
 
@@ -80,6 +82,9 @@ interface ToolbarProps {
   setBpm: (n: number) => void;
   loop: boolean;
   setLoop: (v: boolean) => void;
+  instrument: string;
+  setInstrument: (id: string) => void;
+  instrumentLoading: boolean;
   midiOn: boolean;
   onToggleMidi: () => void;
   midiOutputs: MidiOutputInfo[];
@@ -132,6 +137,9 @@ export function Toolbar(props: ToolbarProps) {
     setBpm,
     loop,
     setLoop,
+    instrument,
+    setInstrument,
+    instrumentLoading,
     midiOn,
     onToggleMidi,
     midiOutputs,
@@ -428,7 +436,7 @@ export function Toolbar(props: ToolbarProps) {
       </fieldset>
 
       <fieldset className="group transport">
-        <legend>Playback</legend>
+        <legend>Playback{instrumentLoading ? ' · carico strumento…' : ''}</legend>
         <div className="btn-row">
           <button onClick={onToStart} title="Torna all'inizio del brano" aria-label="Torna all'inizio">
             ⏮
@@ -436,6 +444,24 @@ export function Toolbar(props: ToolbarProps) {
           <button className={`play ${isPlaying ? 'stop' : ''}`} onClick={isPlaying ? onStop : onPlay}>
             {isPlaying ? '■ Stop' : '▶ Play'}
           </button>
+          <label className="instrument" title="Strumento usato dal playback (i campioni si scaricano al primo uso)">
+            <InstrumentIcon id={instrument} />
+            <select
+              value={instrument}
+              onChange={(e) => {
+                setInstrument(e.target.value);
+                e.currentTarget.blur();
+              }}
+              disabled={isPlaying}
+              aria-label="Strumento"
+            >
+              {INSTRUMENTS.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <button className={loop ? 'on' : ''} onClick={() => setLoop(!loop)} title="Ripeti il brano in loop">
             ↻ Loop
           </button>

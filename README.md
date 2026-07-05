@@ -38,6 +38,10 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
     playback lo scorrimento è verticale.
 - **Playback (Web Audio)** con **BPM** regolabile e un **cursore verticale
   evidenziato** che segue le note suonate, con auto-scroll.
+- **Strumenti campionati** — accanto al Play si sceglie lo strumento (piano,
+  archi, fiati, chitarre, … con relativa icona). I campioni si scaricano
+  **lazy** al primo uso e la scelta è ricordata tra le sessioni; il synth
+  storico dell'app resta disponibile come **"8 bit sound"**.
 
 ## Avvio
 
@@ -76,6 +80,7 @@ src/
     placement.ts   regole crea/accordo/cancella/bloccato
     smufl.ts       code point SMuFL (Bravura) usati
     audio.ts       scheduler e player Web Audio + playhead
+    instruments.ts catalogo strumenti campionati e lazy loading dei sample
   state/
     scoreReducer.ts  stato della partitura e azioni
   components/
@@ -84,6 +89,7 @@ src/
     System.tsx     un endecalineo: rigo, chiavi, battute, hover/click, playhead
     Note.tsx       testa/e, gambo, code (flag), tagli addizionali, alterazioni, punti
     Rest.tsx       pause
+    InstrumentIcon.tsx  icone SVG degli strumenti del playback
   App.tsx          stato dell'interfaccia e collegamenti
 ```
 
@@ -112,3 +118,8 @@ alterazioni, code e cifre di tempo usano i glifi del font musicale **Bravura**
 - Codice: vedi la licenza della repository (GPL-3.0-or-later).
 - Font **Bravura** (`src/assets/Bravura.woff`) — SIL Open Font License 1.1,
   © Steinberg Media Technologies GmbH. Testo in `src/assets/Bravura-OFL.txt`.
+- Campioni degli strumenti da
+  [nbrosowsky/tonejs-instruments](https://github.com/nbrosowsky/tonejs-instruments)
+  — Creative Commons Attribution 3.0 (CC-BY 3.0) — e
+  **Salamander Grand Piano** di Alexander Holm (CC-BY 3.0), serviti via
+  [tonejs.github.io](https://tonejs.github.io/).
