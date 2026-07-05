@@ -305,6 +305,18 @@ export function Toolbar(props: ToolbarProps) {
             ⌣ Legatura
           </button>
           <button
+            className={`glyph-btn ${tool.kind === 'repeat' ? 'on' : ''}`}
+            onClick={() => setTool(tool.kind === 'repeat' ? { kind: 'note' } : { kind: 'repeat' })}
+            title={
+              'Ritornello — clic nella metà sinistra di una battuta: segno di inizio |: · metà destra: segno di fine :| .\n' +
+              'Trascina su/giù sul segno di inizio per il numero di esecuzioni (sotto 1 = ∞ : la sezione va in loop).\n' +
+              'Doppio clic su un segno lo elimina.'
+            }
+          >
+            <span className="bravura repeat-glyph">{SMUFL.repeatLeft}</span>
+            <span style={{ marginLeft: 6 }}>Ritornello</span>
+          </button>
+          <button
             className={`icon-btn ${tool.kind === 'select-measures' ? 'on' : ''}`}
             onClick={() => setTool({ kind: 'select-measures' })}
             title="Seleziona battute (trascina). ⌘C/X copia/taglia · Backspace elimina"

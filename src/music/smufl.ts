@@ -9,6 +9,9 @@ export const SMUFL = {
   gClef: g(0xe050),
   fClef: g(0xe062),
 
+  repeatLeft: g(0xe040), // |:  (toolbar icon)
+  repeatRight: g(0xe041), // :|
+
   // Time-signature digits 0..9 (U+E080..U+E089)
   timeSigDigits: Array.from({ length: 10 }, (_, i) => g(0xe080 + i)),
 

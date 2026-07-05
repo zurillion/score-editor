@@ -51,6 +51,8 @@ import { RestView } from './Rest';
 
 const TOP_Y = diatonicToY(38);
 const BOTTOM_Y = diatonicToY(18);
+// repeat-sign dots sit in the spaces around the middle line of each staff
+const REPEAT_DOT_DS = [TREBLE_MIDDLE + 1, TREBLE_MIDDLE - 1, BASS_MIDDLE + 1, BASS_MIDDLE - 1];
 const SEL_FILL = 'rgba(37,99,235,0.13)';
 const SEL_STROKE = 'rgba(37,99,235,0.7)';
 const BEAM_THICK = 5;
@@ -287,7 +289,12 @@ interface TargetHover {
   hx: number;
   hy: number;
 }
-type Hover = PlaceHover | TargetHover;
+interface RepeatHover {
+  mode: 'repeat';
+  measureIndex: number;
+  edge: 'start' | 'end';
+}
+type Hover = PlaceHover | TargetHover | RepeatHover;
 
 interface SystemProps {
   layout: SystemLayout;
@@ -347,6 +354,10 @@ export function System(props: SystemProps) {
   const movedRef = useRef(false);
   const suppressClickRef = useRef(false);
   const cursorDragRef = useRef(false); // a playhead-handle interaction is in progress
+  // vertical drag on a |: sign to set the play count
+  const repeatDragRef = useRef<{ index: number; startTimes: number; startY: number; lastTimes: number } | null>(null);
+  const [repeatDragIndex, setRepeatDragIndex] = useState<number | null>(null); // show the count (even ×1) while dragging
+  const lastRepeatInsertRef = useRef<{ key: string; t: number } | null>(null); // so a double-click on empty space doesn't insert+delete
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
@@ -448,6 +459,16 @@ export function System(props: SystemProps) {
     return best;
   }
 
+  // ---- repeat tool: which sign a click on empty measure space would insert ----
+  function computeRepeatHover(x: number): RepeatHover | null {
+    const pm = measureAt(x);
+    if (!pm) return null;
+    const edge = x < pm.leftX + pm.contentW / 2 ? 'start' : 'end';
+    const exists = edge === 'start' ? !!pm.measure.repeatStart : !!pm.measure.repeatEnd;
+    if (exists) return null; // the existing sign's own hit zone takes over (drag / double-click)
+    return { mode: 'repeat', measureIndex: pm.index, edge };
+  }
+
   // ---- modal tools (accidental / eraser): hit-test an existing notehead ----
   function computeTarget(x: number, y: number): TargetHover | null {
     const hit = pickNotehead(x, y, tool.kind === 'accidental' ? 20 : 0);
@@ -477,6 +498,17 @@ export function System(props: SystemProps) {
       if (g !== null) onSetCursor(g);
       return;
     }
+    const rd = repeatDragRef.current;
+    if (rd) {
+      const steps = Math.round((rd.startY - e.clientY) / 16); // up = more plays; below 1 = 0 = ∞
+      const t = Math.max(0, Math.min(99, rd.startTimes + steps));
+      if (t !== rd.lastTimes) {
+        onAction({ type: 'SET_REPEAT_TIMES', index: rd.index, times: t });
+        rd.lastTimes = t;
+        movedRef.current = true;
+      }
+      return;
+    }
     const nd = noteDragRef.current;
     if (nd) {
       const d = clamp(yToDiatonic(pt.y), 5, 50);
@@ -490,6 +522,7 @@ export function System(props: SystemProps) {
     }
     if (placing) setHoverState(computePlace(pt.x, pt.y));
     else if (modal) setHoverState(computeTarget(pt.x, pt.y));
+    else if (tool.kind === 'repeat') setHoverState(computeRepeatHover(pt.x));
     else setHoverState(null);
   }
 
@@ -498,6 +531,15 @@ export function System(props: SystemProps) {
     if (cursorDragRef.current) {
       cursorDragRef.current = false;
       suppressClickRef.current = true; // dragging/clicking the playhead handle must not place a note
+    }
+    if (repeatDragRef.current) {
+      repeatDragRef.current = null;
+      setRepeatDragIndex(null);
+      if (movedRef.current) {
+        suppressClickRef.current = true;
+        onAction({ type: 'COMMIT' }); // close the count drag's coalesced undo step
+        movedRef.current = false;
+      }
     }
     if (noteDragRef.current) {
       noteDragRef.current = null;
@@ -513,6 +555,11 @@ export function System(props: SystemProps) {
     setCursorDrag(false);
     if (noteDragRef.current) {
       noteDragRef.current = null;
+      movedRef.current = false;
+    }
+    if (repeatDragRef.current) {
+      repeatDragRef.current = null;
+      setRepeatDragIndex(null);
       movedRef.current = false;
     }
   }
@@ -539,6 +586,17 @@ export function System(props: SystemProps) {
       return;
     }
     if (tool.kind === 'select-measures' || tool.kind === 'select-notes') return;
+
+    if (tool.kind === 'repeat') {
+      // clicks on an existing sign are captured by its hit zone; here we insert
+      if (e.detail >= 2) return; // double-click only ever deletes (on the sign)
+      const pm = measureAt(pt.x);
+      if (!pm) return;
+      const edge = pt.x < pm.leftX + pm.contentW / 2 ? 'start' : 'end';
+      lastRepeatInsertRef.current = { key: `${pm.index}:${edge}`, t: performance.now() };
+      onAction({ type: 'SET_REPEAT', index: pm.index, edge, on: true });
+      return;
+    }
 
     if (tool.kind === 'note' || tool.kind === 'rest') {
       const target = computePlace(pt.x, pt.y);
@@ -593,6 +651,9 @@ export function System(props: SystemProps) {
           <NoteView pitches={[{ ...diatonicToPitch(hover.diatonic, 0), alter: hover.alter }]} duration={duration} staff={hover.staff} keySignature={pm.keySig} x={gx} color={color} opacity={op} />
         );
     }
+  } else if (hover?.mode === 'repeat') {
+    const pm = layout.measures.find((p) => p.index === hover.measureIndex);
+    if (pm) overlay = repeatSignEls(pm, hover.edge, '#2563eb', 0.45, 'rpthover');
   } else if (hover?.mode === 'target') {
     const color = tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : tool.kind === 'tuplet' ? '#7c3aed' : tool.kind === 'tie' ? '#0ea5e9' : '#dc2626';
     overlay = (
@@ -639,6 +700,104 @@ export function System(props: SystemProps) {
         pointerEvents="none"
       />
     );
+  }
+
+  // ---- repeat signs (|: / :|) ----
+  function repeatSignEls(pm: PlacedMeasure, edge: 'start' | 'end', color: string, opacity: number, keyPrefix: string) {
+    const start = edge === 'start';
+    const x = start ? pm.leftX + 2.5 : pm.leftX + pm.contentW - 2.5;
+    const dir = start ? 1 : -1; // thin line + dots sit inside the measure
+    return (
+      <g key={`${keyPrefix}-${pm.index}-${edge}`} opacity={opacity} pointerEvents="none">
+        <line x1={x} x2={x} y1={TOP_Y} y2={BOTTOM_Y} stroke={color} strokeWidth={3.4} />
+        <line x1={x + dir * 5} x2={x + dir * 5} y1={TOP_Y} y2={BOTTOM_Y} stroke={color} strokeWidth={1.2} />
+        {REPEAT_DOT_DS.map((d) => (
+          <circle key={d} cx={x + dir * 10} cy={diatonicToY(d)} r={2.3} fill={color} />
+        ))}
+      </g>
+    );
+  }
+
+  // play count over the |: sign; ×1 stays hidden (unless being dragged), 0 shows as ∞ (endless loop)
+  function repeatCountEl(pm: PlacedMeasure) {
+    const times = pm.measure.repeatStart!.times;
+    const dragging = repeatDragIndex === pm.index;
+    if (times === 1 && !dragging) return null;
+    return (
+      <text
+        key={`rptc-${pm.index}`}
+        x={pm.leftX + 7.5}
+        y={TOP_Y - 16}
+        textAnchor="middle"
+        fontSize={times === 0 ? 17 : 13}
+        fontWeight={700}
+        fill={dragging ? '#7c3aed' : '#1a1a1a'}
+        pointerEvents="none"
+      >
+        {times === 0 ? '∞' : `×${times}`}
+      </text>
+    );
+  }
+
+  // with the repeat tool active, each sign gets a hit zone: vertical drag on |:
+  // changes the play count, double-click on either sign removes it
+  function repeatHitZones(pm: PlacedMeasure) {
+    if (tool.kind !== 'repeat') return null;
+    const justInserted = (key: string) => {
+      const ins = lastRepeatInsertRef.current;
+      return !!ins && ins.key === key && performance.now() - ins.t < 500; // the insert double-click must not delete it right away
+    };
+    const consumeSuppress = () => {
+      if (!suppressClickRef.current) return false;
+      suppressClickRef.current = false;
+      return true;
+    };
+    const zones: JSX.Element[] = [];
+    if (pm.measure.repeatStart) {
+      zones.push(
+        <rect
+          key={`rz-s-${pm.index}`}
+          x={pm.leftX - 2}
+          y={TOP_Y - 32}
+          width={19}
+          height={BOTTOM_Y - TOP_Y + 44}
+          fill="transparent"
+          style={{ cursor: 'ns-resize' }}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            movedRef.current = false;
+            const times = pm.measure.repeatStart!.times;
+            repeatDragRef.current = { index: pm.index, startTimes: times, startY: e.clientY, lastTimes: times };
+            setRepeatDragIndex(pm.index);
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (consumeSuppress()) return;
+            if (e.detail >= 2 && !justInserted(`${pm.index}:start`)) onAction({ type: 'SET_REPEAT', index: pm.index, edge: 'start', on: false });
+          }}
+        />,
+      );
+    }
+    if (pm.measure.repeatEnd) {
+      zones.push(
+        <rect
+          key={`rz-e-${pm.index}`}
+          x={pm.leftX + pm.contentW - 17}
+          y={TOP_Y - 32}
+          width={19}
+          height={BOTTOM_Y - TOP_Y + 44}
+          fill="transparent"
+          style={{ cursor: 'pointer' }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (consumeSuppress()) return;
+            if (e.detail >= 2 && !justInserted(`${pm.index}:end`)) onAction({ type: 'SET_REPEAT', index: pm.index, edge: 'end', on: false });
+          }}
+        />,
+      );
+    }
+    return zones;
   }
 
   // mid-line key/time change: double barline, cancellation naturals, new key, new time
@@ -811,6 +970,10 @@ export function System(props: SystemProps) {
               .filter((ev): ev is Extract<ScoreEvent, { kind: 'note' }> => ev.kind === 'note' && selectedNoteIds.has(ev.id))
               .map((ev) => noteHighlight(pm, ev))}
           <line x1={pm.leftX + pm.contentW} x2={pm.leftX + pm.contentW} y1={TOP_Y} y2={BOTTOM_Y} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
+          {pm.measure.repeatStart && repeatSignEls(pm, 'start', '#1a1a1a', 1, 'rpt')}
+          {pm.measure.repeatStart && repeatCountEl(pm)}
+          {pm.measure.repeatEnd && repeatSignEls(pm, 'end', '#1a1a1a', 1, 'rpt')}
+          {repeatHitZones(pm)}
         </Fragment>
         );
       })}

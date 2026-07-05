@@ -36,6 +36,8 @@ export type ScoreAction =
   | { type: 'SET_TIME_SIGNATURE_AT'; measureIndex: number; timeSignature: TimeSignature }
   | { type: 'SET_KEY_SIGNATURE_AT'; measureIndex: number; keySignature: number }
   | { type: 'SET_PICKUP'; on: boolean }
+  | { type: 'SET_REPEAT'; index: number; edge: 'start' | 'end'; on: boolean }
+  | { type: 'SET_REPEAT_TIMES'; index: number; times: number } // coalesced (set by the count drag)
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
   | { type: 'CLEAR' }
@@ -444,6 +446,32 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       return state;
     }
 
+    case 'SET_REPEAT': {
+      const m = state.measures[action.index];
+      if (!m) return state;
+      const measures = state.measures.slice();
+      if (action.edge === 'start') {
+        if (action.on === !!m.repeatStart) return state;
+        const { repeatStart: _drop, ...rest } = m;
+        measures[action.index] = action.on ? { ...m, repeatStart: { times: 1 } } : rest;
+      } else {
+        if (action.on === !!m.repeatEnd) return state;
+        const { repeatEnd: _drop, ...rest } = m;
+        measures[action.index] = action.on ? { ...m, repeatEnd: true } : rest;
+      }
+      return { ...state, measures };
+    }
+
+    case 'SET_REPEAT_TIMES': {
+      const m = state.measures[action.index];
+      if (!m?.repeatStart) return state;
+      const times = Math.max(0, Math.min(99, Math.round(action.times)));
+      if (times === m.repeatStart.times) return state;
+      const measures = state.measures.slice();
+      measures[action.index] = { ...m, repeatStart: { times } };
+      return { ...state, measures };
+    }
+
     case 'ADD_MEASURE':
       return { ...state, measures: [...state.measures, emptyMeasure()] };
 
@@ -480,7 +508,9 @@ const UNDO_LIMIT = 100;
 
 /** Actions whose rapid repetition should collapse into one undo step. */
 function coalesceKey(action: ScoreAction): string | null {
-  return action.type === 'MOVE_NOTE' ? `move:${action.eventId}` : null;
+  if (action.type === 'MOVE_NOTE') return `move:${action.eventId}`;
+  if (action.type === 'SET_REPEAT_TIMES') return `rpt:${action.index}`;
+  return null;
 }
 
 export function historyReducer(state: HistoryState, action: ScoreAction): HistoryState {

@@ -287,6 +287,16 @@ input[type='number'] {
 .system[data-tool='accidental'] {
   cursor: pointer;
 }
+.system[data-tool='repeat'] {
+  cursor: copy;
+}
+
+/* |: glyph in the repeat-tool button (barline glyphs hang from the baseline) */
+.glyph-btn .bravura.repeat-glyph {
+  font-size: 15px;
+  position: relative;
+  top: -4px;
+}
 
 /* ---- Hint ---- */
 .hint {

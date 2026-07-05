@@ -82,16 +82,86 @@ export function playPreview(pitches: Pitch[], durSec = 0.5, sampler: Sampler | n
 }
 
 export interface ScheduledNote {
-  startTick: number; // global, across measures
+  startTick: number; // playback tick (repeats already expanded)
   durTicks: number;
   freqs: number[];
   midis: number[];
 }
 
+/** One contiguous stretch of the score as it appears in playback order. */
+export interface PlaySegment {
+  playStart: number; // where this stretch begins on the playback timeline
+  scoreStart: number; // the score tick it corresponds to
+  len: number;
+}
+
 export interface Schedule {
-  notes: ScheduledNote[]; // sorted by startTick
-  totalTicks: number;
+  notes: ScheduledNote[]; // sorted by startTick, in playback ticks
+  totalTicks: number; // playback length (ends at the ∞ section's end when one exists)
   pickupTicks: number; // length of the leading anacrusis (0 if none) — skippable on loop
+  segments: PlaySegment[]; // playback ↔ score tick mapping (identity when there are no repeats)
+  forcedLoopStart?: number; // playback tick where an infinite (times = 0) repeat section starts
+}
+
+/** Score tick shown by the playhead for a playback tick. */
+export function playToScoreTick(sched: Schedule, playTick: number): number {
+  const segs = sched.segments;
+  if (segs.length === 0) return Math.max(0, playTick);
+  for (const s of segs) if (playTick < s.playStart + s.len) return s.scoreStart + Math.max(0, playTick - s.playStart);
+  const last = segs[segs.length - 1];
+  return last.scoreStart + last.len;
+}
+
+/** First playback occurrence of a score tick (0 when it's never reached, e.g. past an ∞ section). */
+export function scoreToPlayTick(sched: Schedule, scoreTick: number): number {
+  for (const s of sched.segments) if (scoreTick >= s.scoreStart && s.len > 0 && scoreTick < s.scoreStart + s.len) return s.playStart + (scoreTick - s.scoreStart);
+  return 0;
+}
+
+/**
+ * Playback order of the measures once repeat signs are applied. A :| jumps back
+ * to the matching |: (or to the start of the unconsumed part when there is
+ * none, playing that stretch twice). The |: sign's `times` is the total number
+ * of plays of the section (1 = plays once, as without signs); times = 0 marks
+ * the section as an endless loop: playback is truncated there and the players
+ * cycle it. Repeats are consumed left to right; nesting is not supported.
+ */
+function expandRepeats(score: ScoreState, meta: ReturnType<typeof scoreMeta>): { segments: PlaySegment[]; forcedLoopStart?: number } {
+  const ms = score.measures;
+  const ranges: { from: number; to: number }[] = [];
+  let forced: { from: number; to: number } | null = null;
+  let cursor = 0;
+  for (let e = 0; e < ms.length && !forced; e++) {
+    if (!ms[e].repeatEnd || e < cursor) continue;
+    let s = cursor;
+    for (let i = e; i >= cursor; i--) {
+      if (ms[i].repeatStart) {
+        s = i;
+        break;
+      }
+    }
+    const times = ms[s].repeatStart ? Math.max(0, Math.round(ms[s].repeatStart!.times)) : 2;
+    if (s > cursor) ranges.push({ from: cursor, to: s - 1 });
+    if (times === 0) {
+      forced = { from: s, to: e };
+      break;
+    }
+    for (let k = 0; k < times; k++) ranges.push({ from: s, to: e });
+    cursor = e + 1;
+  }
+  if (forced) ranges.push(forced);
+  else if (cursor < ms.length) ranges.push({ from: cursor, to: ms.length - 1 });
+
+  const segments: PlaySegment[] = [];
+  let playStart = 0;
+  for (const r of ranges) {
+    const a = meta.measures[r.from];
+    const b = meta.measures[r.to];
+    const len = b.startTick + b.total - a.startTick;
+    segments.push({ playStart, scoreStart: a.startTick, len });
+    playStart += len;
+  }
+  return { segments, ...(forced ? { forcedLoopStart: playStart - segments[segments.length - 1].len } : {}) };
 }
 
 /**
@@ -125,7 +195,7 @@ export function buildSchedule(score: ScoreState): Schedule {
     a.push(e);
     byKey.set(e.key, a);
   }
-  const notes: ScheduledNote[] = [];
+  const scoreNotes: ScheduledNote[] = [];
   for (const arr of byKey.values()) {
     arr.sort((a, b) => a.startG - b.startG);
     for (let i = 0; i < arr.length; i++) {
@@ -137,12 +207,31 @@ export function buildSchedule(score: ScoreState): Schedule {
         end = arr[j + 1].endG;
         j++;
       }
-      notes.push({ startTick: arr[i].startG, durTicks: end - arr[i].startG, freqs: [arr[i].freq], midis: [arr[i].midi] });
+      scoreNotes.push({ startTick: arr[i].startG, durTicks: end - arr[i].startG, freqs: [arr[i].freq], midis: [arr[i].midi] });
+    }
+  }
+  const pickupTicks = meta.measures[0]?.pickup ? meta.measures[0].total : 0;
+
+  const hasRepeats = score.measures.some((m) => m.repeatStart || m.repeatEnd);
+  if (!hasRepeats) {
+    scoreNotes.sort((a, b) => a.startTick - b.startTick);
+    return { notes: scoreNotes, totalTicks: meta.totalTicks, pickupTicks, segments: [{ playStart: 0, scoreStart: 0, len: meta.totalTicks }] };
+  }
+
+  // Copy the score notes into each playback pass of their segment. A note that
+  // would ring past a repeat jump is clipped at the segment boundary.
+  const { segments, forcedLoopStart } = expandRepeats(score, meta);
+  const notes: ScheduledNote[] = [];
+  for (const seg of segments) {
+    const segEnd = seg.scoreStart + seg.len;
+    for (const n of scoreNotes) {
+      if (n.startTick < seg.scoreStart || n.startTick >= segEnd) continue;
+      notes.push({ ...n, startTick: seg.playStart + (n.startTick - seg.scoreStart), durTicks: Math.min(n.durTicks, segEnd - n.startTick) });
     }
   }
   notes.sort((a, b) => a.startTick - b.startTick);
-  const pickupTicks = meta.measures[0]?.pickup ? meta.measures[0].total : 0;
-  return { notes, totalTicks: meta.totalTicks, pickupTicks };
+  const totalTicks = segments.length ? segments[segments.length - 1].playStart + segments[segments.length - 1].len : 0;
+  return { notes, totalTicks, pickupTicks, segments, ...(forcedLoopStart !== undefined ? { forcedLoopStart } : {}) };
 }
 
 /**
@@ -231,8 +320,9 @@ export class Player {
     this.notes = sched.notes;
     this.totalTicks = sched.totalTicks;
     this.pickupTicks = sched.pickupTicks;
+    const forcedLoopStart = sched.forcedLoopStart ?? null;
     this.setBpm(bpm);
-    const from = sched.totalTicks > 0 && startTick >= sched.totalTicks ? 0 : Math.max(0, startTick);
+    const from = scoreToPlayTick(sched, Math.max(0, startTick)); // startTick is a score tick
     this.posTicks = from;
     this.scheduledTick = from;
     this.lastTime = ctx.currentTime;
@@ -243,11 +333,13 @@ export class Player {
       const now = c.currentTime;
       this.posTicks += (now - this.lastTime) / this.secPerTick;
       this.lastTime = now;
-      const loopStart = this.skipPickupInLoop ? this.pickupTicks : 0;
+      // an ∞ repeat cycles its own section regardless of the Loop toggle
+      const looping = this.loop || forcedLoopStart !== null;
+      const loopStart = forcedLoopStart ?? (this.skipPickupInLoop ? this.pickupTicks : 0);
 
       const tail = 0.12 / this.secPerTick; // let the final note's release ring out
-      if (!this.loop && this.totalTicks > 0 && this.posTicks >= this.totalTicks + tail) {
-        this.onTick(this.totalTicks);
+      if (!looping && this.totalTicks > 0 && this.posTicks >= this.totalTicks + tail) {
+        this.onTick(playToScoreTick(sched, this.totalTicks));
         this.stop();
         this.onEnd();
         return;
@@ -256,7 +348,7 @@ export class Player {
       const target = this.posTicks + Player.LOOKAHEAD_SEC / this.secPerTick;
       if (target > this.scheduledTick) {
         for (const n of this.notes) {
-          for (const g of occurrences(n.startTick, this.totalTicks, this.loop, this.scheduledTick, target, loopStart)) {
+          for (const g of occurrences(n.startTick, this.totalTicks, looping, this.scheduledTick, target, loopStart)) {
             const start = Math.max(now, now + (g - this.posTicks) * this.secPerTick);
             for (let i = 0; i < n.freqs.length; i++) this.scheduleNote(start, n.durTicks * this.secPerTick, n.freqs[i], n.midis[i]);
           }
@@ -264,8 +356,8 @@ export class Player {
         this.scheduledTick = target;
       }
 
-      const pos = this.loop && this.totalTicks > 0 ? loopPos(this.posTicks, this.totalTicks, loopStart) : Math.min(this.posTicks, this.totalTicks);
-      this.onTick(Math.max(0, pos));
+      const pos = looping && this.totalTicks > 0 ? loopPos(this.posTicks, this.totalTicks, loopStart) : Math.min(this.posTicks, this.totalTicks);
+      this.onTick(playToScoreTick(sched, Math.max(0, pos)));
       this.raf = requestAnimationFrame(frame);
     };
     this.raf = requestAnimationFrame(frame);

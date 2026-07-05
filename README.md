@@ -42,6 +42,12 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   archi, fiati, chitarre, … con relativa icona). I campioni si scaricano
   **lazy** al primo uso e la scelta è ricordata tra le sessioni; il synth
   storico dell'app resta disponibile come **"8 bit sound"**.
+- **Ritornelli** — con lo strumento *Ritornello*: clic nella metà sinistra di
+  una battuta per il segno di inizio `|:`, nella metà destra per quello di
+  fine `:|`. Trascinando in verticale sul segno di inizio si imposta il numero
+  di esecuzioni (mostrato sopra il segno se ≠ 1); sotto l'1 diventa **∞** e la
+  sezione va in loop nel playback. Doppio clic su un segno per eliminarlo. Il
+  playback (audio e MIDI) espande i ritornelli.
 
 ## Avvio
 

@@ -58,6 +58,8 @@ export interface Measure {
   timeSignature?: TimeSignature; // override that starts here and lasts until the next override
   keySignature?: number; // key-signature override that starts here and lasts until the next override
   pickup?: boolean; // anacrusis: an incomplete initial measure whose length follows its content
+  repeatStart?: { times: number }; // |: at the measure start; times = total plays of the section (0 = loop forever, 1 = hidden default)
+  repeatEnd?: boolean; // :| at the measure end
 }
 
 export interface TimeSignature {

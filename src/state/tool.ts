@@ -17,6 +17,7 @@ export type Tool =
   | { kind: 'dot'; dots: 1 | 2; sticky: boolean }
   | { kind: 'tuplet'; sticky: boolean } // click a note to turn it into a triplet
   | { kind: 'tie'; sticky: boolean } // click a note to tie it to the next note of the same pitch
+  | { kind: 'repeat' } // click a measure half to add |: / :| ; drag a sign vertically to set the play count; double-click removes
   | { kind: 'select-measures' }
   | { kind: 'select-notes' };
 

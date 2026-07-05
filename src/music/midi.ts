@@ -1,5 +1,5 @@
 import { ScoreState } from './types';
-import { buildSchedule, occurrences, loopPos, ScheduledNote } from './audio';
+import { buildSchedule, occurrences, loopPos, playToScoreTick, scoreToPlayTick, ScheduledNote } from './audio';
 import { TICKS_PER_QUARTER } from './constants';
 
 // Web MIDI is provided by the DOM lib (MIDIAccess / MIDIOutput); some browsers
@@ -80,8 +80,9 @@ export class MidiPlayer {
     this.notes = sched.notes;
     this.totalTicks = sched.totalTicks;
     this.pickupTicks = sched.pickupTicks;
+    const forcedLoopStart = sched.forcedLoopStart ?? null;
     this.setBpm(bpm);
-    const from = sched.totalTicks > 0 && startTick >= sched.totalTicks ? 0 : Math.max(0, startTick);
+    const from = scoreToPlayTick(sched, Math.max(0, startTick)); // startTick is a score tick
     this.posTicks = from;
     this.scheduledTick = from;
     this.lastTime = performance.now();
@@ -93,10 +94,12 @@ export class MidiPlayer {
       this.posTicks += (now - this.lastTime) / 1000 / this.secPerTick;
       this.lastTime = now;
       const ch = this.channel & 0x0f;
-      const loopStart = this.skipPickupInLoop ? this.pickupTicks : 0;
+      // an ∞ repeat cycles its own section regardless of the Loop toggle
+      const looping = this.loop || forcedLoopStart !== null;
+      const loopStart = forcedLoopStart ?? (this.skipPickupInLoop ? this.pickupTicks : 0);
 
-      if (!this.loop && this.totalTicks > 0 && this.posTicks >= this.totalTicks) {
-        this.onTick(this.totalTicks);
+      if (!looping && this.totalTicks > 0 && this.posTicks >= this.totalTicks) {
+        this.onTick(playToScoreTick(sched, this.totalTicks));
         this.stop();
         this.onEnd();
         return;
@@ -105,7 +108,7 @@ export class MidiPlayer {
       const target = this.posTicks + MidiPlayer.LOOKAHEAD_SEC / this.secPerTick;
       if (target > this.scheduledTick) {
         for (const n of this.notes) {
-          for (const g of occurrences(n.startTick, this.totalTicks, this.loop, this.scheduledTick, target, loopStart)) {
+          for (const g of occurrences(n.startTick, this.totalTicks, looping, this.scheduledTick, target, loopStart)) {
             const onMs = now + Math.max(0, (g - this.posTicks) * this.secPerTick * 1000);
             const offMs = onMs + n.durTicks * this.secPerTick * 1000;
             for (const m of n.midis) {
@@ -117,8 +120,8 @@ export class MidiPlayer {
         this.scheduledTick = target;
       }
 
-      const pos = this.loop && this.totalTicks > 0 ? loopPos(this.posTicks, this.totalTicks, loopStart) : Math.min(this.posTicks, this.totalTicks);
-      this.onTick(Math.max(0, pos));
+      const pos = looping && this.totalTicks > 0 ? loopPos(this.posTicks, this.totalTicks, loopStart) : Math.min(this.posTicks, this.totalTicks);
+      this.onTick(playToScoreTick(sched, Math.max(0, pos)));
       this.raf = requestAnimationFrame(frame);
     };
     this.raf = requestAnimationFrame(frame);
