@@ -7,6 +7,9 @@
 //   PUT    /api/pieces        -> 204           reorder {order:[id]}  (admin)
 //   PUT    /api/pieces/:id    -> 204           rename/update/inMenu  (admin)
 //   DELETE /api/pieces/:id    -> 204                                 (admin)
+//   PUT    /api/library       -> { count }     replace the whole
+//                                library {pieces:[...]}, keeping the
+//                                provided ids so play links survive   (admin)
 //
 // Admin calls carry the password in the `x-admin-key` header and are checked
 // against the ADMIN_PASSWORD environment variable.
@@ -76,15 +79,47 @@ export default async (req: Request) => {
   if (resource === 'auth' && req.method === 'GET') {
     return authorized(req) ? done() : fail(401, 'unauthorized');
   }
-  if (resource !== 'pieces' || parts.length > 3) return fail(404, 'not found');
+  if ((resource !== 'pieces' && resource !== 'library') || parts.length > 3) return fail(404, 'not found');
 
-  if (req.method === 'GET') {
+  if (req.method === 'GET' && resource === 'pieces') {
     if (!id) return json({ pieces: await readIndex() });
     const piece = await store().get(`piece/${id}`, { type: 'json' });
     return piece ? json(piece) : fail(404, 'piece not found');
   }
 
   if (!authorized(req)) return fail(401, 'unauthorized');
+
+  if (resource === 'library') {
+    if (req.method !== 'PUT' || id) return fail(405, 'method not allowed');
+    // full restore: replace every piece and the index with the given library
+    const body = await req.json().catch(() => null);
+    const list: unknown[] = Array.isArray(body?.pieces) ? body.pieces : null!;
+    if (!list) return fail(400, 'invalid library');
+    const used = new Set<string>();
+    const incoming: { id: string; title: string; inMenu: boolean; bpm: number; score: unknown; updatedAt: string }[] = [];
+    for (const raw of list as Record<string, unknown>[]) {
+      const title = typeof raw?.title === 'string' ? raw.title.trim() : '';
+      if (!title || typeof raw.bpm !== 'number' || !validScore(raw.score)) return fail(400, `invalid piece: "${title || '?'}"`);
+      // keep the exported id (play links survive the restore); regenerate if unusable
+      let pid = typeof raw.id === 'string' && /^[a-zA-Z0-9_-]{4,64}$/.test(raw.id) ? raw.id : newId();
+      while (used.has(pid)) pid = newId();
+      used.add(pid);
+      incoming.push({
+        id: pid,
+        title,
+        inMenu: raw.inMenu !== false,
+        bpm: raw.bpm,
+        score: raw.score,
+        updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
+      });
+    }
+    // read the raw index (no example seeding on a virgin store: we're replacing it anyway)
+    const current = ((await store().get('index', { type: 'json' })) as IndexEntry[] | null) ?? [];
+    for (const e of current) if (!used.has(e.id)) await store().delete(`piece/${e.id}`);
+    for (const p of incoming) await store().setJSON(`piece/${p.id}`, p);
+    await store().setJSON('index', incoming.map((p) => ({ id: p.id, title: p.title, inMenu: p.inMenu })));
+    return json({ count: incoming.length });
+  }
 
   if (req.method === 'POST' && !id) {
     const body = await req.json().catch(() => null);

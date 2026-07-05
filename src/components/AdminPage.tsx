@@ -1,6 +1,7 @@
 import { MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { ScoreState } from '../music/types';
 import {
+  LibraryPieceExport,
   PieceSummary,
   StoredPiece,
   checkAdmin,
@@ -10,6 +11,7 @@ import {
   listPieces,
   playUrl,
   reorderPieces,
+  replaceLibrary,
   updatePiece,
 } from '../api';
 import { MiniScore } from './MiniScore';
@@ -20,6 +22,20 @@ interface Entry extends PieceSummary {
 }
 
 const KEY_STORAGE = 'admin.key';
+
+function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+const safeName = (title: string) => title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
 
 /**
  * Password-protected list management (#/admin): only the admin can add,
@@ -36,6 +52,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
   const [busy, setBusy] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const libFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const showError = (message: string) => setBanner(message);
 
@@ -172,18 +189,57 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
       showError('Brano non ancora caricato, riprova tra un attimo.');
       return;
     }
-    const data = { format: 'score-composer', version: 1, name: piece.title, bpm: piece.bpm, score: piece.score };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const safe = piece.title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
-    a.href = url;
-    a.download = `${safe || 'brano'}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadJson(`${safeName(piece.title) || 'brano'}.json`, { format: 'score-composer', version: 1, name: piece.title, bpm: piece.bpm, score: piece.score });
   }
+
+  // ---- whole-library backup / restore ----
+
+  const exportLibrary = () =>
+    run(async () => {
+      if (!entries) return;
+      // make sure every piece's full data is in hand (previews load lazily)
+      const full = await Promise.all(entries.map(async (e) => e.piece ?? (await getPiece(e.id))));
+      const pieces: LibraryPieceExport[] = entries.map((e, i) => ({
+        id: e.id, // published id: a restore keeps it, so shared play links stay valid
+        title: e.title,
+        inMenu: e.inMenu,
+        bpm: full[i].bpm,
+        score: full[i].score,
+        ...(full[i].updatedAt ? { updatedAt: full[i].updatedAt } : {}),
+      }));
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadJson(`libreria-score-composer-${stamp}.json`, { format: 'score-composer-library', version: 1, exportedAt: new Date().toISOString(), pieces });
+    });
+
+  const importLibrary = (file: File) =>
+    run(async () => {
+      if (!key) return;
+      let obj: { format?: unknown; pieces?: unknown } | null = null;
+      try {
+        obj = JSON.parse(await file.text());
+      } catch {
+        showError('File non valido (JSON illeggibile).');
+        return;
+      }
+      if (obj?.format !== 'score-composer-library' || !Array.isArray(obj.pieces)) {
+        showError(
+          obj?.format === 'score-composer'
+            ? 'Questo è il file di un singolo brano: usa "Importa JSON".'
+            : 'File non valido: non sembra un backup della libreria.',
+        );
+        return;
+      }
+      const incoming = obj.pieces as LibraryPieceExport[];
+      if (
+        !window.confirm(
+          `Sostituire l'intera libreria attuale (${entries?.length ?? 0} brani) con quella del file (${incoming.length} brani)?\n` +
+            'I brani attuali non inclusi nel backup andranno persi.',
+        )
+      )
+        return;
+      await replaceLibrary(key, incoming);
+      await refresh();
+    });
 
   const importJson = (file: File) =>
     run(async () => {
@@ -273,6 +329,12 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
         <button disabled={busy} onClick={() => fileInputRef.current?.click()} title="Importa un brano da un file .json">
           ⤒ Importa JSON
         </button>
+        <button disabled={busy || !entries} onClick={() => void exportLibrary()} title="Scarica un backup dell'intera libreria (brani + metadati + id di pubblicazione)">
+          ⤓ Esporta libreria
+        </button>
+        <button disabled={busy} onClick={() => libFileInputRef.current?.click()} title="Ripristina la libreria da un backup: quella attuale viene sostituita">
+          ⤒ Importa libreria
+        </button>
         <span className="spacer" />
         <button
           onClick={() => {
@@ -294,6 +356,17 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
           const f = e.target.files?.[0];
           e.target.value = '';
           if (f) void importJson(f);
+        }}
+      />
+      <input
+        ref={libFileInputRef}
+        type="file"
+        accept="application/json,.json"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) void importLibrary(f);
         }}
       />
 

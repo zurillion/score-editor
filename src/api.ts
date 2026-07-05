@@ -68,6 +68,20 @@ export function reorderPieces(key: string, order: string[]): Promise<void> {
   return request('pieces', adminInit(key, 'PUT', { order }));
 }
 
+export interface LibraryPieceExport {
+  id: string;
+  title: string;
+  inMenu: boolean;
+  bpm: number;
+  score: ScoreState;
+  updatedAt?: string;
+}
+
+/** Replaces the entire library (pieces + order) — a restore from a backup. */
+export async function replaceLibrary(key: string, pieces: LibraryPieceExport[]): Promise<number> {
+  return (await request<{ count: number }>('library', adminInit(key, 'PUT', { pieces }))).count;
+}
+
 /** Shareable play-only URL for a piece. */
 export function playUrl(id: string): string {
   return `${location.origin}${location.pathname}#/play/${id}`;
