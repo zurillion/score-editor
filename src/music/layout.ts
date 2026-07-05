@@ -144,8 +144,17 @@ export function changeInsetWidth(meta: MeasureMeta): number {
     const naturals = keyChangeNaturals(meta.prevKeySig, meta.keySig, 0).length;
     w += (naturals + Math.abs(meta.keySig)) * KEYSIG_STEP + CHANGE_PAD;
   }
-  if (meta.tsChanged) w += 26;
+  if (meta.tsChanged) w += 34; // digits are drawn 16px past the barline, ~9px half-width each side
   return w > 0 ? w + CHANGE_PAD : 0;
+}
+
+// Extra measure width so repeat-sign dots stay clear of the notes.
+export const REPEAT_START_PAD = 18;
+export const REPEAT_END_PAD = 12;
+
+/** Space reserved inside a measure for its repeat signs (0 without signs). */
+export function repeatPads(m: Measure): { left: number; right: number } {
+  return { left: m.repeatStart ? REPEAT_START_PAD : 0, right: m.repeatEnd ? REPEAT_END_PAD : 0 };
 }
 
 function buildSystem(
@@ -162,9 +171,10 @@ function buildSystem(
     const mm = metas[i];
     const firstInSystem = i === from;
     const leftInset = firstInSystem ? 0 : changeInsetWidth(mm); // line starts show the key in the header
-    const contentW = measureWidth(mm) + leftInset;
-    const noteLeft = x + MEASURE_PAD + leftInset;
-    const noteSpan = contentW - 2 * MEASURE_PAD - leftInset;
+    const pads = repeatPads(measures[i]);
+    const contentW = measureWidth(mm) + leftInset + pads.left + pads.right;
+    const noteLeft = x + MEASURE_PAD + leftInset + pads.left;
+    const noteSpan = contentW - 2 * MEASURE_PAD - leftInset - pads.left - pads.right;
     placed.push({
       measure: measures[i],
       index: i,
@@ -227,7 +237,8 @@ export function layoutSystems(
     let j = i;
     while (j < measures.length) {
       const inset = j !== i && (metas[j].keyChanged || metas[j].tsChanged) ? changeInsetWidth(metas[j]) : 0;
-      const w = measureWidth(metas[j]) + inset;
+      const pads = repeatPads(measures[j]);
+      const w = measureWidth(metas[j]) + inset + pads.left + pads.right;
       if (j > i && sum + w > usable) break;
       sum += w;
       j++;

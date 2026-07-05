@@ -705,7 +705,8 @@ export function System(props: SystemProps) {
   // ---- repeat signs (|: / :|) ----
   function repeatSignEls(pm: PlacedMeasure, edge: 'start' | 'end', color: string, opacity: number, keyPrefix: string) {
     const start = edge === 'start';
-    const x = start ? pm.leftX + 2.5 : pm.leftX + pm.contentW - 2.5;
+    // a |: sits after any mid-line key/time change drawn in the measure's inset
+    const x = start ? pm.leftX + pm.leftInset + 2.5 : pm.leftX + pm.contentW - 2.5;
     const dir = start ? 1 : -1; // thin line + dots sit inside the measure
     return (
       <g key={`${keyPrefix}-${pm.index}-${edge}`} opacity={opacity} pointerEvents="none">
@@ -726,7 +727,7 @@ export function System(props: SystemProps) {
     return (
       <text
         key={`rptc-${pm.index}`}
-        x={pm.leftX + 7.5}
+        x={pm.leftX + pm.leftInset + 7.5}
         y={TOP_Y - 16}
         textAnchor="middle"
         fontSize={times === 0 ? 17 : 13}
@@ -757,7 +758,7 @@ export function System(props: SystemProps) {
       zones.push(
         <rect
           key={`rz-s-${pm.index}`}
-          x={pm.leftX - 2}
+          x={pm.leftX + pm.leftInset - 2}
           y={TOP_Y - 32}
           width={19}
           height={BOTTOM_Y - TOP_Y + 44}
@@ -805,7 +806,7 @@ export function System(props: SystemProps) {
     const baseX = pm.leftX + 4;
     const naturalsCount = pm.keyChanged ? keyChangeNaturals(pm.prevKeySig, pm.keySig, 0).length : 0;
     const newCount = Math.abs(pm.keySig);
-    const timeX = baseX + (pm.keyChanged ? (naturalsCount + newCount) * KEYSIG_STEP + 12 : 6);
+    const timeX = baseX + (pm.keyChanged ? (naturalsCount + newCount) * KEYSIG_STEP + 12 : 16); // keep the digits clear of the barline
     return (
       <g pointerEvents="none">
         <line x1={pm.leftX - 3} x2={pm.leftX - 3} y1={TOP_Y} y2={BOTTOM_Y} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
