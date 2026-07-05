@@ -6,7 +6,6 @@ import { scoreMeta, measureIndexAtTick } from './music/meta';
 import { Player, playPreview } from './music/audio';
 import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, Sampler, ensureInstrument, getInstrument, getLoadedSampler, isSynth } from './music/instruments';
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
-import { LIBRARY } from './music/library';
 import { initialHistory, historyReducer } from './state/scoreReducer';
 import { Tool, NOTE_TOOL } from './state/tool';
 import { ClipNote, Clipboard, Selection } from './state/selection';
@@ -295,28 +294,18 @@ export default function App({ active = true, snapshotRef }: AppProps) {
 
   const handleLoadPiece = useCallback(
     async (id: string) => {
-      const applyLoaded = (loaded: ScoreState, loadedBpm: number, title: string, src: string | null) => {
+      try {
+        const p = await getPiece(id);
         handleStop();
         setSelection(null);
         setCursorTick(0);
-        dispatch({ type: 'LOAD', score: clone(loaded) });
-        setBpm(loadedBpm);
-        setPieceName(title);
-        setSourceId(src);
-      };
-      if (id.startsWith('srv:')) {
-        const sid = id.slice(4);
-        try {
-          const p = await getPiece(sid);
-          applyLoaded(p.score, p.bpm, p.title, sid);
-        } catch {
-          window.alert('Impossibile caricare il brano dal server.');
-        }
-        return;
+        dispatch({ type: 'LOAD', score: clone(p.score) });
+        setBpm(p.bpm);
+        setPieceName(p.title);
+        setSourceId(id);
+      } catch {
+        window.alert('Impossibile caricare il brano dal server.');
       }
-      const piece = LIBRARY.find((p) => p.id === id);
-      if (!piece) return;
-      applyLoaded(piece.score, piece.bpm, piece.title, null);
     },
     [handleStop],
   );
@@ -327,7 +316,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     const pending = sessionStorage.getItem('pending.load');
     if (!pending) return;
     sessionStorage.removeItem('pending.load');
-    void handleLoadPiece(`srv:${pending}`);
+    void handleLoadPiece(pending);
   }, [active, handleLoadPiece]);
 
   const onSelectMeasures = useCallback((indices: number[]) => {
@@ -605,7 +594,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
           setSourceId(null);
         }}
         onLoadPiece={handleLoadPiece}
-        serverPieces={serverPieces}
+        menuPieces={serverPieces.filter((p) => p.inMenu)}
         onInsertMeasures={handleInsertMeasures}
         onSaveFile={handleSaveFile}
         onLoadFile={handleRequestLoadFile}

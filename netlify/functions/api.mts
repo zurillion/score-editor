@@ -1,23 +1,29 @@
 // Piece storage API on Netlify Blobs.
 //
-//   GET    /api/pieces        -> { pieces: [{ id, title }] }        (public)
-//   GET    /api/pieces/:id    -> { id, title, bpm, score, ... }     (public)
-//   GET    /api/auth          -> 204 / 401                          (password check)
-//   POST   /api/pieces        -> { id }        create               (admin)
-//   PUT    /api/pieces        -> 204           reorder {order:[id]} (admin)
-//   PUT    /api/pieces/:id    -> 204           rename/update        (admin)
-//   DELETE /api/pieces/:id    -> 204                                (admin)
+//   GET    /api/pieces        -> { pieces: [{ id, title, inMenu }] } (public)
+//   GET    /api/pieces/:id    -> { id, title, bpm, score, ... }      (public)
+//   GET    /api/auth          -> 204 / 401                           (password check)
+//   POST   /api/pieces        -> { id }        create                (admin)
+//   PUT    /api/pieces        -> 204           reorder {order:[id]}  (admin)
+//   PUT    /api/pieces/:id    -> 204           rename/update/inMenu  (admin)
+//   DELETE /api/pieces/:id    -> 204                                 (admin)
 //
 // Admin calls carry the password in the `x-admin-key` header and are checked
 // against the ADMIN_PASSWORD environment variable.
+//
+// On the very first list read (no index blob yet) the store is seeded with
+// the built-in example pieces, so the list starts populated and the editor
+// menu is fully data-driven.
 import { getStore } from '@netlify/blobs';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { LIBRARY } from '../../src/music/library';
 
 export const config = { path: '/api/*' };
 
 interface IndexEntry {
   id: string;
   title: string;
+  inMenu: boolean; // shown in the editor's Libreria dropdown
 }
 
 // strong consistency: the admin page reads its own writes right away
@@ -38,8 +44,25 @@ const json = (data: unknown, status = 200) =>
 const fail = (status: number, error: string) => json({ error }, status);
 const done = () => new Response(null, { status: 204 });
 
+const newId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+
+/**
+ * The index, seeding the built-in examples on the very first read. A `null`
+ * index means the store was never initialised (an emptied list is `[]` and is
+ * left alone). Entries from before the inMenu flag existed count as shown.
+ */
 async function readIndex(): Promise<IndexEntry[]> {
-  return ((await store().get('index', { type: 'json' })) as IndexEntry[] | null) ?? [];
+  const raw = (await store().get('index', { type: 'json' })) as Partial<IndexEntry>[] | null;
+  if (raw) return raw.map((e) => ({ id: e.id!, title: e.title!, inMenu: e.inMenu !== false }));
+  const index: IndexEntry[] = [];
+  for (const piece of LIBRARY) {
+    const id = newId();
+    const title = `${piece.title} · ${piece.subtitle}`;
+    await store().setJSON(`piece/${id}`, { id, title, bpm: piece.bpm, score: piece.score, updatedAt: new Date().toISOString() });
+    index.push({ id, title, inMenu: true });
+  }
+  await store().setJSON('index', index);
+  return index;
 }
 
 const validScore = (score: unknown): boolean =>
@@ -67,12 +90,12 @@ export default async (req: Request) => {
     const body = await req.json().catch(() => null);
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     if (!title || typeof body.bpm !== 'number' || !validScore(body.score)) return fail(400, 'invalid piece');
-    const newId = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
-    await store().setJSON(`piece/${newId}`, { id: newId, title, bpm: body.bpm, score: body.score, updatedAt: new Date().toISOString() });
-    const index = await readIndex();
-    index.push({ id: newId, title });
+    const index = await readIndex(); // before the piece write: may seed the examples first
+    const pieceId = newId();
+    await store().setJSON(`piece/${pieceId}`, { id: pieceId, title, bpm: body.bpm, score: body.score, updatedAt: new Date().toISOString() });
+    index.push({ id: pieceId, title, inMenu: body.inMenu !== false });
     await store().setJSON('index', index);
-    return json({ id: newId }, 201);
+    return json({ id: pieceId }, 201);
   }
 
   if (req.method === 'PUT' && !id) {
@@ -101,10 +124,16 @@ export default async (req: Request) => {
     const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : (cur.title as string);
     const bpm = typeof body.bpm === 'number' ? body.bpm : cur.bpm;
     const score = validScore(body.score) ? body.score : cur.score;
-    await store().setJSON(`piece/${id}`, { ...cur, title, bpm, score, updatedAt: new Date().toISOString() });
-    if (title !== cur.title) {
+    const contentChanged = title !== cur.title || bpm !== cur.bpm || score !== cur.score;
+    if (contentChanged) {
+      await store().setJSON(`piece/${id}`, { ...cur, title, bpm, score, updatedAt: new Date().toISOString() });
+    }
+    if (title !== cur.title || typeof body.inMenu === 'boolean') {
       const index = await readIndex();
-      await store().setJSON('index', index.map((e) => (e.id === id ? { ...e, title } : e)));
+      await store().setJSON(
+        'index',
+        index.map((e) => (e.id === id ? { ...e, title, ...(typeof body.inMenu === 'boolean' ? { inMenu: body.inMenu } : {}) } : e)),
+      );
     }
     return done();
   }

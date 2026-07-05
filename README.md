@@ -81,11 +81,14 @@ scritture sono disabilitate (le letture restano pubbliche).
 
 ### Pagine
 
-- `#/` — l'editor. Chiunque può aprire un brano della lista, modificarlo in
-  locale ed esportarlo in JSON; la lista sul server non cambia.
+- `#/` — l'editor. Il menu **Libreria** è calcolato dalla lista sul server
+  (i brani con il flag "nel menu"). Chiunque può aprire un brano,
+  modificarlo in locale ed esportarlo in JSON; la lista sul server non
+  cambia. Alla prima lettura lo store viene **seminato** con i brani di
+  esempio integrati.
 - `#/admin` — gestione della lista (con password): aggiungi il brano
-  corrente, importa/esporta JSON, rinomina, riordina, elimina, copia il
-  link di ascolto.
+  corrente, importa/esporta JSON, rinomina, riordina, elimina, scegli se
+  un brano compare nel menu dell'editor, copia il link di ascolto.
 - `#/play/:id` — versione **solo ascolto** di un brano, pensata per essere
   condivisa: partitura e controlli di playback, nessuno strumento di
   modifica.

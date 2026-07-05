@@ -136,6 +136,13 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
       setEntries((cur) => cur?.filter((e) => e.id !== entry.id) ?? cur);
     });
 
+  const toggleMenu = (entry: Entry, inMenu: boolean) =>
+    run(async () => {
+      if (!key) return;
+      await updatePiece(key, entry.id, { inMenu });
+      setEntries((cur) => cur?.map((e) => (e.id === entry.id ? { ...e, inMenu } : e)) ?? cur);
+    });
+
   const rename = (entry: Entry) =>
     run(async () => {
       if (!key) return;
@@ -306,6 +313,10 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
               {entry.piece?.updatedAt && (
                 <div className="piece-meta">agg. {new Date(entry.piece.updatedAt).toLocaleDateString()} · {entry.piece.bpm} BPM</div>
               )}
+              <label className="menu-toggle" title="Mostra questo brano nel menu Libreria dell'editor">
+                <input type="checkbox" checked={entry.inMenu} disabled={busy} onChange={(e) => toggleMenu(entry, e.target.checked)} />
+                Nel menu
+              </label>
             </div>
             <div className="piece-buttons">
               <button disabled={busy || i === 0} onClick={() => move(entry, -1)} title="Sposta su" aria-label="Sposta su">↑</button>

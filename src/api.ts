@@ -6,6 +6,7 @@ import { ScoreState } from './music/types';
 export interface PieceSummary {
   id: string;
   title: string;
+  inMenu: boolean; // shown in the editor's Libreria dropdown
 }
 
 export interface StoredPiece {
@@ -55,7 +56,7 @@ export async function createPiece(key: string, piece: { title: string; bpm: numb
   return (await request<{ id: string }>('pieces', adminInit(key, 'POST', piece))).id;
 }
 
-export function updatePiece(key: string, id: string, patch: { title?: string; bpm?: number; score?: ScoreState }): Promise<void> {
+export function updatePiece(key: string, id: string, patch: { title?: string; bpm?: number; score?: ScoreState; inMenu?: boolean }): Promise<void> {
   return request(`pieces/${id}`, adminInit(key, 'PUT', patch));
 }
 

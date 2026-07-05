@@ -2,7 +2,6 @@ import { Duration, DurationValue, Alter, TimeSignature } from '../music/types';
 import { SMUFL } from '../music/smufl';
 import { LayoutMode } from '../music/layout';
 import { Tool } from '../state/tool';
-import { LIBRARY } from '../music/library';
 import { KEY_OPTIONS } from '../music/key';
 import { MidiOutputInfo } from '../music/midi';
 import { INSTRUMENTS } from '../music/instruments';
@@ -101,7 +100,7 @@ interface ToolbarProps {
   onRemoveMeasure: () => void;
   onClear: () => void;
   onLoadPiece: (id: string) => void;
-  serverPieces: PieceSummary[]; // shared list from the server (empty if unreachable)
+  menuPieces: PieceSummary[]; // shared list from the server, already filtered to the menu entries
   onInsertMeasures: () => void;
   onSaveFile: () => void;
   onLoadFile: () => void;
@@ -157,7 +156,7 @@ export function Toolbar(props: ToolbarProps) {
     onRemoveMeasure,
     onClear,
     onLoadPiece,
-    serverPieces,
+    menuPieces,
     onInsertMeasures,
     onSaveFile,
     onLoadFile,
@@ -426,22 +425,11 @@ export function Toolbar(props: ToolbarProps) {
           title="Carica un brano pronto da suonare"
         >
           <option value="">— scegli un brano —</option>
-          {serverPieces.length > 0 && (
-            <optgroup label="Brani">
-              {serverPieces.map((p) => (
-                <option key={p.id} value={`srv:${p.id}`}>
-                  {p.title}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          <optgroup label="Esempi">
-            {LIBRARY.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title} · {p.subtitle}
-              </option>
-            ))}
-          </optgroup>
+          {menuPieces.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title}
+            </option>
+          ))}
         </select>
       </fieldset>
 
