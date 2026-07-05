@@ -228,6 +228,43 @@ body {
   border-color: #b9bfca;
 }
 
+/* ---- Export split button (hold for the format menu) ---- */
+.export-split {
+  position: relative;
+  display: inline-flex;
+}
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.15);
+  padding: 4px;
+  gap: 2px;
+}
+.export-menu button {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+.export-menu button:hover {
+  background: var(--accent-soft);
+  border: none;
+}
+
 /* ---- Play-only page ---- */
 .play-page .play-toolbar {
   padding: 8px 16px 12px;

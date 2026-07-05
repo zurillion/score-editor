@@ -144,7 +144,12 @@ alterazioni, code e cifre di tempo usano i glifi del font musicale **Bravura**
 - Niente armatura di chiave; le alterazioni sono per singola nota.
 - Le note contemporanee sono modellate come accordi (stessa durata), non come
   voci indipendenti.
-- Export MIDI/MusicXML non ancora presente.
+- Export/import **MusicXML** (`.musicxml`): i pulsanti di export (Salva
+  nell'editor, JSON nella pagina admin) esportano in JSON al clic e aprono
+  un menu JSON/MusicXML tenendoli premuti; Carica/Importa accettano anche
+  `.musicxml`/`.xml`. L'export copre tutto il modello (ritornelli inclusi,
+  ∞ = `times="0"`); l'import è pensato per i file esportati dall'app e
+  ignora ciò che non riconosce. Export MIDI non ancora presente.
 
 ## Licenze
 

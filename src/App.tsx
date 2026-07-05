@@ -13,6 +13,8 @@ import { Toolbar } from './components/Toolbar';
 import { Score, SystemRange } from './components/Score';
 import { OptionsDialog } from './components/OptionsDialog';
 import { PieceSummary, getPiece, listPieces } from './api';
+import { exportMusicXML, importMusicXML } from './music/musicxml';
+import { ExportFormat } from './components/ExportMenuButton';
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -331,27 +333,32 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   // ---- save / load a piece as a .json file ----
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleSaveFile = useCallback(() => {
-    // a piece started from scratch has no title yet: ask for one on first save
-    let title = pieceName;
-    if (!title) {
-      const name = window.prompt('Nome del brano:', '');
-      if (name === null) return; // cancelled
-      title = name.trim();
-      setPieceName(title);
-    }
-    const data = { format: 'score-composer', version: 1, name: title, bpm, score };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const safe = title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
-    a.href = url;
-    a.download = `${safe || 'brano'}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }, [bpm, score, pieceName]);
+  const handleSaveFile = useCallback(
+    (format: ExportFormat) => {
+      // a piece started from scratch has no title yet: ask for one on first save
+      let title = pieceName;
+      if (!title) {
+        const name = window.prompt('Nome del brano:', '');
+        if (name === null) return; // cancelled
+        title = name.trim();
+        setPieceName(title);
+      }
+      const safe = title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'brano';
+      const [content, filename, type] =
+        format === 'musicxml'
+          ? [exportMusicXML(title, bpm, score), `${safe}.musicxml`, 'application/vnd.recordare.musicxml+xml']
+          : [JSON.stringify({ format: 'score-composer', version: 1, name: title, bpm, score }, null, 2), `${safe}.json`, 'application/json'];
+      const url = URL.createObjectURL(new Blob([content], { type }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    },
+    [bpm, score, pieceName],
+  );
 
   const handleRequestLoadFile = useCallback(() => fileInputRef.current?.click(), []);
 
@@ -360,20 +367,34 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       const file = e.target.files?.[0];
       e.target.value = ''; // allow re-loading the same file later
       if (!file) return;
+      const raw = await file.text();
+      const applyLoaded = (loaded: ScoreState, loadedBpm: number | null, title: string) => {
+        handleStop();
+        setSelection(null);
+        setCursorTick(0);
+        dispatch({ type: 'LOAD', score: clone(loaded) });
+        if (loadedBpm !== null) setBpm(loadedBpm);
+        setPieceName(title);
+        setSourceId(null);
+      };
+      // MusicXML (by extension or content) or the app's own JSON
+      if (/\.(xml|musicxml)$/i.test(file.name) || raw.trimStart().startsWith('<')) {
+        try {
+          const imp = importMusicXML(raw);
+          applyLoaded(imp.score, imp.bpm, imp.name);
+        } catch (err) {
+          window.alert(`Impossibile importare il MusicXML: ${err instanceof Error ? err.message : 'file non valido'}.`);
+        }
+        return;
+      }
       try {
-        const obj = JSON.parse(await file.text());
+        const obj = JSON.parse(raw);
         const loaded: ScoreState | undefined = obj?.score ?? (Array.isArray(obj?.measures) ? obj : undefined);
         if (!loaded || !Array.isArray(loaded.measures) || !loaded.timeSignature) {
           window.alert('File non valido: non sembra un brano di Score Composer.');
           return;
         }
-        handleStop();
-        setSelection(null);
-        setCursorTick(0);
-        dispatch({ type: 'LOAD', score: clone(loaded) });
-        if (typeof obj?.bpm === 'number') setBpm(obj.bpm);
-        setPieceName(typeof obj?.name === 'string' ? obj.name : '');
-        setSourceId(null);
+        applyLoaded(loaded, typeof obj?.bpm === 'number' ? obj.bpm : null, typeof obj?.name === 'string' ? obj.name : '');
       } catch {
         window.alert('Impossibile leggere il file (JSON non valido).');
       }
@@ -604,7 +625,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/json,.json"
+        accept="application/json,.json,.xml,.musicxml"
         style={{ display: 'none' }}
         onChange={handleLoadFile}
       />

@@ -15,6 +15,8 @@ import {
   updatePiece,
 } from '../api';
 import { MiniScore } from './MiniScore';
+import { ExportFormat, ExportMenuButton } from './ExportMenuButton';
+import { exportMusicXML, importMusicXML } from '../music/musicxml';
 import type { EditorSnapshot } from '../App';
 
 interface Entry extends PieceSummary {
@@ -23,9 +25,8 @@ interface Entry extends PieceSummary {
 
 const KEY_STORAGE = 'admin.key';
 
-function downloadJson(filename: string, data: unknown): void {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
+function downloadFile(filename: string, content: string, type: string): void {
+  const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
@@ -34,6 +35,8 @@ function downloadJson(filename: string, data: unknown): void {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+const downloadJson = (filename: string, data: unknown) => downloadFile(filename, JSON.stringify(data, null, 2), 'application/json');
 
 const safeName = (title: string) => title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
 
@@ -183,13 +186,18 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
       setEntries(next);
     });
 
-  async function exportJson(entry: Entry) {
+  async function exportPiece(entry: Entry, format: ExportFormat) {
     const piece = entry.piece ?? (await getPiece(entry.id).catch(() => null));
     if (!piece) {
       showError('Brano non ancora caricato, riprova tra un attimo.');
       return;
     }
-    downloadJson(`${safeName(piece.title) || 'brano'}.json`, { format: 'score-composer', version: 1, name: piece.title, bpm: piece.bpm, score: piece.score });
+    const safe = safeName(piece.title) || 'brano';
+    if (format === 'musicxml') {
+      downloadFile(`${safe}.musicxml`, exportMusicXML(piece.title, piece.bpm, piece.score), 'application/vnd.recordare.musicxml+xml');
+    } else {
+      downloadJson(`${safe}.json`, { format: 'score-composer', version: 1, name: piece.title, bpm: piece.bpm, score: piece.score });
+    }
   }
 
   // ---- whole-library backup / restore ----
@@ -224,7 +232,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
       if (obj?.format !== 'score-composer-library' || !Array.isArray(obj.pieces)) {
         showError(
           obj?.format === 'score-composer'
-            ? 'Questo è il file di un singolo brano: usa "Importa JSON".'
+            ? 'Questo è il file di un singolo brano: usa "Importa brano".'
             : 'File non valido: non sembra un backup della libreria.',
         );
         return;
@@ -244,9 +252,24 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
   const importJson = (file: File) =>
     run(async () => {
       if (!key) return;
+      const raw = await file.text();
+      const stripExt = (n: string) => n.replace(/\.(json|xml|musicxml)$/i, '');
+      // MusicXML (by extension or content) or the app's own JSON
+      if (/\.(xml|musicxml)$/i.test(file.name) || raw.trimStart().startsWith('<')) {
+        try {
+          const imp = importMusicXML(raw);
+          const title = titleFor(imp.name || stripExt(file.name));
+          if (!title) return;
+          await createPiece(key, { title, bpm: imp.bpm ?? 96, score: imp.score });
+          await refresh();
+        } catch (err) {
+          showError(`Impossibile importare il MusicXML: ${err instanceof Error ? err.message : 'file non valido'}.`);
+        }
+        return;
+      }
       let obj: { name?: unknown; bpm?: unknown; score?: { measures?: unknown; timeSignature?: unknown } } | null = null;
       try {
-        obj = JSON.parse(await file.text());
+        obj = JSON.parse(raw);
       } catch {
         showError('File non valido (JSON illeggibile).');
         return;
@@ -256,7 +279,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
         showError('File non valido: non sembra un brano di Score Composer.');
         return;
       }
-      const title = titleFor(typeof obj?.name === 'string' ? obj.name : file.name.replace(/\.json$/i, ''));
+      const title = titleFor(typeof obj?.name === 'string' ? obj.name : stripExt(file.name));
       if (!title) return;
       await createPiece(key, { title, bpm: typeof obj?.bpm === 'number' ? obj.bpm : 96, score });
       await refresh();
@@ -326,8 +349,8 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
             + Aggiungi il brano corrente
           </button>
         )}
-        <button disabled={busy} onClick={() => fileInputRef.current?.click()} title="Importa un brano da un file .json">
-          ⤒ Importa JSON
+        <button disabled={busy} onClick={() => fileInputRef.current?.click()} title="Importa un brano da un file .json o MusicXML (.musicxml / .xml)">
+          ⤒ Importa brano
         </button>
         <button disabled={busy || !entries} onClick={() => void exportLibrary()} title="Scarica un backup dell'intera libreria (brani + metadati + id di pubblicazione)">
           ⤓ Esporta libreria
@@ -350,7 +373,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/json,.json"
+        accept="application/json,.json,.xml,.musicxml"
         style={{ display: 'none' }}
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -401,7 +424,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
               <a className="btn-link" href={playUrl(entry.id)} target="_blank" rel="noreferrer" title="Apri la versione solo ascolto">
                 ▶ Prova
               </a>
-              <button onClick={() => void exportJson(entry)} title="Scarica il brano come file .json">⤓ JSON</button>
+              <ExportMenuButton label="⤓ JSON" title="Scarica il brano come file .json." onExport={(f) => void exportPiece(entry, f)} />
               <button disabled={busy} onClick={() => rename(entry)} title="Rinomina">Rinomina</button>
               <button disabled={busy} className="danger" onClick={() => remove(entry)} title="Elimina dalla lista">Elimina</button>
             </div>

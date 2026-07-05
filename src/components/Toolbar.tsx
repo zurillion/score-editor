@@ -7,6 +7,7 @@ import { MidiOutputInfo } from '../music/midi';
 import { INSTRUMENTS } from '../music/instruments';
 import { InstrumentIcon } from './InstrumentIcon';
 import { PieceSummary } from '../api';
+import { ExportFormat, ExportMenuButton } from './ExportMenuButton';
 
 const DURATIONS: DurationValue[] = [1, 2, 4, 8, 16, 32];
 
@@ -102,7 +103,7 @@ interface ToolbarProps {
   onLoadPiece: (id: string) => void;
   menuPieces: PieceSummary[]; // shared list from the server, already filtered to the menu entries
   onInsertMeasures: () => void;
-  onSaveFile: () => void;
+  onSaveFile: (format: ExportFormat) => void;
   onLoadFile: () => void;
   onOpenOptions: () => void;
 }
@@ -408,8 +409,8 @@ export function Toolbar(props: ToolbarProps) {
       <fieldset className="group">
         <legend>File</legend>
         <div className="btn-row">
-          <button onClick={onSaveFile} title="Salva il brano come file .json">⤓ Salva</button>
-          <button onClick={onLoadFile} title="Carica un brano da un file .json">⤒ Carica</button>
+          <ExportMenuButton label="⤓ Salva" title="Salva il brano come file .json." onExport={onSaveFile} />
+          <button onClick={onLoadFile} title="Carica un brano da un file .json o MusicXML (.musicxml / .xml)">⤒ Carica</button>
         </div>
       </fieldset>
 
