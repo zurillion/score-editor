@@ -263,6 +263,22 @@ function renderSystemTies(layout: SystemLayout, ties: TieConn[]): JSX.Element[] 
   return els;
 }
 
+/** Vertical wavy line (the arpeggio squiggle) at x from y0 down to y1. */
+function wavyPath(x: number, y0: number, y1: number): string {
+  const A = 3;
+  const SEG = 6.5;
+  let d = `M ${x} ${y0}`;
+  let y = y0;
+  let k = 0;
+  while (y < y1 - 0.5) {
+    const ny = Math.min(y + SEG, y1);
+    d += ` Q ${x + (k % 2 ? -A : A)} ${(y + ny) / 2} ${x} ${ny}`;
+    y = ny;
+    k++;
+  }
+  return d;
+}
+
 const GHOST_COLOR: Record<PlaceAction, string> = {
   create: '#94a3b8',
   chord: '#2563eb',
@@ -366,6 +382,8 @@ export function System(props: SystemProps) {
   const cursorDragRef = useRef(false); // a playhead-handle interaction is in progress
   // chord-name editing (the chord tool): an inline input under the staff
   const [chordEdit, setChordEdit] = useState<{ measureIndex: number; tick: number; x: number; value: string } | null>(null);
+  // arpeggio tool: vertical drag over the notes to include in the roll
+  const [arpDrag, setArpDrag] = useState<{ measureIndex: number; tick: number; x: number; startY: number; curY: number } | null>(null);
   // vertical drag on a |: sign to set the play count
   const repeatDragRef = useRef<{ index: number; startTimes: number; startY: number; lastTimes: number } | null>(null);
   const [repeatDragIndex, setRepeatDragIndex] = useState<number | null>(null); // show the count (even ×1) while dragging
@@ -493,6 +511,42 @@ export function System(props: SystemProps) {
     onAfterApply(); // one-shot chord tool reverts to the note tool
   }
 
+  // ---- arpeggio tool: the note column (measure + tick) nearest to x ----
+  function arpColumnAt(x: number): { pm: PlacedMeasure; tick: number; x: number } | null {
+    const pm = measureAt(x);
+    if (!pm) return null;
+    let best: { tick: number; ex: number; dist: number } | null = null;
+    for (const ev of pm.measure.events) {
+      if (ev.kind !== 'note') continue;
+      const ex = measureTickToX(pm, ev.startTick);
+      const dist = Math.abs(ex - x);
+      if (dist <= 20 && (!best || dist < best.dist)) best = { tick: ev.startTick, ex, dist };
+    }
+    return best ? { pm, tick: best.tick, x: best.ex } : null;
+  }
+
+  function applyArpDrag() {
+    const ad = arpDrag;
+    if (!ad) return;
+    setArpDrag(null);
+    const pm = layout.measures.find((p) => p.index === ad.measureIndex);
+    if (!pm) return;
+    const y0 = Math.min(ad.startY, ad.curY) - 10;
+    const y1 = Math.max(ad.startY, ad.curY) + 10;
+    // the roll includes every chord of the column (either staff) with a notehead in the dragged span
+    const targets = pm.measure.events.filter(
+      (e): e is NoteEvent =>
+        e.kind === 'note' && e.startTick === ad.tick && e.pitches.some((p) => {
+          const y = diatonicToY(pitchToDiatonic(p));
+          return y >= y0 && y <= y1;
+        }),
+    );
+    if (targets.length === 0) return;
+    const on = !targets.every((e) => e.arpeggio); // re-applying to a rolled chord removes the roll
+    onAction({ type: 'SET_ARPEGGIO', measureIndex: ad.measureIndex, eventIds: targets.map((e) => e.id), on });
+    onAfterApply();
+  }
+
   // ---- repeat tool: which sign a click on empty measure space would insert ----
   function computeRepeatHover(x: number): RepeatHover | null {
     const pm = measureAt(x);
@@ -513,7 +567,15 @@ export function System(props: SystemProps) {
   // mousedown on a notehead with the note tool starts a diatonic drag-to-move
   function handleMouseDown(e: React.MouseEvent) {
     suppressClickRef.current = false; // fresh press: clear any stale click suppression
-    if (playOnly || e.altKey || tool.kind !== 'note') return;
+    if (playOnly || e.altKey) return;
+    if (tool.kind === 'arpeggio') {
+      const pt = localPoint(e.clientX, e.clientY);
+      if (!pt) return;
+      const col = arpColumnAt(pt.x);
+      if (col) setArpDrag({ measureIndex: col.pm.index, tick: col.tick, x: col.x, startY: pt.y, curY: pt.y });
+      return;
+    }
+    if (tool.kind !== 'note') return;
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
     const hit = pickNotehead(pt.x, pt.y, 0);
@@ -533,6 +595,10 @@ export function System(props: SystemProps) {
       return;
     }
     if (playOnly) return; // no hover ghosts or drags in the listen-only view
+    if (arpDrag) {
+      setArpDrag({ ...arpDrag, curY: pt.y });
+      return;
+    }
     const rd = repeatDragRef.current;
     if (rd) {
       const steps = Math.round((rd.startY - e.clientY) / 16); // up = more plays; below 1 = 0 = ∞
@@ -570,6 +636,10 @@ export function System(props: SystemProps) {
       cursorDragRef.current = false;
       suppressClickRef.current = true; // dragging/clicking the playhead handle must not place a note
     }
+    if (arpDrag) {
+      applyArpDrag();
+      suppressClickRef.current = true;
+    }
     if (repeatDragRef.current) {
       repeatDragRef.current = null;
       setRepeatDragIndex(null);
@@ -591,6 +661,7 @@ export function System(props: SystemProps) {
   function handleMouseLeave() {
     setHoverState(null);
     setCursorDrag(false);
+    setArpDrag(null);
     if (noteDragRef.current) {
       noteDragRef.current = null;
       movedRef.current = false;
@@ -860,6 +931,37 @@ export function System(props: SystemProps) {
     return zones;
   }
 
+  // rolled chords: one continuous squiggle per start tick, spanning every
+  // flagged chord of the column (both staves roll as a single arpeggio)
+  function renderArpeggios(pm: PlacedMeasure): JSX.Element[] {
+    const groups = new Map<number, NoteEvent[]>();
+    for (const ev of pm.measure.events) {
+      if (ev.kind !== 'note' || !ev.arpeggio) continue;
+      const list = groups.get(ev.startTick) ?? [];
+      list.push(ev);
+      groups.set(ev.startTick, list);
+    }
+    const els: JSX.Element[] = [];
+    for (const [tick, evs] of groups) {
+      const ds = evs.flatMap((e) => e.pitches.map(pitchToDiatonic));
+      const yTop = diatonicToY(Math.max(...ds)) - 7;
+      const yBot = diatonicToY(Math.min(...ds)) + 7;
+      // clear of the widest notehead, displaced seconds and any explicit accidental
+      let left = 0;
+      let hasAcc = false;
+      for (const e of evs) {
+        const hw = noteheadHalfWidth(e.duration.value);
+        const eds = e.pitches.map(pitchToDiatonic);
+        const offs = secondOffsets(eds, stemUpForChord(eds, e.staff), hw);
+        left = Math.max(left, hw - Math.min(0, ...offs));
+        hasAcc = hasAcc || e.pitches.some((p) => p.explicit);
+      }
+      const x = measureTickToX(pm, tick) - left - (hasAcc ? 20 : 9);
+      els.push(<path key={`arp-${pm.index}-${tick}`} d={wavyPath(x, yTop, yBot)} stroke="#1a1a1a" strokeWidth={1.7} fill="none" strokeLinecap="round" pointerEvents="none" />);
+    }
+    return els;
+  }
+
   // mid-line key/time change: double barline, cancellation naturals, new key, new time
   // (drawn after the |: sign when the measure also starts a repeat)
   function renderChange(pm: PlacedMeasure) {
@@ -1035,6 +1137,7 @@ export function System(props: SystemProps) {
           {pm.measure.repeatStart && repeatCountEl(pm)}
           {pm.measure.repeatEnd && repeatSignEls(pm, 'end', '#1a1a1a', 1, 'rpt')}
           {repeatHitZones(pm)}
+          {renderArpeggios(pm)}
           {pm.measure.chords?.map((c) =>
             chordEdit && chordEdit.measureIndex === pm.index && chordEdit.tick === c.tick ? null : (
               <text
@@ -1086,6 +1189,19 @@ export function System(props: SystemProps) {
 
       {/* ghost / hover highlight */}
       {overlay}
+
+      {/* live guide while dragging the arpeggio span */}
+      {arpDrag && (
+        <path
+          d={wavyPath(arpDrag.x - 14, Math.min(arpDrag.startY, arpDrag.curY), Math.max(arpDrag.startY, arpDrag.curY) + 1)}
+          stroke="#7c3aed"
+          strokeWidth={2}
+          fill="none"
+          opacity={0.85}
+          strokeLinecap="round"
+          pointerEvents="none"
+        />
+      )}
 
       {/* playback / cursor bar (+ drag handle when not playing) */}
       {playheadX !== null && (

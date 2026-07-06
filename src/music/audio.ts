@@ -2,7 +2,7 @@ import { Pitch, ScoreState } from './types';
 import { eventTicks, pitchToFrequency, pitchToMidi } from './theory';
 import { resolveMeasure } from './accidentals';
 import { scoreMeta } from './meta';
-import { TICKS_PER_QUARTER } from './constants';
+import { ARPEGGIO_STEP_SEC, TICKS_PER_QUARTER } from './constants';
 import { Sampler, nearestZone } from './instruments';
 
 /**
@@ -86,6 +86,13 @@ export interface ScheduledNote {
   durTicks: number;
   freqs: number[];
   midis: number[];
+  arpIndex?: number; // position (bottom-up) inside a rolled chord: the attack is delayed by arpIndex steps
+}
+
+/** Attack delay in seconds for a scheduled note inside a rolled chord (end stays put). */
+export function arpeggioOffsetSec(n: ScheduledNote, durSec: number): number {
+  if (!n.arpIndex) return 0;
+  return Math.min(n.arpIndex * ARPEGGIO_STEP_SEC, durSec * 0.6); // cramped rolls compress instead of swallowing the note
 }
 
 /** One contiguous stretch of the score as it appears in playback order. */
@@ -172,20 +179,47 @@ export function buildSchedule(score: ScoreState): Schedule {
   const meta = scoreMeta(score);
   // Flatten to one entry per (pitch) occurrence in global time, so a tie of value
   // can merge a pitch across consecutive notes (within a bar or across bars).
-  interface Entry { key: string; startG: number; endG: number; freq: number; midi: number; tie: boolean; absorbed: boolean }
+  interface Entry { key: string; startG: number; endG: number; freq: number; midi: number; tie: boolean; absorbed: boolean; arp?: number }
   const entries: Entry[] = [];
   for (const mm of meta.measures) {
     const m = score.measures[mm.index];
     // accidentals (key signature + "lasts for the measure") resolved per measure, per its own key
     const resolved = resolveMeasure(m.events, mm.keySig);
+    const effOf = (evId: string, p: Pitch): Pitch => {
+      const r = resolved.get(`${evId}|${p.step}${p.octave}`);
+      return r ? { ...p, alter: r.alter } : p;
+    };
+    // rolled chords: flagged events sharing a start tick (either staff) form one
+    // roll; every pitch gets its bottom-up position within that roll
+    const arpIdx = new Map<string, number>(); // `${ev.id}|${step}${octave}` -> index
+    const rolls = new Map<number, { key: string; midi: number }[]>();
+    for (const ev of m.events) {
+      if (ev.kind !== 'note' || !ev.arpeggio) continue;
+      const list = rolls.get(ev.startTick) ?? [];
+      for (const p of ev.pitches) list.push({ key: `${ev.id}|${p.step}${p.octave}`, midi: pitchToMidi(effOf(ev.id, p)) });
+      rolls.set(ev.startTick, list);
+    }
+    for (const list of rolls.values()) {
+      list.sort((a, b) => a.midi - b.midi);
+      list.forEach((it, i) => arpIdx.set(it.key, i));
+    }
     for (const ev of m.events) {
       if (ev.kind !== 'note') continue;
       const startG = mm.startTick + ev.startTick;
       const endG = startG + eventTicks(ev);
       for (const p of ev.pitches) {
-        const r = resolved.get(`${ev.id}|${p.step}${p.octave}`);
-        const eff = r ? { ...p, alter: r.alter } : p;
-        entries.push({ key: `${ev.staff}|${p.step}${p.octave}`, startG, endG, freq: pitchToFrequency(eff), midi: pitchToMidi(eff), tie: !!ev.tieToNext, absorbed: false });
+        const eff = effOf(ev.id, p);
+        const arp = arpIdx.get(`${ev.id}|${p.step}${p.octave}`);
+        entries.push({
+          key: `${ev.staff}|${p.step}${p.octave}`,
+          startG,
+          endG,
+          freq: pitchToFrequency(eff),
+          midi: pitchToMidi(eff),
+          tie: !!ev.tieToNext,
+          absorbed: false,
+          ...(arp ? { arp } : {}), // index 0 attacks on the beat: no field needed
+        });
       }
     }
   }
@@ -207,7 +241,7 @@ export function buildSchedule(score: ScoreState): Schedule {
         end = arr[j + 1].endG;
         j++;
       }
-      scoreNotes.push({ startTick: arr[i].startG, durTicks: end - arr[i].startG, freqs: [arr[i].freq], midis: [arr[i].midi] });
+      scoreNotes.push({ startTick: arr[i].startG, durTicks: end - arr[i].startG, freqs: [arr[i].freq], midis: [arr[i].midi], ...(arr[i].arp ? { arpIndex: arr[i].arp } : {}) });
     }
   }
   const pickupTicks = meta.measures[0]?.pickup ? meta.measures[0].total : 0;
@@ -350,7 +384,9 @@ export class Player {
         for (const n of this.notes) {
           for (const g of occurrences(n.startTick, this.totalTicks, looping, this.scheduledTick, target, loopStart)) {
             const start = Math.max(now, now + (g - this.posTicks) * this.secPerTick);
-            for (let i = 0; i < n.freqs.length; i++) this.scheduleNote(start, n.durTicks * this.secPerTick, n.freqs[i], n.midis[i]);
+            const durSec = n.durTicks * this.secPerTick;
+            const off = arpeggioOffsetSec(n, durSec); // rolled chord: staggered attack, common end
+            for (let i = 0; i < n.freqs.length; i++) this.scheduleNote(start + off, durSec - off, n.freqs[i], n.midis[i]);
           }
         }
         this.scheduledTick = target;

@@ -19,6 +19,7 @@ export type Tool =
   | { kind: 'tie'; sticky: boolean } // click a note to tie it to the next note of the same pitch
   | { kind: 'repeat' } // click a measure half to add |: / :| ; drag a sign vertically to set the play count; double-click removes
   | { kind: 'chord'; sticky: boolean } // click under the staff to type a chord name (eighth grid; empty text deletes)
+  | { kind: 'arpeggio'; sticky: boolean } // drag vertically over chord notes (both staves allowed) to toggle the roll
   | { kind: 'select-measures' }
   | { kind: 'select-notes' };
 

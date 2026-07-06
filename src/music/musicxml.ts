@@ -119,7 +119,7 @@ export function exportMusicXML(name: string, bpm: number, score: ScoreState): st
           const stops = tieStop.has(`${mi}|${ev.startTick}|${staff}|${d}`);
           const tieEls = (stops ? '<tie type="stop"/>' : '') + (starts ? '<tie type="start"/>' : '');
           const tied = (stops ? '<tied type="stop"/>' : '') + (starts ? '<tied type="start"/>' : '');
-          const notations = tied || (pi === 0 ? tupletNotation : '');
+          const notations = tied + (ev.arpeggio ? '<arpeggiate/>' : '') + (pi === 0 ? tupletNotation : '');
           push(
             '      <note>' +
               (pi > 0 ? '<chord/>' : '') +
@@ -335,7 +335,9 @@ export function importMusicXML(xml: string): ImportedPiece {
           }
           const pitch: Pitch = { step: step as Pitch['step'], octave, alter };
 
+          const arpeggiate = el.getElementsByTagName('arpeggiate').length > 0;
           if (isChord && lastNote && lastNote.staff === staff) {
+            if (arpeggiate) lastNote.arpeggio = true;
             lastNote.pitches.push(pitch);
             lastNote.pitches.sort((a, b) => pitchToDiatonic(a) - pitchToDiatonic(b));
             const raw = rawNotes.find((r) => r.ev === lastNote);
@@ -350,6 +352,7 @@ export function importMusicXML(xml: string): ImportedPiece {
           if (el.getElementsByTagName('tie').length && Array.from(el.getElementsByTagName('tie')).some((t) => t.getAttribute('type') === 'start')) {
             note.tieToNext = true;
           }
+          if (arpeggiate) note.arpeggio = true;
           pos += ticks;
           rawNotes.push({ ev: note, ratio, accidentals: [hasAccidental] });
           measure.events.push(note);

@@ -195,9 +195,15 @@ export function Toolbar(props: ToolbarProps) {
     else if (tool.kind === 'chord') setTool({ kind: 'note' });
     else setTool({ kind: 'chord', sticky: false });
   }
+  function clickArpeggio(detail: number) {
+    if (detail >= 2) setTool({ kind: 'arpeggio', sticky: true });
+    else if (tool.kind === 'arpeggio') setTool({ kind: 'note' });
+    else setTool({ kind: 'arpeggio', sticky: false });
+  }
 
   const eraserClass = tool.kind === 'eraser' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const chordClass = tool.kind === 'chord' ? (tool.sticky ? 'on sticky' : 'on') : '';
+  const arpClass = tool.kind === 'arpeggio' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const tupletClass = tool.kind === 'tuplet' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const tieClass = tool.kind === 'tie' ? (tool.sticky ? 'on sticky' : 'on') : '';
 
@@ -319,6 +325,13 @@ export function Toolbar(props: ToolbarProps) {
             title="Accordo — clicca sotto il rigo per scrivere il nome dell'accordo (testo libero, griglia di ottavi). Clic su un accordo esistente per modificarlo; testo vuoto lo elimina. 1 click: una volta · doppio click: fissa."
           >
             C⁷ Accordo
+          </button>
+          <button
+            className={arpClass}
+            onClick={(e) => clickArpeggio(e.detail)}
+            title="Arpeggiato — trascina in verticale sulle note da arpeggiare (anche su entrambi i pentagrammi: rullano come un accordo unico, dal grave all'acuto). Ripeti sulle stesse note per togliere. 1 click: una volta · doppio click: fissa."
+          >
+            ≀ Arpeggio
           </button>
           <button
             className={`glyph-btn ${tool.kind === 'repeat' ? 'on' : ''}`}

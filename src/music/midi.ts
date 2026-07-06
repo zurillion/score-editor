@@ -1,5 +1,5 @@
 import { ScoreState } from './types';
-import { buildSchedule, occurrences, loopPos, playToScoreTick, scoreToPlayTick, ScheduledNote } from './audio';
+import { arpeggioOffsetSec, buildSchedule, occurrences, loopPos, playToScoreTick, scoreToPlayTick, ScheduledNote } from './audio';
 import { TICKS_PER_QUARTER } from './constants';
 
 // Web MIDI is provided by the DOM lib (MIDIAccess / MIDIOutput); some browsers
@@ -109,8 +109,10 @@ export class MidiPlayer {
       if (target > this.scheduledTick) {
         for (const n of this.notes) {
           for (const g of occurrences(n.startTick, this.totalTicks, looping, this.scheduledTick, target, loopStart)) {
-            const onMs = now + Math.max(0, (g - this.posTicks) * this.secPerTick * 1000);
-            const offMs = onMs + n.durTicks * this.secPerTick * 1000;
+            const durSec = n.durTicks * this.secPerTick;
+            const arpMs = arpeggioOffsetSec(n, durSec) * 1000; // rolled chord: staggered attack, common end
+            const onMs = now + Math.max(0, (g - this.posTicks) * this.secPerTick * 1000) + arpMs;
+            const offMs = onMs + durSec * 1000 - arpMs;
             for (const m of n.midis) {
               this.output.send([0x90 | ch, m, 96], onMs);
               this.output.send([0x80 | ch, m, 0], offMs);

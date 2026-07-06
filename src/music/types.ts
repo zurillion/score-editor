@@ -39,6 +39,8 @@ export interface NoteEvent {
   pitches: Pitch[]; // one entry = single note, several = chord (simultaneous notes)
   tuplet?: Tuplet; // set on each member of a tuplet group
   tieToNext?: boolean; // tie of value: sustain into the next note of the same pitch
+  arpeggio?: boolean; // rolled chord: pitches attack bottom-up, all sustaining to the end.
+  // Flagged events at the same tick (even across staves) roll together as one chord.
 }
 
 export interface RestEvent {

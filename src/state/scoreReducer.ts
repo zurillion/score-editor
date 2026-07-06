@@ -26,6 +26,7 @@ export type ScoreAction =
   | { type: 'SET_DOTS'; measureIndex: number; eventId: string; dots: 1 | 2 }
   | { type: 'MAKE_TUPLET'; measureIndex: number; eventId: string }
   | { type: 'TOGGLE_TIE'; measureIndex: number; eventId: string }
+  | { type: 'SET_ARPEGGIO'; measureIndex: number; eventIds: string[]; on: boolean }
   | { type: 'ERASE'; measureIndex: number; eventId: string; diatonic: number | null }
   | { type: 'DELETE_MEASURES'; indices: number[] }
   | { type: 'DELETE_NOTES'; ids: string[] }
@@ -215,6 +216,21 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const target = m.events.find((e) => e.id === action.eventId);
       if (!target || target.kind !== 'note') return state;
       const events = m.events.map((e) => (e.id === target.id ? { ...target, tieToNext: !target.tieToNext } : e));
+      return withMeasureEvents(state, action.measureIndex, events);
+    }
+
+    case 'SET_ARPEGGIO': {
+      const m = state.measures[action.measureIndex];
+      if (!m) return state;
+      const ids = new Set(action.eventIds);
+      let changed = false;
+      const events = m.events.map((e) => {
+        if (e.kind !== 'note' || !ids.has(e.id) || !!e.arpeggio === action.on) return e;
+        changed = true;
+        const { arpeggio: _drop, ...bare } = e;
+        return action.on ? { ...e, arpeggio: true } : bare;
+      });
+      if (!changed) return state;
       return withMeasureEvents(state, action.measureIndex, events);
     }
 

@@ -504,6 +504,9 @@ input[type='number'] {
 .system[data-tool='chord'] {
   cursor: text;
 }
+.system[data-tool='arpeggio'] {
+  cursor: ns-resize;
+}
 .chord-input {
   width: 100%;
   height: 100%;

@@ -47,6 +47,12 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   una griglia di ottavi nel punto cliccato. Testo libero (nessun
   controllo); clic su un accordo esistente per modificarlo, testo vuoto
   per eliminarlo.
+- **Arpeggiato** — con lo strumento *Arpeggio* si trascina in verticale
+  sulle note da arpeggiare: la linea ondulata compare a sinistra e nel
+  playback le note attaccano scaglionate dal grave all'acuto (50 ms per
+  nota, parametro interno), tenendo tutte fino alla fine. Un trascinamento
+  che copre entrambi i pentagrammi crea un **arpeggio unico** trans-rigo;
+  ripetere il gesto toglie l'arpeggio.
 - **Ritornelli** — con lo strumento *Ritornello*: clic nella metà sinistra di
   una battuta per il segno di inizio `|:`, nella metà destra per quello di
   fine `:|`. Trascinando in verticale sul segno di inizio si imposta il numero
