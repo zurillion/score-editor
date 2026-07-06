@@ -42,6 +42,11 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   archi, fiati, chitarre, … con relativa icona). I campioni si scaricano
   **lazy** al primo uso e la scelta è ricordata tra le sessioni; il synth
   storico dell'app resta disponibile come **"8 bit sound"**.
+- **Accordi** — con lo strumento *Accordo* (1 click: una volta · doppio:
+  fisso) si scrive il nome dell'accordo sotto i pentagrammi, agganciato a
+  una griglia di ottavi nel punto cliccato. Testo libero (nessun
+  controllo); clic su un accordo esistente per modificarlo, testo vuoto
+  per eliminarlo.
 - **Ritornelli** — con lo strumento *Ritornello*: clic nella metà sinistra di
   una battuta per il segno di inizio `|:`, nella metà destra per quello di
   fine `:|`. Trascinando in verticale sul segno di inizio si imposta il numero

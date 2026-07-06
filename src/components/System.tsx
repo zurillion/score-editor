@@ -54,6 +54,9 @@ const TOP_Y = diatonicToY(38);
 const BOTTOM_Y = diatonicToY(18);
 // repeat-sign dots sit in the spaces around the middle line of each staff
 const REPEAT_DOT_DS = [TREBLE_MIDDLE + 1, TREBLE_MIDDLE - 1, BASS_MIDDLE + 1, BASS_MIDDLE - 1];
+// chord names go under the grand staff, clear of most ledger lines
+const CHORD_Y = 234;
+const CHORD_GRID = Math.round(TICKS_PER_QUARTER / 2); // chords snap to eighths
 const SEL_FILL = 'rgba(37,99,235,0.13)';
 const SEL_STROKE = 'rgba(37,99,235,0.7)';
 const BEAM_THICK = 5;
@@ -295,7 +298,11 @@ interface RepeatHover {
   measureIndex: number;
   edge: 'start' | 'end';
 }
-type Hover = PlaceHover | TargetHover | RepeatHover;
+interface ChordHover {
+  mode: 'chordsym';
+  x: number; // snapped caret position
+}
+type Hover = PlaceHover | TargetHover | RepeatHover | ChordHover;
 
 interface SystemProps {
   layout: SystemLayout;
@@ -357,6 +364,8 @@ export function System(props: SystemProps) {
   const movedRef = useRef(false);
   const suppressClickRef = useRef(false);
   const cursorDragRef = useRef(false); // a playhead-handle interaction is in progress
+  // chord-name editing (the chord tool): an inline input under the staff
+  const [chordEdit, setChordEdit] = useState<{ measureIndex: number; tick: number; x: number; value: string } | null>(null);
   // vertical drag on a |: sign to set the play count
   const repeatDragRef = useRef<{ index: number; startTimes: number; startY: number; lastTimes: number } | null>(null);
   const [repeatDragIndex, setRepeatDragIndex] = useState<number | null>(null); // show the count (even ×1) while dragging
@@ -462,6 +471,28 @@ export function System(props: SystemProps) {
     return best;
   }
 
+  // ---- chord tool: snapped position (or existing chord) a click would target ----
+  function chordTarget(x: number): { pm: PlacedMeasure; tick: number; existing?: { tick: number; text: string } } | null {
+    const pm = measureAt(x);
+    if (!pm || pm.total <= 0) return null;
+    // clicking near an existing chord name edits it
+    const existing = (pm.measure.chords ?? []).find((c) => Math.abs(measureTickToX(pm, c.tick) - x) < 24);
+    if (existing) return { pm, tick: existing.tick, existing };
+    const maxTick = Math.floor(Math.max(0, pm.total - 1) / CHORD_GRID) * CHORD_GRID;
+    const tick = clamp(Math.round(measureXToTickRaw(pm, x) / CHORD_GRID) * CHORD_GRID, 0, maxTick);
+    const atTick = (pm.measure.chords ?? []).find((c) => c.tick === tick);
+    return { pm, tick, ...(atTick ? { existing: atTick } : {}) };
+  }
+
+  function commitChordEdit(save: boolean) {
+    const ce = chordEdit;
+    if (!ce) return;
+    setChordEdit(null);
+    if (!save) return;
+    onAction({ type: 'SET_CHORD', index: ce.measureIndex, tick: ce.tick, text: ce.value });
+    onAfterApply(); // one-shot chord tool reverts to the note tool
+  }
+
   // ---- repeat tool: which sign a click on empty measure space would insert ----
   function computeRepeatHover(x: number): RepeatHover | null {
     const pm = measureAt(x);
@@ -527,7 +558,10 @@ export function System(props: SystemProps) {
     if (placing) setHoverState(computePlace(pt.x, pt.y));
     else if (modal) setHoverState(computeTarget(pt.x, pt.y));
     else if (tool.kind === 'repeat') setHoverState(computeRepeatHover(pt.x));
-    else setHoverState(null);
+    else if (tool.kind === 'chord') {
+      const t = chordTarget(pt.x);
+      setHoverState(t ? { mode: 'chordsym', x: measureTickToX(t.pm, t.tick) } : null);
+    } else setHoverState(null);
   }
 
   function handleMouseUp() {
@@ -597,6 +631,13 @@ export function System(props: SystemProps) {
     }
     if (tool.kind === 'select-measures' || tool.kind === 'select-notes') return;
 
+    if (tool.kind === 'chord') {
+      const t = chordTarget(pt.x);
+      if (!t) return;
+      setChordEdit({ measureIndex: t.pm.index, tick: t.tick, x: measureTickToX(t.pm, t.tick), value: t.existing?.text ?? '' });
+      return;
+    }
+
     if (tool.kind === 'repeat') {
       // clicks on an existing sign are captured by its hit zone; here we insert
       if (e.detail >= 2) return; // double-click only ever deletes (on the sign)
@@ -664,6 +705,14 @@ export function System(props: SystemProps) {
   } else if (hover?.mode === 'repeat') {
     const pm = layout.measures.find((p) => p.index === hover.measureIndex);
     if (pm) overlay = repeatSignEls(pm, hover.edge, '#2563eb', 0.45, 'rpthover');
+  } else if (hover?.mode === 'chordsym') {
+    // text caret at the snapped eighth position
+    overlay = (
+      <g pointerEvents="none" stroke="#2563eb" opacity={0.8}>
+        <line x1={hover.x} x2={hover.x} y1={CHORD_Y - 12} y2={CHORD_Y + 3} strokeWidth={1.6} />
+        <line x1={hover.x - 4.5} x2={hover.x + 4.5} y1={CHORD_Y + 3} y2={CHORD_Y + 3} strokeWidth={1.3} />
+      </g>
+    );
   } else if (hover?.mode === 'target') {
     const color = tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : tool.kind === 'tuplet' ? '#7c3aed' : tool.kind === 'tie' ? '#0ea5e9' : '#dc2626';
     overlay = (
@@ -986,6 +1035,23 @@ export function System(props: SystemProps) {
           {pm.measure.repeatStart && repeatCountEl(pm)}
           {pm.measure.repeatEnd && repeatSignEls(pm, 'end', '#1a1a1a', 1, 'rpt')}
           {repeatHitZones(pm)}
+          {pm.measure.chords?.map((c) =>
+            chordEdit && chordEdit.measureIndex === pm.index && chordEdit.tick === c.tick ? null : (
+              <text
+                key={`chs-${pm.index}-${c.tick}`}
+                x={measureTickToX(pm, c.tick)}
+                y={CHORD_Y}
+                textAnchor="middle"
+                fontSize={14}
+                fontWeight={600}
+                fontFamily="system-ui, sans-serif"
+                fill="#1a1a1a"
+                pointerEvents="none"
+              >
+                {c.text}
+              </text>
+            ),
+          )}
         </Fragment>
         );
       })}
@@ -1043,6 +1109,26 @@ export function System(props: SystemProps) {
             />
           )}
         </g>
+      )}
+
+      {/* inline editor for a chord name (chord tool) */}
+      {chordEdit && (
+        <foreignObject x={chordEdit.x - 48} y={CHORD_Y - 16} width={96} height={26}>
+          <input
+            className="chord-input"
+            autoFocus
+            value={chordEdit.value}
+            placeholder="es. Cm7"
+            onChange={(e) => setChordEdit({ ...chordEdit, value: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitChordEdit(true);
+              else if (e.key === 'Escape') commitChordEdit(false);
+            }}
+            onBlur={() => commitChordEdit(true)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </foreignObject>
       )}
     </svg>
   );

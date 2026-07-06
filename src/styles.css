@@ -501,6 +501,21 @@ input[type='number'] {
 .system[data-tool='repeat'] {
   cursor: copy;
 }
+.system[data-tool='chord'] {
+  cursor: text;
+}
+.chord-input {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  font: 600 13px system-ui, sans-serif;
+  text-align: center;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 1px 4px;
+  background: #fff;
+  outline: none;
+}
 
 /* |: glyph in the repeat-tool button (barline glyphs hang from the baseline) */
 .glyph-btn .bravura.repeat-glyph {

@@ -63,6 +63,13 @@ export function exportMusicXML(name: string, bpm: number, score: ScoreState): st
 
     if (m.repeatStart) push('      <barline location="left"><bar-style>heavy-light</bar-style><repeat direction="forward"/></barline>');
 
+    // chord names: free-text words below the staff, positioned via offset
+    for (const c of m.chords ?? []) {
+      push(
+        `      <direction placement="below"><direction-type><words>${esc(c.text)}</words></direction-type>${c.tick ? `<offset>${c.tick}</offset>` : ''}<staff>2</staff></direction>`,
+      );
+    }
+
     // per-staff timelines: stored events plus the derived filler rests
     // (a fully empty measure gets explicit whole-measure rests: notation
     // programs expect every staff's time to be accounted for)
@@ -243,6 +250,13 @@ export function importMusicXML(xml: string): ImportedPiece {
           const soundEl = el.tagName === 'sound' ? el : el.getElementsByTagName('sound')[0];
           const tempo = soundEl?.getAttribute('tempo');
           if (bpm === null && tempo && Number.isFinite(Number(tempo))) bpm = Math.round(Number(tempo));
+          // free text below the staff = a chord name (how our export writes them)
+          const words = el.getElementsByTagName('words')[0]?.textContent?.trim();
+          if (words && el.getAttribute('placement') === 'below') {
+            const off = num(el, 'offset');
+            const tick = Math.max(0, pos + (off ? toTicks(off) : 0));
+            (measure.chords ??= []).push({ tick, text: words });
+          }
           break;
         }
         case 'barline': {
@@ -385,6 +399,7 @@ export function importMusicXML(xml: string): ImportedPiece {
     }
 
     measure.events.sort((a, b) => a.startTick - b.startTick);
+    measure.chords?.sort((a, b) => a.tick - b.tick);
     measures.push(measure);
   }
 

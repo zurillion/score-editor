@@ -1,4 +1,4 @@
-import { Alter, Duration, DurationValue, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, Staff, ScoreState, TimeSignature, Tuplet } from '../music/types';
+import { Alter, ChordSymbol, Duration, DurationValue, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, Staff, ScoreState, TimeSignature, Tuplet } from '../music/types';
 import { diatonicToPitch, eventTicks, measureTicks, pitchEquals, pitchToDiatonic, staffForDiatonic } from '../music/theory';
 import { effectiveTimeSignatureAt, scoreMeta } from '../music/meta';
 import { classifyNote, classifyRest } from '../music/placement';
@@ -36,6 +36,7 @@ export type ScoreAction =
   | { type: 'SET_TIME_SIGNATURE_AT'; measureIndex: number; timeSignature: TimeSignature }
   | { type: 'SET_KEY_SIGNATURE_AT'; measureIndex: number; keySignature: number }
   | { type: 'SET_PICKUP'; on: boolean }
+  | { type: 'SET_CHORD'; index: number; tick: number; text: string } // empty text removes the chord at that tick
   | { type: 'SET_REPEAT'; index: number; edge: 'start' | 'end'; on: boolean }
   | { type: 'SET_REPEAT_TIMES'; index: number; times: number } // coalesced (set by the count drag)
   | { type: 'ADD_MEASURE' }
@@ -415,12 +416,14 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       if (!m) return state;
       const measures = state.measures.slice();
       measures[action.measureIndex] = { ...m, timeSignature: action.timeSignature };
-      // trim events that no longer fit in any measure whose effective length shrank
+      // trim events (and chord symbols) that no longer fit where the effective length shrank
       const meta = scoreMeta({ ...state, measures });
       const trimmed = measures.map((mm, i) => {
         const total = meta.measures[i].total;
         const events = mm.events.filter((e) => e.startTick + eventTicks(e) <= total);
-        return events.length === mm.events.length ? mm : { ...mm, events };
+        const chords = mm.chords?.filter((c) => c.tick < total);
+        if (events.length === mm.events.length && (chords?.length ?? 0) === (mm.chords?.length ?? 0)) return mm;
+        return { ...mm, events, ...(chords && chords.length ? { chords } : { chords: undefined }) };
       });
       return { ...state, measures: trimmed };
     }
@@ -444,6 +447,26 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         return { ...state, measures: rest.length ? rest : [emptyMeasure()] };
       }
       return state;
+    }
+
+    case 'SET_CHORD': {
+      const m = state.measures[action.index];
+      if (!m) return state;
+      const text = action.text.trim();
+      const cur = m.chords ?? [];
+      const others = cur.filter((c) => c.tick !== action.tick);
+      let chords: ChordSymbol[];
+      if (!text) {
+        if (others.length === cur.length) return state; // nothing to remove
+        chords = others;
+      } else {
+        if (cur.find((c) => c.tick === action.tick)?.text === text) return state;
+        chords = [...others, { tick: action.tick, text }].sort((a, b) => a.tick - b.tick);
+      }
+      const measures = state.measures.slice();
+      const { chords: _drop, ...bare } = m;
+      measures[action.index] = chords.length ? { ...m, chords } : bare;
+      return { ...state, measures };
     }
 
     case 'SET_REPEAT': {

@@ -190,8 +190,14 @@ export function Toolbar(props: ToolbarProps) {
     else if (tool.kind === 'tie') setTool({ kind: 'note' });
     else setTool({ kind: 'tie', sticky: false });
   }
+  function clickChord(detail: number) {
+    if (detail >= 2) setTool({ kind: 'chord', sticky: true });
+    else if (tool.kind === 'chord') setTool({ kind: 'note' });
+    else setTool({ kind: 'chord', sticky: false });
+  }
 
   const eraserClass = tool.kind === 'eraser' ? (tool.sticky ? 'on sticky' : 'on') : '';
+  const chordClass = tool.kind === 'chord' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const tupletClass = tool.kind === 'tuplet' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const tieClass = tool.kind === 'tie' ? (tool.sticky ? 'on sticky' : 'on') : '';
 
@@ -306,6 +312,13 @@ export function Toolbar(props: ToolbarProps) {
             title="Legatura di valore — clicca una nota per legarla alla successiva della stessa altezza (anche tra battute). 1 click: una volta · doppio click: fissa."
           >
             ⌣ Legatura
+          </button>
+          <button
+            className={chordClass}
+            onClick={(e) => clickChord(e.detail)}
+            title="Accordo — clicca sotto il rigo per scrivere il nome dell'accordo (testo libero, griglia di ottavi). Clic su un accordo esistente per modificarlo; testo vuoto lo elimina. 1 click: una volta · doppio click: fissa."
+          >
+            C⁷ Accordo
           </button>
           <button
             className={`glyph-btn ${tool.kind === 'repeat' ? 'on' : ''}`}

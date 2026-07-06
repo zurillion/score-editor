@@ -52,9 +52,16 @@ export interface RestEvent {
 
 export type ScoreEvent = NoteEvent | RestEvent;
 
+/** A chord name written below the staves (free text, eighth-note grid). */
+export interface ChordSymbol {
+  tick: number; // offset from the measure's start
+  text: string;
+}
+
 export interface Measure {
   id: string;
   events: ScoreEvent[];
+  chords?: ChordSymbol[]; // chord names shown under the grand staff, sorted by tick
   timeSignature?: TimeSignature; // override that starts here and lasts until the next override
   keySignature?: number; // key-signature override that starts here and lasts until the next override
   pickup?: boolean; // anacrusis: an incomplete initial measure whose length follows its content
