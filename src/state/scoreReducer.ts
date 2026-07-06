@@ -381,6 +381,30 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         });
         measures[mi] = { ...measures[mi], events: sortEvents([...events, ...pasted]) };
       }
+      // Cascade the overflow: events pushed past a measure's capacity spill
+      // into the next measure (created if missing), shifting its content
+      // right in turn — so repeated pastes flow across barlines instead of
+      // squeezing a fifth quarter into a 4/4 bar.
+      const capacityOf = (i: number): number =>
+        i < meta.measures.length ? meta.measures[i].capacityTicks : tailTotal;
+      for (let i = 0; i < measures.length; i++) {
+        const cap = capacityOf(i);
+        if (cap <= 0) continue;
+        for (const staff of ['treble', 'bass'] as Staff[]) {
+          const over = measures[i].events.filter((e) => e.staff === staff && e.startTick + eventTicks(e) > cap);
+          if (over.length === 0) continue;
+          if (i + 1 >= measures.length) measures.push(emptyMeasure());
+          const moved = over.map((e) => ({ ...e, startTick: Math.max(0, e.startTick - cap) }));
+          const span = Math.max(...moved.map((e) => e.startTick + eventTicks(e)));
+          const overSet = new Set(over);
+          const next = measures[i + 1];
+          measures[i + 1] = {
+            ...next,
+            events: sortEvents([...next.events.map((e) => (e.staff === staff ? { ...e, startTick: e.startTick + span } : e)), ...moved]),
+          };
+          measures[i] = { ...measures[i], events: measures[i].events.filter((e) => !overSet.has(e)) };
+        }
+      }
       return { ...state, measures };
     }
 
