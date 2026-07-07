@@ -6,7 +6,12 @@ export interface Resolved {
   show: boolean; // whether to draw an accidental glyph
 }
 
-const STAVES: Staff[] = ['treble', 'bass'];
+/** Distinct staff ids present in a set of events (stable order of appearance). */
+export function staffIdsIn(events: ScoreEvent[]): Staff[] {
+  const ids: Staff[] = [];
+  for (const e of events) if (!ids.includes(e.staff)) ids.push(e.staff);
+  return ids;
+}
 
 /**
  * Resolves accidentals within a measure following the rule "an accidental lasts
@@ -16,10 +21,14 @@ const STAVES: Staff[] = ['treble', 'bass'];
  * A note with an explicit accidental sets the running alteration for its pitch
  * (and shows a glyph only when it changes it); a note without one sounds the
  * running alteration (key signature until something overrides it).
+ *
+ * `keySig` may be a per-staff resolver so transposing staves read their own key.
  */
-export function resolveMeasure(events: ScoreEvent[], keySig: number): Map<string, Resolved> {
+export function resolveMeasure(events: ScoreEvent[], keySig: number | ((staff: Staff) => number)): Map<string, Resolved> {
   const out = new Map<string, Resolved>();
-  for (const staff of STAVES) {
+  const keyOf = typeof keySig === 'number' ? () => keySig : keySig;
+  for (const staff of staffIdsIn(events)) {
+    const staffKey = keyOf(staff);
     const ctx = new Map<string, Alter>(); // `${step}${octave}` -> current alteration
     const notes = events
       .filter((e) => e.kind === 'note' && e.staff === staff)
@@ -29,7 +38,7 @@ export function resolveMeasure(events: ScoreEvent[], keySig: number): Map<string
       if (ev.kind !== 'note') continue;
       for (const p of ev.pitches) {
         const so = `${p.step}${p.octave}`;
-        const ctxAlter = ctx.has(so) ? (ctx.get(so) as Alter) : keyAlterForStep(p.step, keySig);
+        const ctxAlter = ctx.has(so) ? (ctx.get(so) as Alter) : keyAlterForStep(p.step, staffKey);
         let resolved: Resolved;
         if (p.explicit) {
           resolved = { alter: p.alter, show: p.alter !== ctxAlter };

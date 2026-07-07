@@ -274,7 +274,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 360px;
+  min-width: 690px;
+  max-width: min(92vw, 860px);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -282,18 +283,51 @@ body {
   padding: 10px 12px;
   font-size: 12px;
 }
+/* add-staff buttons at the top of the panel */
+.mixer-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.mixer-add span {
+  font-weight: 600;
+}
+.mixer-add .mixer-add-sep {
+  margin-left: 10px;
+}
+.mixer-add button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
 .mixer-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px 10px;
   padding: 4px 0;
+}
+.mixer-show strong {
+  min-width: 148px;
+}
+.mixer-row.dim > label:not(.mixer-show) {
+  opacity: 0.45;
+}
+.mixer-show {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mixer-remove {
+  margin-left: auto;
+  padding: 2px 7px;
+  font-size: 12px;
+  color: #b91c1c;
 }
 .mixer-row + .mixer-row {
   border-top: 1px solid var(--line);
   padding-top: 8px;
-}
-.mixer-row strong {
-  min-width: 58px;
 }
 .mixer-row label {
   display: inline-flex;

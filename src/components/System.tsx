@@ -1,6 +1,6 @@
 import { Fragment, useRef, useState } from 'react';
 import { Alter, Duration, NoteEvent, Pitch, ScoreEvent, Staff, TimeSignature } from '../music/types';
-import { diatonicToPitch, durationTicks, eventTicks, pitchNameIt, pitchToDiatonic, staffForDiatonic } from '../music/theory';
+import { diatonicToPitch, durationTicks, eventTicks, pitchNameIt, pitchToDiatonic } from '../music/theory';
 import {
   SystemLayout,
   PlacedMeasure,
@@ -9,10 +9,6 @@ import {
   measureTickToX,
   measureXToTickRaw,
   clamp,
-  TREBLE_LINES,
-  BASS_LINES,
-  TREBLE_MIDDLE,
-  BASS_MIDDLE,
   noteheadHalfWidth,
   stemUpForChord,
   secondOffsets,
@@ -21,8 +17,8 @@ import {
   KEYSIG_STEP,
   keySigWidth,
   REPEAT_START_PAD,
-  STAFF_BOTTOM_DIATONIC,
 } from '../music/layout';
+import { StavesLayout, RowSlot, rowAtY, rowClampD, rowLedgerLines, rowStaffForDiatonic, CLEFS } from '../music/staves';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
 import { beamGroups, beamCount } from '../music/beams';
@@ -35,7 +31,6 @@ import {
   BRACE_X,
   CLEF_X,
   TIME_SIG_X,
-  SYSTEM_HEIGHT,
   STAFF_LINE_WIDTH,
   BAR_LINE_WIDTH,
   GLYPH_FONT_SIZE,
@@ -51,13 +46,6 @@ import { Selection } from '../state/selection';
 import { NoteView } from './Note';
 import { RestView } from './Rest';
 
-const TOP_Y = diatonicToY(38);
-const BOTTOM_Y = diatonicToY(18);
-// repeat-sign dots sit in the spaces around the middle line of each staff
-const REPEAT_DOT_DS = [TREBLE_MIDDLE + 1, TREBLE_MIDDLE - 1, BASS_MIDDLE + 1, BASS_MIDDLE - 1];
-// default baseline of the chord names under the grand staff; each system
-// pushes it further down when it contains very low ledger notes
-const CHORD_Y_BASE = 234;
 const CHORD_GRID = Math.round(TICKS_PER_QUARTER / 2); // chords snap to eighths
 const SEL_FILL = 'rgba(37,99,235,0.13)';
 const SEL_STROKE = 'rgba(37,99,235,0.7)';
@@ -67,18 +55,27 @@ const BEAM_MAX_SLOPE = 0.25; // px per px
 const BEAM_MAX_RISE = 2.5 * STAFF_SPACE; // total rise across a group
 const BEAM_MIN_CLEAR = 2.3 * STAFF_SPACE; // shortest stem from the outer notehead to the beam
 
+/** Per-row rendering context: which staves it holds and their stem middles. */
+interface RowCtx {
+  staffIds: Staff[];
+  middleOf: (staff: Staff) => number;
+  topYAxis: number; // diatonicToY(row.topD) — row content bounds in axis coords
+  botYAxis: number;
+}
+
 /**
- * Beams for one measure: the stem-end y for each beamed note plus the beam
- * polygons. Beams are horizontal by default; when `diagonal` is set they slope
- * to follow the outer pitches (clamped, and kept clear of the noteheads).
+ * Beams for the staves of one row in one measure: the stem-end y for each
+ * beamed note plus the beam polygons. Beams are horizontal by default; when
+ * `diagonal` is set they slope to follow the outer pitches (clamped, and kept
+ * clear of the noteheads).
  */
-function computeMeasureBeams(pm: PlacedMeasure, diagonal: boolean): { beamProps: Map<string, { stemUp: boolean; tipY: number }>; elements: JSX.Element[] } {
+function computeMeasureBeams(pm: PlacedMeasure, diagonal: boolean, ctx: RowCtx): { beamProps: Map<string, { stemUp: boolean; tipY: number }>; elements: JSX.Element[] } {
   const beamProps = new Map<string, { stemUp: boolean; tipY: number }>();
   const elements: JSX.Element[] = [];
-  for (const staff of ['treble', 'bass'] as Staff[]) {
+  for (const staff of ctx.staffIds) {
     for (const group of beamGroups(pm.measure.events, staff, pm.ts)) {
       const allDs = group.flatMap((ev) => ev.pitches.map(pitchToDiatonic));
-      const stemUp = stemUpForChord(allDs, staff);
+      const stemUp = stemUpForChord(allDs, ctx.middleOf(staff));
       const dir = stemUp ? 1 : -1; // +1 = beam above the noteheads (smaller y)
       const items = group.map((ev) => {
         const x = measureTickToX(pm, ev.startTick);
@@ -155,7 +152,7 @@ function computeMeasureBeams(pm: PlacedMeasure, diagonal: boolean): { beamProps:
  * (which reaches to the right) doesn't overlap it. Only kicks in when the slot
  * is tight (tuplets); clamped so the rest never collides with the next event.
  */
-function restClearShift(pm: PlacedMeasure, staff: Staff, startTick: number, beamProps: Map<string, { stemUp: boolean; tipY: number }>): number {
+function restClearShift(pm: PlacedMeasure, staff: Staff, startTick: number, beamProps: Map<string, { stemUp: boolean; tipY: number }>, middle: number): number {
   let prev: ScoreEvent | null = null;
   let next: ScoreEvent | null = null;
   for (const e of pm.measure.events) {
@@ -166,7 +163,7 @@ function restClearShift(pm: PlacedMeasure, staff: Staff, startTick: number, beam
   if (!prev || prev.kind !== 'note') return 0;
   const flagged = beamCount(prev.duration.value) >= 1 && !beamProps.has(prev.id); // unbeamed -> has a flag
   if (!flagged) return 0;
-  if (!stemUpForChord(prev.pitches.map(pitchToDiatonic), staff)) return 0; // down-stem flags stay left of the notehead
+  if (!stemUpForChord(prev.pitches.map(pitchToDiatonic), middle)) return 0; // down-stem flags stay left of the notehead
   const slotX = measureTickToX(pm, startTick);
   const flagRight = measureTickToX(pm, prev.startTick) + 1.9 * STAFF_SPACE; // notehead + stem + flag reach
   let shift = Math.max(0, flagRight + 0.45 * STAFF_SPACE - slotX);
@@ -178,15 +175,15 @@ function restClearShift(pm: PlacedMeasure, staff: Staff, startTick: number, beam
 }
 
 /**
- * Tuplet brackets / numbers for one measure. A beamed tuplet (e.g. eighth-note
- * triplets) shows just the number over the beam; an unbeamed one (quarter
- * triplets) gets a bracket with the number, clear of the stems.
+ * Tuplet brackets / numbers for one row of one measure. A beamed tuplet (e.g.
+ * eighth-note triplets) shows just the number over the beam; an unbeamed one
+ * (quarter triplets) gets a bracket with the number, clear of the stems.
  */
-function renderMeasureTuplets(pm: PlacedMeasure, beamProps: Map<string, { stemUp: boolean; tipY: number }>): JSX.Element[] {
+function renderMeasureTuplets(pm: PlacedMeasure, beamProps: Map<string, { stemUp: boolean; tipY: number }>, ctx: RowCtx): JSX.Element[] {
   const els: JSX.Element[] = [];
   const groups = new Map<string, ScoreEvent[]>();
   for (const ev of pm.measure.events) {
-    if (!ev.tuplet) continue;
+    if (!ev.tuplet || !ctx.staffIds.includes(ev.staff)) continue;
     const arr = groups.get(ev.tuplet.id) ?? [];
     arr.push(ev);
     groups.set(ev.tuplet.id, arr);
@@ -195,9 +192,10 @@ function renderMeasureTuplets(pm: PlacedMeasure, beamProps: Map<string, { stemUp
     const members = raw.slice().sort((a, b) => a.startTick - b.startTick);
     if (members.length === 0) continue;
     const staff = members[0].staff;
+    const middle = ctx.middleOf(staff);
     const notes = members.filter((e): e is NoteEvent => e.kind === 'note');
     const allDs = notes.flatMap((e) => e.pitches.map(pitchToDiatonic));
-    const stemUp = allDs.length ? stemUpForChord(allDs, staff) : staff === 'treble';
+    const stemUp = allDs.length ? stemUpForChord(allDs, middle) : true;
     const dir = stemUp ? 1 : -1; // +1 = above the noteheads (smaller y)
     const xs = members.map((e) => measureTickToX(pm, e.startTick));
     const x0 = xs[0] - noteheadHalfWidth(members[0].duration.value);
@@ -224,7 +222,7 @@ function renderMeasureTuplets(pm: PlacedMeasure, beamProps: Map<string, { stemUp
       });
       const bracketY = tips.length
         ? (stemUp ? Math.min(...tips) - 6 : Math.max(...tips) + 6)
-        : (stemUp ? TOP_Y - 14 : BOTTOM_Y + 14);
+        : (stemUp ? ctx.topYAxis - 14 : ctx.botYAxis + 14);
       const hookY = bracketY + dir * 5;
       const gap = 8;
       const stroke = '#1a1a1a';
@@ -242,12 +240,13 @@ function renderMeasureTuplets(pm: PlacedMeasure, beamProps: Map<string, { stemUp
   return els;
 }
 
-/** Ties of value for one system: a flat arc per tied pitch (split at the line edges when it wraps). */
-function renderSystemTies(layout: SystemLayout, ties: TieConn[]): JSX.Element[] {
+/** Ties of value for the staves of one row: a flat arc per tied pitch (split at the line edges when it wraps). */
+function renderSystemTies(layout: SystemLayout, ties: TieConn[], ctx: RowCtx): JSX.Element[] {
   const els: JSX.Element[] = [];
   const leftEdge = layout.header + 4;
   const rightEdge = layout.width - 4;
   ties.forEach((t, i) => {
+    if (!ctx.staffIds.includes(t.staff)) return;
     const pmFrom = layout.measures.find((p) => p.index === t.fromIndex);
     const pmTo = layout.measures.find((p) => p.index === t.toIndex);
     if (!pmFrom && !pmTo) return; // neither endpoint is on this line
@@ -255,8 +254,7 @@ function renderSystemTies(layout: SystemLayout, ties: TieConn[]): JSX.Element[] 
     const x1 = pmFrom ? measureTickToX(pmFrom, t.fromTick) + NOTEHEAD_RX + 1.5 : leftEdge;
     const x2 = pmTo ? measureTickToX(pmTo, t.toTick) - NOTEHEAD_RX - 1.5 : rightEdge;
     if (x2 - x1 < 5) return;
-    const middle = t.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE;
-    const dir = t.diatonic >= middle ? -1 : 1; // higher notes: arc above; lower: below
+    const dir = t.diatonic >= ctx.middleOf(t.staff) ? -1 : 1; // higher notes: arc above; lower: below
     const cx = (x1 + x2) / 2;
     const bulge = 0.85 * STAFF_SPACE;
     const d = `M ${x1} ${y} Q ${cx} ${y + dir * bulge} ${x2} ${y} Q ${cx} ${y + dir * (bulge - 2.4)} ${x1} ${y} Z`;
@@ -324,6 +322,7 @@ type Hover = PlaceHover | TargetHover | RepeatHover | ChordHover;
 
 interface SystemProps {
   layout: SystemLayout;
+  stavesLayout: StavesLayout;
   headerTs: TimeSignature;
   headerKeySig: number;
   showTimeSig: boolean;
@@ -337,7 +336,7 @@ interface SystemProps {
   playOnly?: boolean; // shared "listen" view: clicking only moves the playback cursor
   onAction: (action: ScoreAction) => void;
   onAfterApply: () => void;
-  onPreviewNote: (pitches: Pitch[]) => void;
+  onPreviewNote: (pitches: Pitch[], staff?: Staff) => void;
   onSetCursor: (tick: number) => void;
   onHoverNote: (name: string | null) => void;
   ties: TieConn[];
@@ -346,6 +345,7 @@ interface SystemProps {
 export function System(props: SystemProps) {
   const {
     layout,
+    stavesLayout: sl,
     headerTs,
     headerKeySig,
     showTimeSig,
@@ -365,11 +365,34 @@ export function System(props: SystemProps) {
     ties,
   } = props;
 
+  // ---- per-staff lookup tables over the visible rows ----
+  const rowByStaff = new Map<Staff, RowSlot>();
+  const keyOverride = new Map<Staff, number | null>();
+  const clefByStaff = new Map<Staff, 'treble' | 'bass'>();
+  for (const row of sl.rows) {
+    for (const s of row.staves) {
+      rowByStaff.set(s.def.id, row);
+      keyOverride.set(s.def.id, s.key);
+      clefByStaff.set(s.def.id, s.def.clef);
+    }
+  }
+  const visibleStaffIds = sl.rows.flatMap((r) => r.staves.map((s) => s.def.id));
+  const middleOf = (staff: Staff): number => CLEFS[clefByStaff.get(staff) ?? 'treble'].middle;
+  const dyOf = (staff: Staff): number => rowByStaff.get(staff)?.dy ?? 0;
+  /** Key signature a staff reads in a measure: its own override, else the measure's. */
+  const staffKey = (staff: Staff, measureKey: number): number => keyOverride.get(staff) ?? measureKey;
+  const rowCtx = (row: RowSlot): RowCtx => ({
+    staffIds: row.staves.map((s) => s.def.id),
+    middleOf,
+    topYAxis: diatonicToY(row.topD),
+    botYAxis: diatonicToY(row.botD),
+  });
+
   // effective key signature of a given measure index in this system
   function keyAt(index: number): number {
     return layout.measures.find((p) => p.index === index)?.keySig ?? headerKeySig;
   }
-  // pitch the note tool would create at a diatonic, honouring a measure's key signature
+  // pitch the note tool would create at a diatonic, honouring a key signature
   function keyedPitch(d: number, keySig: number): Pitch {
     const p = diatonicToPitch(d, 0);
     return { ...p, alter: keyAlterForStep(p.step, keySig) };
@@ -378,27 +401,31 @@ export function System(props: SystemProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [cursorDrag, setCursorDrag] = useState(false);
-  const noteDragRef = useRef<{ measureIndex: number; eventId: string; lastD: number; startY: number } | null>(null);
+  const noteDragRef = useRef<{ measureIndex: number; eventId: string; staff: Staff; lastD: number; startY: number } | null>(null);
   const movedRef = useRef(false);
   const suppressClickRef = useRef(false);
   const cursorDragRef = useRef(false); // a playhead-handle interaction is in progress
-  // chord-name editing (the chord tool): an inline input under the staff
+  // chord-name editing (the chord tool): an inline input under the staves
   const [chordEdit, setChordEdit] = useState<{ measureIndex: number; tick: number; x: number; value: string } | null>(null);
   // arpeggio tool: vertical drag over the notes to include in the roll
-  const [arpDrag, setArpDrag] = useState<{ measureIndex: number; tick: number; x: number; startY: number; curY: number } | null>(null);
+  const [arpDrag, setArpDrag] = useState<{ measureIndex: number; tick: number; x: number; staffIds: Staff[]; startY: number; curY: number } | null>(null);
   // vertical drag on a |: sign to set the play count
   const repeatDragRef = useRef<{ index: number; startTimes: number; startY: number; lastTimes: number } | null>(null);
   const [repeatDragIndex, setRepeatDragIndex] = useState<number | null>(null); // show the count (even ×1) while dragging
   const lastRepeatInsertRef = useRef<{ key: string; t: number } | null>(null); // so a double-click on empty space doesn't insert+delete
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
 
-  // chord-name baseline for this system: below the lowest ledger note present
+  // chord-name baseline: below the last row, pushed down by its lowest ledger note
   // (uniform across the line so the names sit on one row)
+  const lastRow = sl.rows[sl.rows.length - 1];
+  const lastRowStaves = new Set(lastRow.staves.map((s) => s.def.id));
   const lowestDiatonic = Math.min(
-    STAFF_BOTTOM_DIATONIC,
-    ...layout.measures.flatMap((pm) => pm.measure.events.flatMap((e) => (e.kind === 'note' ? e.pitches.map(pitchToDiatonic) : []))),
+    lastRow.botD,
+    ...layout.measures.flatMap((pm) =>
+      pm.measure.events.flatMap((e) => (e.kind === 'note' && lastRowStaves.has(e.staff) ? e.pitches.map(pitchToDiatonic) : [])),
+    ),
   );
-  const chordY = Math.min(SYSTEM_HEIGHT - 8, Math.max(CHORD_Y_BASE, diatonicToY(lowestDiatonic) + 20));
+  const chordY = lastRow.dy + Math.min(sl.height - lastRow.dy - 8, Math.max(diatonicToY(lastRow.botD) + 50, diatonicToY(lowestDiatonic) + 20));
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
   const modal = tool.kind === 'accidental' || tool.kind === 'eraser' || tool.kind === 'dot' || tool.kind === 'tuplet' || tool.kind === 'tie' || tool.kind === 'staccato';
@@ -428,8 +455,10 @@ export function System(props: SystemProps) {
     const pm = measureAt(x);
     if (!pm) return null;
 
-    const d = clamp(yToDiatonic(y), 5, 50);
-    const staff = staffForDiatonic(d);
+    const row = rowAtY(sl, y);
+    const [dLo, dHi] = rowClampD(row);
+    const d = clamp(yToDiatonic(y - row.dy), dLo, dHi);
+    const staff = rowStaffForDiatonic(row, d);
     const grid = durationTicks(duration);
     const pxPerTick = pm.noteSpan / Math.max(1, pm.spanTicks);
     // catch zone of an existing event: never wider than half a grid step, or
@@ -467,7 +496,7 @@ export function System(props: SystemProps) {
       tick = Math.min(tick, contentEnd);
     }
     const base = diatonicToPitch(d, 0);
-    const alter = effectiveAlterForNew(pm.measure.events, pm.keySig, staff, base.step, base.octave, tick);
+    const alter = effectiveAlterForNew(pm.measure.events, staffKey(staff, pm.keySig), staff, base.step, base.octave, tick);
     const action =
       tool.kind === 'rest'
         ? classifyRest(pm.measure.events, tick, duration, pm.capacityTicks, staff)
@@ -489,25 +518,26 @@ export function System(props: SystemProps) {
     }
   }
 
-  // nearest notehead to (x,y); leftPad widens the catch zone to the left (for accidentals)
+  // nearest notehead to (x,y) across all rows; leftPad widens the catch zone to the left (for accidentals)
   function pickNotehead(x: number, y: number, leftPad: number) {
-    let best: { measureIndex: number; eventId: string; diatonic: number; hx: number; hy: number; dist: number } | null = null;
+    let best: { measureIndex: number; eventId: string; staff: Staff; diatonic: number; hx: number; hy: number; dist: number } | null = null;
     for (const pm of layout.measures) {
       for (const ev of pm.measure.events) {
-        if (ev.kind !== 'note') continue;
+        if (ev.kind !== 'note' || !rowByStaff.has(ev.staff)) continue;
+        const dy = dyOf(ev.staff);
         const ex = measureTickToX(pm, ev.startTick);
         const ds = ev.pitches.map(pitchToDiatonic);
-        const offs = secondOffsets(ds, stemUpForChord(ds, ev.staff), noteheadHalfWidth(ev.duration.value));
+        const offs = secondOffsets(ds, stemUpForChord(ds, middleOf(ev.staff)), noteheadHalfWidth(ev.duration.value));
         for (let pi = 0; pi < ds.length; pi++) {
           const d = ds[pi];
-          const ey = diatonicToY(d);
+          const ey = dy + diatonicToY(d);
           const hx = ex + offs[pi];
           const dx = x - hx;
-          const dy = y - ey;
+          const dyy = y - ey;
           const inX = dx <= NOTEHEAD_RX + 4 && dx >= -(NOTEHEAD_RX + 4 + leftPad);
-          if (inX && Math.abs(dy) <= NOTEHEAD_RY + 4) {
-            const dist = Math.hypot(dx, dy);
-            if (!best || dist < best.dist) best = { measureIndex: pm.index, eventId: ev.id, diatonic: d, hx, hy: ey, dist };
+          if (inX && Math.abs(dyy) <= NOTEHEAD_RY + 4) {
+            const dist = Math.hypot(dx, dyy);
+            if (!best || dist < best.dist) best = { measureIndex: pm.index, eventId: ev.id, staff: ev.staff, diatonic: d, hx, hy: ey, dist };
           }
         }
       }
@@ -537,18 +567,20 @@ export function System(props: SystemProps) {
     onAfterApply(); // one-shot chord tool reverts to the note tool
   }
 
-  // ---- arpeggio tool: the note column (measure + tick) nearest to x ----
-  function arpColumnAt(x: number): { pm: PlacedMeasure; tick: number; x: number } | null {
+  // ---- arpeggio tool: the note column (measure + tick) nearest to x, within the row under y ----
+  function arpColumnAt(x: number, y: number): { pm: PlacedMeasure; tick: number; x: number; staffIds: Staff[] } | null {
     const pm = measureAt(x);
     if (!pm) return null;
+    const row = rowAtY(sl, y);
+    const staffIds = row.staves.map((s) => s.def.id);
     let best: { tick: number; ex: number; dist: number } | null = null;
     for (const ev of pm.measure.events) {
-      if (ev.kind !== 'note') continue;
+      if (ev.kind !== 'note' || !staffIds.includes(ev.staff)) continue;
       const ex = measureTickToX(pm, ev.startTick);
       const dist = Math.abs(ex - x);
       if (dist <= 20 && (!best || dist < best.dist)) best = { tick: ev.startTick, ex, dist };
     }
-    return best ? { pm, tick: best.tick, x: best.ex } : null;
+    return best ? { pm, tick: best.tick, x: best.ex, staffIds } : null;
   }
 
   function applyArpDrag() {
@@ -559,11 +591,11 @@ export function System(props: SystemProps) {
     if (!pm) return;
     const y0 = Math.min(ad.startY, ad.curY) - 10;
     const y1 = Math.max(ad.startY, ad.curY) + 10;
-    // the roll includes every chord of the column (either staff) with a notehead in the dragged span
+    // the roll includes every chord of the column (any staff of the row) with a notehead in the dragged span
     const targets = pm.measure.events.filter(
       (e): e is NoteEvent =>
-        e.kind === 'note' && e.startTick === ad.tick && e.pitches.some((p) => {
-          const y = diatonicToY(pitchToDiatonic(p));
+        e.kind === 'note' && e.startTick === ad.tick && ad.staffIds.includes(e.staff) && e.pitches.some((p) => {
+          const y = dyOf(e.staff) + diatonicToY(pitchToDiatonic(p));
           return y >= y0 && y <= y1;
         }),
     );
@@ -597,8 +629,8 @@ export function System(props: SystemProps) {
     if (tool.kind === 'arpeggio') {
       const pt = localPoint(e.clientX, e.clientY);
       if (!pt) return;
-      const col = arpColumnAt(pt.x);
-      if (col) setArpDrag({ measureIndex: col.pm.index, tick: col.tick, x: col.x, startY: pt.y, curY: pt.y });
+      const col = arpColumnAt(pt.x, pt.y);
+      if (col) setArpDrag({ measureIndex: col.pm.index, tick: col.tick, x: col.x, staffIds: col.staffIds, startY: pt.y, curY: pt.y });
       return;
     }
     if (tool.kind !== 'note' && tool.kind !== 'pointer') return;
@@ -606,7 +638,7 @@ export function System(props: SystemProps) {
     if (!pt) return;
     const hit = pickNotehead(pt.x, pt.y, 0);
     if (hit) {
-      noteDragRef.current = { measureIndex: hit.measureIndex, eventId: hit.eventId, lastD: hit.diatonic, startY: pt.y };
+      noteDragRef.current = { measureIndex: hit.measureIndex, eventId: hit.eventId, staff: hit.staff, lastD: hit.diatonic, startY: pt.y };
       movedRef.current = false;
       setHoverState(null);
     }
@@ -641,12 +673,15 @@ export function System(props: SystemProps) {
       // a real drag starts after a few pixels: a wobbly click near a notehead
       // must stay a click (inserting the next note), not nudge this one
       if (!movedRef.current && Math.abs(pt.y - nd.startY) < 5) return;
-      const d = clamp(yToDiatonic(pt.y), 5, 50);
+      const row = rowByStaff.get(nd.staff);
+      if (!row) return;
+      const [dLo, dHi] = rowClampD(row);
+      const d = clamp(yToDiatonic(pt.y - row.dy), dLo, dHi);
       if (d !== nd.lastD) {
         onAction({ type: 'MOVE_NOTE', measureIndex: nd.measureIndex, eventId: nd.eventId, fromDiatonic: nd.lastD, toDiatonic: d });
         nd.lastD = d;
         movedRef.current = true;
-        if (previewOnCreate) onPreviewNote([keyedPitch(d, keyAt(nd.measureIndex))]);
+        if (previewOnCreate) onPreviewNote([keyedPitch(d, staffKey(nd.staff, keyAt(nd.measureIndex)))], nd.staff);
       }
       return;
     }
@@ -768,9 +803,9 @@ export function System(props: SystemProps) {
         // store a non-explicit note: it follows the key signature and any
         // accidental already in effect in the measure
         const pitch = diatonicToPitch(target.diatonic, 0);
-        onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration });
+        onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration, staff: target.staff });
         if (previewOnCreate && (target.action === 'create' || target.action === 'chord'))
-          onPreviewNote([{ ...pitch, alter: target.alter }]); // sound it with its effective alteration
+          onPreviewNote([{ ...pitch, alter: target.alter }], target.staff); // sound it with its effective alteration
 
       }
       return;
@@ -802,21 +837,42 @@ export function System(props: SystemProps) {
   let overlay: JSX.Element | null = null;
   if (hover?.mode === 'place') {
     const pm = layout.measures.find((p) => p.index === hover.measureIndex);
-    if (pm) {
+    const row = rowByStaff.get(hover.staff);
+    if (pm && row) {
       const gx = measureTickToX(pm, hover.tick);
       const color = GHOST_COLOR[hover.action];
       const op = GHOST_OPACITY[hover.action];
-      const gMiddle = hover.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE;
-      overlay =
-        tool.kind === 'rest' ? (
-          <RestView duration={duration} x={gx} color={color} middle={gMiddle} opacity={op} />
-        ) : (
-          <NoteView pitches={[{ ...diatonicToPitch(hover.diatonic, 0), alter: hover.alter }]} duration={duration} staff={hover.staff} keySignature={pm.keySig} x={gx} color={color} opacity={op} />
-        );
+      overlay = (
+        <g transform={`translate(0 ${row.dy})`}>
+          {tool.kind === 'rest' ? (
+            <RestView duration={duration} x={gx} color={color} middle={middleOf(hover.staff)} opacity={op} />
+          ) : (
+            <NoteView
+              pitches={[{ ...diatonicToPitch(hover.diatonic, 0), alter: hover.alter }]}
+              duration={duration}
+              middle={middleOf(hover.staff)}
+              ledgerOf={(d) => rowLedgerLines(row, d)}
+              keySignature={staffKey(hover.staff, pm.keySig)}
+              x={gx}
+              color={color}
+              opacity={op}
+            />
+          )}
+        </g>
+      );
     }
   } else if (hover?.mode === 'repeat') {
     const pm = layout.measures.find((p) => p.index === hover.measureIndex);
-    if (pm) overlay = repeatSignEls(pm, hover.edge, '#2563eb', 0.45, 'rpthover');
+    if (pm)
+      overlay = (
+        <g>
+          {sl.rows.map((row, ri) => (
+            <g key={ri} transform={`translate(0 ${row.dy})`}>
+              {repeatSignEls(pm, row, hover.edge, '#2563eb', 0.45, 'rpthover')}
+            </g>
+          ))}
+        </g>
+      );
   } else if (hover?.mode === 'chordsym') {
     // text caret at the snapped eighth position
     overlay = (
@@ -853,7 +909,7 @@ export function System(props: SystemProps) {
   function noteHighlight(pm: PlacedMeasure, ev: Extract<ScoreEvent, { kind: 'note' }>) {
     const ex = measureTickToX(pm, ev.startTick);
     const ds = ev.pitches.map(pitchToDiatonic);
-    const offs = secondOffsets(ds, stemUpForChord(ds, ev.staff), noteheadHalfWidth(ev.duration.value));
+    const offs = secondOffsets(ds, stemUpForChord(ds, middleOf(ev.staff)), noteheadHalfWidth(ev.duration.value));
     const leftX = ex + Math.min(0, ...offs) - NOTEHEAD_RX - 4;
     const rightX = ex + Math.max(0, ...offs) + NOTEHEAD_RX + 4;
     const topY = diatonicToY(Math.max(...ds)) - NOTEHEAD_RY - 4;
@@ -874,17 +930,20 @@ export function System(props: SystemProps) {
     );
   }
 
-  // ---- repeat signs (|: / :|) ----
-  function repeatSignEls(pm: PlacedMeasure, edge: 'start' | 'end', color: string, opacity: number, keyPrefix: string) {
+  // ---- repeat signs (|: / :|), drawn per row in its axis coordinates ----
+  function repeatSignEls(pm: PlacedMeasure, row: RowSlot, edge: 'start' | 'end', color: string, opacity: number, keyPrefix: string) {
     const start = edge === 'start';
     // a |: hugs the barline; any mid-line key/time change is drawn after it
     const x = start ? pm.leftX + 2.5 : pm.leftX + pm.contentW - 2.5;
     const dir = start ? 1 : -1; // thin line + dots sit inside the measure
+    const topY = diatonicToY(row.topD);
+    const botY = diatonicToY(row.botD);
+    const dotDs = row.staves.flatMap((s) => [s.clef.middle + 1, s.clef.middle - 1]);
     return (
       <g key={`${keyPrefix}-${pm.index}-${edge}`} opacity={opacity} pointerEvents="none">
-        <line x1={x} x2={x} y1={TOP_Y} y2={BOTTOM_Y} stroke={color} strokeWidth={3.4} />
-        <line x1={x + dir * 5} x2={x + dir * 5} y1={TOP_Y} y2={BOTTOM_Y} stroke={color} strokeWidth={1.2} />
-        {REPEAT_DOT_DS.map((d) => (
+        <line x1={x} x2={x} y1={topY} y2={botY} stroke={color} strokeWidth={3.4} />
+        <line x1={x + dir * 5} x2={x + dir * 5} y1={topY} y2={botY} stroke={color} strokeWidth={1.2} />
+        {dotDs.map((d) => (
           <circle key={d} cx={x + dir * 10} cy={diatonicToY(d)} r={2.3} fill={color} />
         ))}
       </g>
@@ -900,7 +959,7 @@ export function System(props: SystemProps) {
       <text
         key={`rptc-${pm.index}`}
         x={pm.leftX + 7.5}
-        y={TOP_Y - 16}
+        y={sl.topY - 16}
         textAnchor="middle"
         fontSize={times === 0 ? 17 : 13}
         fontWeight={700}
@@ -925,15 +984,17 @@ export function System(props: SystemProps) {
       suppressClickRef.current = false;
       return true;
     };
+    const zoneY = sl.topY - 32;
+    const zoneH = sl.botY - sl.topY + 44;
     const zones: JSX.Element[] = [];
     if (pm.measure.repeatStart) {
       zones.push(
         <rect
           key={`rz-s-${pm.index}`}
           x={pm.leftX - 2}
-          y={TOP_Y - 32}
+          y={zoneY}
           width={19}
-          height={BOTTOM_Y - TOP_Y + 44}
+          height={zoneH}
           fill="transparent"
           style={{ cursor: 'ns-resize' }}
           onMouseDown={(e) => {
@@ -956,9 +1017,9 @@ export function System(props: SystemProps) {
         <rect
           key={`rz-e-${pm.index}`}
           x={pm.leftX + pm.contentW - 17}
-          y={TOP_Y - 32}
+          y={zoneY}
           width={19}
-          height={BOTTOM_Y - TOP_Y + 44}
+          height={zoneH}
           fill="transparent"
           style={{ cursor: 'pointer' }}
           onMouseDown={(e) => e.stopPropagation()}
@@ -974,11 +1035,11 @@ export function System(props: SystemProps) {
   }
 
   // rolled chords: one continuous squiggle per start tick, spanning every
-  // flagged chord of the column (both staves roll as a single arpeggio)
-  function renderArpeggios(pm: PlacedMeasure): JSX.Element[] {
+  // flagged chord of the column within this row (its staves roll as one arpeggio)
+  function renderArpeggios(pm: PlacedMeasure, ctx: RowCtx): JSX.Element[] {
     const groups = new Map<number, NoteEvent[]>();
     for (const ev of pm.measure.events) {
-      if (ev.kind !== 'note' || !ev.arpeggio) continue;
+      if (ev.kind !== 'note' || !ev.arpeggio || !ctx.staffIds.includes(ev.staff)) continue;
       const list = groups.get(ev.startTick) ?? [];
       list.push(ev);
       groups.set(ev.startTick, list);
@@ -994,7 +1055,7 @@ export function System(props: SystemProps) {
       for (const e of evs) {
         const hw = noteheadHalfWidth(e.duration.value);
         const eds = e.pitches.map(pitchToDiatonic);
-        const offs = secondOffsets(eds, stemUpForChord(eds, e.staff), hw);
+        const offs = secondOffsets(eds, stemUpForChord(eds, ctx.middleOf(e.staff)), hw);
         left = Math.max(left, hw - Math.min(0, ...offs));
         hasAcc = hasAcc || e.pitches.some((p) => p.explicit);
       }
@@ -1005,51 +1066,52 @@ export function System(props: SystemProps) {
   }
 
   // staccato dots: on the notehead side, opposite the stem (which a beam may force)
-  function renderStaccatos(pm: PlacedMeasure, beamProps: Map<string, { stemUp: boolean; tipY: number }>): JSX.Element[] {
+  function renderStaccatos(pm: PlacedMeasure, beamProps: Map<string, { stemUp: boolean; tipY: number }>, ctx: RowCtx): JSX.Element[] {
     const els: JSX.Element[] = [];
     for (const ev of pm.measure.events) {
-      if (ev.kind !== 'note' || !ev.staccato) continue;
+      if (ev.kind !== 'note' || !ev.staccato || !ctx.staffIds.includes(ev.staff)) continue;
       const ds = ev.pitches.map(pitchToDiatonic);
-      const stemUp = beamProps.get(ev.id)?.stemUp ?? stemUpForChord(ds, ev.staff);
+      const stemUp = beamProps.get(ev.id)?.stemUp ?? stemUpForChord(ds, ctx.middleOf(ev.staff));
       const y = stemUp ? diatonicToY(Math.min(...ds)) + 12 : diatonicToY(Math.max(...ds)) - 12;
       els.push(<circle key={`stc-${ev.id}`} cx={measureTickToX(pm, ev.startTick)} cy={y} r={2.2} fill="#1a1a1a" pointerEvents="none" />);
     }
     return els;
   }
 
-  // mid-line key/time change: double barline, cancellation naturals, new key, new time
+  // mid-line key/time change for one row: double barline, cancellation naturals,
+  // new key (only on staves following the score key) and new time digits
   // (drawn after the |: sign when the measure also starts a repeat)
-  function renderChange(pm: PlacedMeasure) {
+  function renderChange(pm: PlacedMeasure, row: RowSlot) {
     const baseX = pm.leftX + 4 + (pm.measure.repeatStart ? REPEAT_START_PAD : 0);
     const naturalsCount = pm.keyChanged ? keyChangeNaturals(pm.prevKeySig, pm.keySig, 0).length : 0;
     const newCount = Math.abs(pm.keySig);
-    const timeX = baseX + (pm.keyChanged ? (naturalsCount + newCount) * KEYSIG_STEP + 12 : 16); // keep the digits clear of the barline
+    const showKey = pm.keyChanged && row.staves.some((s) => s.key === null);
+    const timeX = baseX + (showKey ? (naturalsCount + newCount) * KEYSIG_STEP + 12 : 16); // keep the digits clear of the barline
     return (
       <g pointerEvents="none">
-        <line x1={pm.leftX - 3} x2={pm.leftX - 3} y1={TOP_Y} y2={BOTTOM_Y} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
+        <line x1={pm.leftX - 3} x2={pm.leftX - 3} y1={diatonicToY(row.topD)} y2={diatonicToY(row.botD)} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
         {pm.keyChanged &&
-          [0, -14].flatMap((off) => [
-            ...keyChangeNaturals(pm.prevKeySig, pm.keySig, off).map((n, i) => (
-              <text key={`nat${off}-${i}`} x={baseX + i * KEYSIG_STEP} y={diatonicToY(n.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-                {SMUFL.accidentals['0']}
-              </text>
-            )),
-            ...keySignatureAccidentals(pm.keySig, off).map((a, j) => (
-              <text key={`acc${off}-${j}`} x={baseX + (naturalsCount + j) * KEYSIG_STEP} y={diatonicToY(a.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-                {SMUFL.accidentals[String(a.alter)]}
-              </text>
-            )),
-          ])}
+          row.staves
+            .filter((s) => s.key === null)
+            .flatMap((s) => [
+              ...keyChangeNaturals(pm.prevKeySig, pm.keySig, s.clef.keysigOffset).map((n, i) => (
+                <text key={`nat${s.def.id}-${i}`} x={baseX + i * KEYSIG_STEP} y={diatonicToY(n.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                  {SMUFL.accidentals['0']}
+                </text>
+              )),
+              ...keySignatureAccidentals(pm.keySig, s.clef.keysigOffset).map((a, j) => (
+                <text key={`acc${s.def.id}-${j}`} x={baseX + (naturalsCount + j) * KEYSIG_STEP} y={diatonicToY(a.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                  {SMUFL.accidentals[String(a.alter)]}
+                </text>
+              )),
+            ])}
         {pm.tsChanged &&
-          [
-            { numY: diatonicToY(36), denY: diatonicToY(32) },
-            { numY: diatonicToY(24), denY: diatonicToY(20) },
-          ].map((r, i) => (
+          row.staves.map((s, i) => (
             <Fragment key={`ts${i}`}>
-              <text x={timeX} y={r.numY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+              <text x={timeX} y={diatonicToY(s.clef.timeD[0])} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
                 {timeSigString(pm.ts.numerator)}
               </text>
-              <text x={timeX} y={r.denY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+              <text x={timeX} y={diatonicToY(s.clef.timeD[1])} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
                 {timeSigString(pm.ts.denominator)}
               </text>
             </Fragment>
@@ -1058,8 +1120,94 @@ export function System(props: SystemProps) {
     );
   }
 
-  const braceMid = (TOP_Y + BOTTOM_Y) / 2;
-  const bracePath = `M ${BRACE_X} ${TOP_Y} C ${BRACE_X - 7} ${TOP_Y + 20}, ${BRACE_X + 5} ${braceMid - 24}, ${BRACE_X - 3} ${braceMid} C ${BRACE_X + 5} ${braceMid + 24}, ${BRACE_X - 7} ${BOTTOM_Y - 20}, ${BRACE_X} ${BOTTOM_Y}`;
+  /** One row (single staff or grand pair) of one measure. */
+  function renderRowMeasure(pm: PlacedMeasure, row: RowSlot, ctx: RowCtx) {
+    // per-staff accidental resolution: transposing staves read their own key
+    const resolved = resolveMeasure(pm.measure.events, (s) => staffKey(s, pm.keySig));
+    const { beamProps, elements: beamEls } = computeMeasureBeams(pm, diagonalBeams, ctx);
+    const events = pm.measure.events.filter((e) => ctx.staffIds.includes(e.staff));
+    return (
+      <Fragment key={pm.measure.id}>
+        {(pm.keyChanged || pm.tsChanged) && renderChange(pm, row)}
+        {beamEls}
+        {renderMeasureTuplets(pm, beamProps, ctx)}
+        {events.map((ev) =>
+          ev.kind === 'note' ? (
+            <NoteView
+              key={ev.id}
+              pitches={ev.pitches}
+              duration={ev.duration}
+              middle={ctx.middleOf(ev.staff)}
+              ledgerOf={(d) => rowLedgerLines(row, d)}
+              keySignature={staffKey(ev.staff, pm.keySig)}
+              resolve={(step, octave) => resolved.get(`${ev.id}|${step}${octave}`)}
+              x={measureTickToX(pm, ev.startTick)}
+              color="#1a1a1a"
+              beam={beamProps.get(ev.id)}
+            />
+          ) : (
+            <RestView
+              key={ev.id}
+              duration={ev.duration}
+              middle={ctx.middleOf(ev.staff)}
+              x={measureTickToX(pm, ev.startTick) + restClearShift(pm, ev.staff, ev.startTick, beamProps, ctx.middleOf(ev.staff))}
+              color="#1a1a1a"
+            />
+          ),
+        )}
+        {measureRests(pm.measure.events, pm.total, !pm.pickup, visibleStaffIds)
+          .filter((r) => ctx.staffIds.includes(r.staff))
+          .map((r, i) => (
+            <RestView
+              key={`rest-${i}`}
+              duration={r.duration}
+              middle={ctx.middleOf(r.staff)}
+              x={r.whole ? measureTickToX(pm, pm.total / 2) : measureTickToX(pm, r.startTick) + restClearShift(pm, r.staff, r.startTick, beamProps, ctx.middleOf(r.staff))}
+              color="#1a1a1a"
+            />
+          ))}
+        {selectedNoteIds &&
+          events
+            .filter((ev): ev is Extract<ScoreEvent, { kind: 'note' }> => ev.kind === 'note' && selectedNoteIds.has(ev.id))
+            .map((ev) => noteHighlight(pm, ev))}
+        <line x1={pm.leftX + pm.contentW} x2={pm.leftX + pm.contentW} y1={ctx.topYAxis} y2={ctx.botYAxis} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
+        {pm.measure.repeatStart && repeatSignEls(pm, row, 'start', '#1a1a1a', 1, 'rpt')}
+        {pm.measure.repeatEnd && repeatSignEls(pm, row, 'end', '#1a1a1a', 1, 'rpt')}
+        {renderArpeggios(pm, ctx)}
+        {renderStaccatos(pm, beamProps, ctx)}
+      </Fragment>
+    );
+  }
+
+  /** Header (clef + key signature + optional time signature) of one row. */
+  function renderRowHeader(row: RowSlot) {
+    return (
+      <g pointerEvents="none">
+        {row.staves.map((s) => (
+          <Fragment key={s.def.id}>
+            <text x={CLEF_X} y={diatonicToY(s.clef.glyphD)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+              {s.def.clef === 'bass' ? SMUFL.fClef : SMUFL.gClef}
+            </text>
+            {keySignatureAccidentals(staffKey(s.def.id, headerKeySig), s.clef.keysigOffset).map((acc, i) => (
+              <text key={`ks-${i}`} x={KEYSIG_X + i * KEYSIG_STEP} y={diatonicToY(acc.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                {SMUFL.accidentals[String(acc.alter)]}
+              </text>
+            ))}
+            {showTimeSig && (
+              <Fragment>
+                <text x={TIME_SIG_X + keySigWidth(headerKeySig)} y={diatonicToY(s.clef.timeD[0])} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                  {timeSigString(headerTs.numerator)}
+                </text>
+                <text x={TIME_SIG_X + keySigWidth(headerKeySig)} y={diatonicToY(s.clef.timeD[1])} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                  {timeSigString(headerTs.denominator)}
+                </text>
+              </Fragment>
+            )}
+          </Fragment>
+        ))}
+      </g>
+    );
+  }
 
   return (
     <svg
@@ -1067,14 +1215,14 @@ export function System(props: SystemProps) {
       className="system"
       data-tool={playOnly ? 'play' : tool.kind}
       width={layout.width}
-      height={SYSTEM_HEIGHT}
+      height={sl.height}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
     >
-      {/* selected-measure highlights (behind everything) */}
+      {/* selected-measure highlights (behind everything, spanning every row) */}
       {selectedMeasureIdx &&
         layout.measures
           .filter((pm) => selectedMeasureIdx.has(pm.index))
@@ -1082,9 +1230,9 @@ export function System(props: SystemProps) {
             <rect
               key={`selm-${pm.index}`}
               x={pm.leftX}
-              y={TOP_Y - 10}
+              y={sl.topY - 10}
               width={pm.contentW}
-              height={BOTTOM_Y - TOP_Y + 20}
+              height={sl.botY - sl.topY + 20}
               fill={SEL_FILL}
               stroke={SEL_STROKE}
               strokeWidth={1.2}
@@ -1092,108 +1240,65 @@ export function System(props: SystemProps) {
             />
           ))}
 
-      {/* staff lines */}
-      {[...TREBLE_LINES, ...BASS_LINES].map((d) => {
-        const y = diatonicToY(d);
-        return <line key={d} x1={STAFF_LEFT} x2={layout.width} y1={y} y2={y} stroke="#222" strokeWidth={STAFF_LINE_WIDTH} />;
+      {/* rows: staff lines, header and measure content, each in its own axis */}
+      {sl.rows.map((row, ri) => {
+        const ctx = rowCtx(row);
+        return (
+          <g key={ri} transform={`translate(0 ${row.dy})`}>
+            {row.staves.flatMap((s) =>
+              s.clef.lines.map((d) => {
+                const y = diatonicToY(d);
+                return <line key={`${s.def.id}-${d}`} x1={STAFF_LEFT} x2={layout.width} y1={y} y2={y} stroke="#222" strokeWidth={STAFF_LINE_WIDTH} />;
+              }),
+            )}
+            {renderRowHeader(row)}
+            {layout.measures.map((pm) => renderRowMeasure(pm, row, ctx))}
+            {renderSystemTies(layout, ties, ctx)}
+            {/* cautionary key change at the end of the line (next system starts in a new key) */}
+            {layout.trailingKey &&
+              (() => {
+                const { fromKey, toKey } = layout.trailingKey;
+                const contentRight = layout.measures.length ? Math.max(...layout.measures.map((m) => m.leftX + m.contentW)) : layout.header;
+                const x0 = contentRight + 8;
+                const natCount = keyChangeNaturals(fromKey, toKey, 0).length;
+                return (
+                  <g pointerEvents="none">
+                    {row.staves
+                      .filter((s) => s.key === null)
+                      .flatMap((s) => [
+                        ...keyChangeNaturals(fromKey, toKey, s.clef.keysigOffset).map((n, i) => (
+                          <text key={`tnat${s.def.id}-${i}`} x={x0 + i * KEYSIG_STEP} y={diatonicToY(n.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                            {SMUFL.accidentals['0']}
+                          </text>
+                        )),
+                        ...keySignatureAccidentals(toKey, s.clef.keysigOffset).map((a, j) => (
+                          <text key={`tacc${s.def.id}-${j}`} x={x0 + (natCount + j) * KEYSIG_STEP} y={diatonicToY(a.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
+                            {SMUFL.accidentals[String(a.alter)]}
+                          </text>
+                        )),
+                      ])}
+                  </g>
+                );
+              })()}
+          </g>
+        );
       })}
 
-      {/* brace + system start line */}
-      <path d={bracePath} stroke="#222" strokeWidth={2.4} fill="none" />
-      <line x1={STAFF_LEFT} x2={STAFF_LEFT} y1={TOP_Y} y2={BOTTOM_Y} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
+      {/* braces (one per grand row) + the continuous line joining every staff */}
+      {sl.rows
+        .filter((r) => r.grand)
+        .map((r, i) => {
+          const mid = (r.topY + r.botY) / 2;
+          const d = `M ${BRACE_X} ${r.topY} C ${BRACE_X - 7} ${r.topY + 20}, ${BRACE_X + 5} ${mid - 24}, ${BRACE_X - 3} ${mid} C ${BRACE_X + 5} ${mid + 24}, ${BRACE_X - 7} ${r.botY - 20}, ${BRACE_X} ${r.botY}`;
+          return <path key={`brace-${i}`} d={d} stroke="#222" strokeWidth={2.4} fill="none" />;
+        })}
+      <line x1={STAFF_LEFT} x2={STAFF_LEFT} y1={sl.topY} y2={sl.botY} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
 
-      {/* clefs */}
-      <text x={CLEF_X} y={diatonicToY(32)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-        {SMUFL.gClef}
-      </text>
-      <text x={CLEF_X} y={diatonicToY(24)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-        {SMUFL.fClef}
-      </text>
-
-      {/* key signature in the header (both staves, restated on every system) */}
-      {[0, -14].flatMap((staffOffset) =>
-        keySignatureAccidentals(headerKeySig, staffOffset).map((acc, i) => (
-          <text
-            key={`ks${staffOffset}-${i}`}
-            x={KEYSIG_X + i * KEYSIG_STEP}
-            y={diatonicToY(acc.diatonic)}
-            fontFamily="Bravura"
-            fontSize={GLYPH_FONT_SIZE}
-            fill="#222"
-          >
-            {SMUFL.accidentals[String(acc.alter)]}
-          </text>
-        )),
-      )}
-
-      {/* time signature (first system only), pushed right past the key signature */}
-      {showTimeSig &&
-        [
-          { numY: diatonicToY(36), denY: diatonicToY(32) },
-          { numY: diatonicToY(24), denY: diatonicToY(20) },
-        ].map((r, i) => (
-          <Fragment key={i}>
-            <text x={TIME_SIG_X + keySigWidth(headerKeySig)} y={r.numY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-              {timeSigString(headerTs.numerator)}
-            </text>
-            <text x={TIME_SIG_X + keySigWidth(headerKeySig)} y={r.denY} textAnchor="middle" dominantBaseline="central" fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-              {timeSigString(headerTs.denominator)}
-            </text>
-          </Fragment>
-        ))}
-
-      {/* measures: notes + placed rests + auto-derived rests + right barline */}
-      {layout.measures.map((pm) => {
-        const resolved = resolveMeasure(pm.measure.events, pm.keySig);
-        const { beamProps, elements: beamEls } = computeMeasureBeams(pm, diagonalBeams);
-        return (
-        <Fragment key={pm.measure.id}>
-          {(pm.keyChanged || pm.tsChanged) && renderChange(pm)}
-          {beamEls}
-          {renderMeasureTuplets(pm, beamProps)}
-          {pm.measure.events.map((ev) =>
-            ev.kind === 'note' ? (
-              <NoteView
-                key={ev.id}
-                pitches={ev.pitches}
-                duration={ev.duration}
-                staff={ev.staff}
-                keySignature={pm.keySig}
-                resolve={(step, octave) => resolved.get(`${ev.id}|${step}${octave}`)}
-                x={measureTickToX(pm, ev.startTick)}
-                color="#1a1a1a"
-                beam={beamProps.get(ev.id)}
-              />
-            ) : (
-              <RestView
-                key={ev.id}
-                duration={ev.duration}
-                middle={ev.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
-                x={measureTickToX(pm, ev.startTick) + restClearShift(pm, ev.staff, ev.startTick, beamProps)}
-                color="#1a1a1a"
-              />
-            ),
-          )}
-          {measureRests(pm.measure.events, pm.total, !pm.pickup).map((r, i) => (
-            <RestView
-              key={`rest-${i}`}
-              duration={r.duration}
-              middle={r.staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE}
-              x={r.whole ? measureTickToX(pm, pm.total / 2) : measureTickToX(pm, r.startTick) + restClearShift(pm, r.staff, r.startTick, beamProps)}
-              color="#1a1a1a"
-            />
-          ))}
-          {selectedNoteIds &&
-            pm.measure.events
-              .filter((ev): ev is Extract<ScoreEvent, { kind: 'note' }> => ev.kind === 'note' && selectedNoteIds.has(ev.id))
-              .map((ev) => noteHighlight(pm, ev))}
-          <line x1={pm.leftX + pm.contentW} x2={pm.leftX + pm.contentW} y1={TOP_Y} y2={BOTTOM_Y} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
-          {pm.measure.repeatStart && repeatSignEls(pm, 'start', '#1a1a1a', 1, 'rpt')}
+      {/* repeat counts + hit zones + chord names (system level, above/below the rows) */}
+      {layout.measures.map((pm) => (
+        <Fragment key={`sysm-${pm.measure.id}`}>
           {pm.measure.repeatStart && repeatCountEl(pm)}
-          {pm.measure.repeatEnd && repeatSignEls(pm, 'end', '#1a1a1a', 1, 'rpt')}
           {repeatHitZones(pm)}
-          {renderArpeggios(pm)}
-          {renderStaccatos(pm, beamProps)}
           {pm.measure.chords?.map((c) =>
             chordEdit && chordEdit.measureIndex === pm.index && chordEdit.tick === c.tick ? null : (
               <text
@@ -1212,36 +1317,7 @@ export function System(props: SystemProps) {
             ),
           )}
         </Fragment>
-        );
-      })}
-
-      {/* ties of value */}
-      {renderSystemTies(layout, ties)}
-
-      {/* cautionary key change at the end of the line (next system starts in a new key) */}
-      {layout.trailingKey &&
-        (() => {
-          const { fromKey, toKey } = layout.trailingKey;
-          const contentRight = layout.measures.length ? Math.max(...layout.measures.map((m) => m.leftX + m.contentW)) : layout.header;
-          const x0 = contentRight + 8;
-          const natCount = keyChangeNaturals(fromKey, toKey, 0).length;
-          return (
-            <g pointerEvents="none">
-              {[0, -14].flatMap((off) => [
-                ...keyChangeNaturals(fromKey, toKey, off).map((n, i) => (
-                  <text key={`tnat${off}-${i}`} x={x0 + i * KEYSIG_STEP} y={diatonicToY(n.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-                    {SMUFL.accidentals['0']}
-                  </text>
-                )),
-                ...keySignatureAccidentals(toKey, off).map((a, j) => (
-                  <text key={`tacc${off}-${j}`} x={x0 + (natCount + j) * KEYSIG_STEP} y={diatonicToY(a.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-                    {SMUFL.accidentals[String(a.alter)]}
-                  </text>
-                )),
-              ])}
-            </g>
-          );
-        })()}
+      ))}
 
       {/* ghost / hover highlight */}
       {overlay}
@@ -1263,12 +1339,12 @@ export function System(props: SystemProps) {
       {playheadX !== null && (
         <g>
           <g pointerEvents="none">
-            <rect x={playheadX - 6} y={TOP_Y - 10} width={12} height={BOTTOM_Y - TOP_Y + 20} fill="rgba(56,132,255,0.16)" />
-            <line x1={playheadX} x2={playheadX} y1={TOP_Y - 16} y2={BOTTOM_Y + 10} stroke="rgba(56,132,255,0.9)" strokeWidth={1.5} />
+            <rect x={playheadX - 6} y={sl.topY - 10} width={12} height={sl.botY - sl.topY + 20} fill="rgba(56,132,255,0.16)" />
+            <line x1={playheadX} x2={playheadX} y1={sl.topY - 16} y2={sl.botY + 10} stroke="rgba(56,132,255,0.9)" strokeWidth={1.5} />
           </g>
           {showHandle && (
             <path
-              d={`M ${playheadX - 7} ${TOP_Y - 22} L ${playheadX + 7} ${TOP_Y - 22} L ${playheadX} ${TOP_Y - 10} Z`}
+              d={`M ${playheadX - 7} ${sl.topY - 22} L ${playheadX + 7} ${sl.topY - 22} L ${playheadX} ${sl.topY - 10} Z`}
               fill="rgba(56,132,255,0.95)"
               stroke="#fff"
               strokeWidth={0.6}

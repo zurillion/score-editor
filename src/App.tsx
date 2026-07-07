@@ -4,8 +4,10 @@ import { LayoutMode } from './music/layout';
 import { scoreMeta, measureIndexAtTick } from './music/meta';
 import { Player, playPreview } from './music/audio';
 import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, ensureInstrument, getLoadedSampler, isSynth } from './music/instruments';
-import { PiecePlayback, STAFF_IDS, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffTranspose } from './music/playback';
-import { durationTicks, pitchToDiatonic, staffForDiatonic } from './music/theory';
+import { PiecePlayback, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffTranspose } from './music/playback';
+import { scoreStaves } from './music/staves';
+import { Staff } from './music/types';
+import { durationTicks } from './music/theory';
 import { DEFAULT_ARPEGGIO_MS, DEFAULT_STACCATO_PCT, setArpeggioStepMs, setStaccatoPct } from './music/playbackPrefs';
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
 import { initialHistory, historyReducer } from './state/scoreReducer';
@@ -116,10 +118,12 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     }
   }, [playback.instrument]);
   const [instrumentLoading, setInstrumentLoading] = useState(false);
+  const staffIds = scoreStaves(score).map((s) => s.id);
+  const staffIdsKey = staffIds.join('|');
   /** Distinct sampled instruments the current routing needs. */
   const neededInstruments = useCallback(
-    () => [...new Set(STAFF_IDS.map((s) => effectiveInstrumentId(playback, s)).filter((id) => !isSynth(id)))],
-    [playback],
+    () => [...new Set(staffIds.map((s) => effectiveInstrumentId(playback, s)).filter((id) => !isSynth(id)))],
+    [playback, staffIdsKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
   // fetch the sample sets as soon as the routing changes, so Play starts instantly
   useEffect(() => {
@@ -284,7 +288,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       mp.loop = loopRef.current;
       mp.skipPickupInLoop = loopSkipAnacrusis;
       mp.channel = midiChannel - 1;
-      mp.staves = Object.fromEntries(STAFF_IDS.map((s) => [s, { gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }]));
+      mp.staves = Object.fromEntries(scoreStaves(score).map(({ id: s }) => [s, { gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }]));
       mp.onTick = onTick;
       mp.onEnd = onEnd;
       mp.play(score, bpm, startTick);
@@ -309,7 +313,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     const player = playerRef.current ?? new Player();
     playerRef.current = player;
     player.staves = Object.fromEntries(
-      STAFF_IDS.map((s) => {
+      scoreStaves(score).map(({ id: s }) => {
         const id = effectiveInstrumentId(playback, s);
         return [s, { sampler: isSynth(id) ? null : getLoadedSampler(id), gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }];
       }),
@@ -339,13 +343,12 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   // preview with the staff's effective instrument (samples load in the
   // background on selection; synth otherwise), honouring volume and transpose
   const handlePreviewNote = useCallback(
-    (pitches: Pitch[]) => {
+    (pitches: Pitch[], staff?: Staff) => {
       if (pitches.length === 0) return;
-      const staff = staffForDiatonic(pitchToDiatonic(pitches[0]));
-      const id = effectiveInstrumentId(playback, staff);
+      const id = staff ? effectiveInstrumentId(playback, staff) : playback.instrument || DEFAULT_INSTRUMENT_ID;
       playPreview(pitches, 0.5, isSynth(id) ? null : getLoadedSampler(id), {
-        gain: staffGain(playback, staff),
-        transpose: staffTranspose(playback, staff),
+        gain: staff ? staffGain(playback, staff) : 1,
+        transpose: staff ? staffTranspose(playback, staff) : playback.transpose || 0,
       });
     },
     [playback],
@@ -669,6 +672,8 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         setLoop={handleSetLoop}
         playback={playback}
         onPlaybackChange={setPlayback}
+        staves={scoreStaves(score)}
+        onScoreAction={dispatch}
         instrumentLoading={instrumentLoading}
         midiOn={midiOn}
         onToggleMidi={handleToggleMidi}

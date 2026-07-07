@@ -1,7 +1,8 @@
-import { Alter, ChordSymbol, Duration, DurationValue, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, Staff, ScoreState, TimeSignature, Tuplet } from '../music/types';
-import { diatonicToPitch, eventTicks, measureTicks, pitchEquals, pitchToDiatonic, staffForDiatonic } from '../music/theory';
+import { Alter, ChordSymbol, Clef, Duration, DurationValue, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, Staff, StaffDef, ScoreState, TimeSignature, Tuplet } from '../music/types';
+import { diatonicToPitch, eventTicks, measureTicks, pitchEquals, pitchToDiatonic } from '../music/theory';
 import { effectiveTimeSignatureAt, scoreMeta } from '../music/meta';
 import { classifyNote, classifyRest } from '../music/placement';
+import { defaultStaves, newGroupId, newStaffId, sanitizeStaves, scoreStaves } from '../music/staves';
 import { ClipNote } from './selection';
 
 let idCounter = 0;
@@ -15,12 +16,20 @@ export function initialScore(measureCount = 4): ScoreState {
   return {
     timeSignature: { numerator: 4, denominator: 4 },
     keySignature: 0,
+    staves: defaultStaves(),
     measures: Array.from({ length: measureCount }, emptyMeasure),
   };
 }
 
+/** Distinct staff ids among a measure's events (for per-staff ripples). */
+function eventStaves(events: ScoreEvent[]): Staff[] {
+  const ids: Staff[] = [];
+  for (const e of events) if (!ids.includes(e.staff)) ids.push(e.staff);
+  return ids;
+}
+
 export type ScoreAction =
-  | { type: 'CLICK_NOTE'; measureIndex: number; tick: number; pitch: Pitch; duration: Duration }
+  | { type: 'CLICK_NOTE'; measureIndex: number; tick: number; pitch: Pitch; duration: Duration; staff: Staff }
   | { type: 'CLICK_REST'; measureIndex: number; tick: number; duration: Duration; staff: Staff }
   | { type: 'SET_ACCIDENTAL'; measureIndex: number; eventId: string; diatonic: number; alter: Alter }
   | { type: 'SET_DOTS'; measureIndex: number; eventId: string; dots: 1 | 2 }
@@ -41,6 +50,9 @@ export type ScoreAction =
   | { type: 'SET_CHORD'; index: number; tick: number; text: string } // empty text removes the chord at that tick
   | { type: 'SET_REPEAT'; index: number; edge: 'start' | 'end'; on: boolean }
   | { type: 'SET_REPEAT_TIMES'; index: number; times: number } // coalesced (set by the count drag)
+  | { type: 'ADD_STAFF'; where: 'above' | 'below'; clef: Clef; grand?: boolean } // a new staff (or grand pair) at the top/bottom
+  | { type: 'REMOVE_STAFF'; id: Staff } // drops the staff and every event on it
+  | { type: 'UPDATE_STAFF'; id: Staff; patch: Partial<Pick<StaffDef, 'clef' | 'key' | 'hidden' | 'name'>> }
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
   | { type: 'CLEAR' }
@@ -77,7 +89,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const m = state.measures[action.measureIndex];
       if (!m) return state;
       const total = measureTicks(effectiveTimeSignatureAt(state, action.measureIndex));
-      const staff = staffForDiatonic(pitchToDiatonic(action.pitch));
+      const staff = action.staff;
       const verdict = classifyNote(m.events, action.tick, action.pitch, action.duration, total, staff);
       if (verdict === 'blocked') return state;
 
@@ -289,9 +301,9 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         // deleting any member of a tuplet deletes the whole group
         const ids = expandTupletIds(m.events, sel);
         // Ripple per staff: removing a note shifts the later notes of the SAME
-        // staff back by the deleted durations (the other staff is untouched).
+        // staff back by the deleted durations (other staves are untouched).
         const kept: ScoreEvent[] = [];
-        for (const staff of ['treble', 'bass'] as Staff[]) {
+        for (const staff of eventStaves(m.events)) {
           const se = m.events.filter((e) => e.staff === staff);
           const deleted = se.filter((e) => ids.has(e.id));
           for (const e of se) {
@@ -358,9 +370,10 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       // group pasted notes by target measure, preserving their relative offsets
       type Item = { tick: number; staff: Staff; duration: Duration; pitches: Pitch[]; tuplet?: Tuplet; tieToNext?: boolean; staccato?: boolean; arpeggio?: boolean };
       const groups = new Map<number, Item[]>();
+      const validStaves = new Set(scoreStaves(state).map((s) => s.id));
       for (const ev of action.events) {
         const g = action.baseTick + ev.offset;
-        if (g < 0) continue;
+        if (g < 0 || !validStaves.has(ev.staff)) continue; // the staff was removed since the copy
         const { mi, local } = locate(g);
         const list = groups.get(mi) ?? [];
         list.push({ tick: local, staff: ev.staff, duration: ev.duration, pitches: ev.pitches, tuplet: ev.tuplet, tieToNext: ev.tieToNext, staccato: ev.staccato, arpeggio: ev.arpeggio });
@@ -385,7 +398,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       for (const [mi, items] of groups) {
         let events = measures[mi].events;
         // shift existing notes right, per staff, to make room
-        for (const staff of ['treble', 'bass'] as Staff[]) {
+        for (const staff of [...new Set(items.map((i) => i.staff))]) {
           const staffItems = items.filter((i) => i.staff === staff);
           if (staffItems.length === 0) continue;
           const minT = Math.min(...staffItems.map((i) => i.tick));
@@ -420,7 +433,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       for (let i = 0; i < measures.length; i++) {
         const cap = capacityOf(i);
         if (cap <= 0) continue;
-        for (const staff of ['treble', 'bass'] as Staff[]) {
+        for (const staff of eventStaves(measures[i].events)) {
           const over = measures[i].events.filter((e) => e.staff === staff && e.startTick + eventTicks(e) > cap);
           if (over.length === 0) continue;
           if (i + 1 >= measures.length) measures.push(emptyMeasure());
@@ -549,6 +562,47 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       return { ...state, measures };
     }
 
+    case 'ADD_STAFF': {
+      const staves = scoreStaves(state).slice();
+      const add: StaffDef[] = [];
+      if (action.grand) {
+        const group = newGroupId(staves);
+        const id1 = newStaffId(staves);
+        add.push({ id: id1, clef: 'treble', key: null, group });
+        add.push({ id: newStaffId([...staves, add[0]]), clef: 'bass', key: null, group });
+      } else {
+        add.push({ id: newStaffId(staves), clef: action.clef, key: null });
+      }
+      const next = action.where === 'above' ? [...add, ...staves] : [...staves, ...add];
+      return { ...state, staves: next };
+    }
+
+    case 'REMOVE_STAFF': {
+      const staves = scoreStaves(state);
+      if (staves.length <= 1 || !staves.some((s) => s.id === action.id)) return state;
+      const next = staves.filter((s) => s.id !== action.id);
+      // events on the removed staff go with it; later same-staff content is untouched
+      const measures = state.measures.map((m) =>
+        m.events.some((e) => e.staff === action.id) ? { ...m, events: m.events.filter((e) => e.staff !== action.id) } : m,
+      );
+      return { ...state, staves: next, measures };
+    }
+
+    case 'UPDATE_STAFF': {
+      const staves = scoreStaves(state);
+      const idx = staves.findIndex((s) => s.id === action.id);
+      if (idx < 0) return state;
+      // never hide the last visible staff
+      if (action.patch.hidden && staves.every((s, i) => (i === idx ? true : !!s.hidden))) return state;
+      const cur = staves[idx];
+      const patched: StaffDef = { ...cur, ...action.patch };
+      if (patched.hidden === false || patched.hidden === undefined) delete patched.hidden;
+      if (JSON.stringify(patched) === JSON.stringify(cur)) return state;
+      const next = staves.slice();
+      next[idx] = patched;
+      return { ...state, staves: next };
+    }
+
     case 'ADD_MEASURE':
       return { ...state, measures: [...state.measures, emptyMeasure()] };
 
@@ -559,7 +613,8 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       return { ...state, measures: state.measures.map(() => emptyMeasure()) };
 
     case 'LOAD':
-      return action.score;
+      // normalize the staff list (older files have none: the classic grand staff)
+      return { ...action.score, staves: sanitizeStaves(action.score.staves) ?? defaultStaves() };
 
     default:
       return state;

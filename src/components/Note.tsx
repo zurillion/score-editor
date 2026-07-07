@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
-import { Duration, Pitch, Staff } from '../music/types';
+import { Duration, Pitch } from '../music/types';
 import { pitchToDiatonic } from '../music/theory';
-import { diatonicToY, ledgerLineDiatonics, STEM_INSET, noteheadHalfWidth, stemUpForChord, secondOffsets } from '../music/layout';
+import { diatonicToY, STEM_INSET, noteheadHalfWidth, stemUpForChord, secondOffsets } from '../music/layout';
 import { keyAlterForStep } from '../music/key';
 import { Resolved } from '../music/accidentals';
 import { Alter } from '../music/types';
@@ -11,7 +11,8 @@ import { STEM_WIDTH, STEM_LENGTH, LEDGER_HALF, LEDGER_WIDTH, HALF_SPACE, STAFF_S
 interface NoteViewProps {
   pitches: Pitch[];
   duration: Duration;
-  staff: Staff;
+  middle: number; // diatonic of the staff's middle line (stem direction)
+  ledgerOf: (d: number) => number[]; // ledger lines needed at a diatonic, in the note's row
   keySignature?: number;
   resolve?: (step: string, octave: number) => Resolved | undefined;
   x: number; // notehead column reference x
@@ -21,7 +22,7 @@ interface NoteViewProps {
 }
 
 /** Renders a single note or a chord (several noteheads on one stem). */
-export function NoteView({ pitches, duration, staff, keySignature = 0, resolve, x, color, opacity = 1, beam }: NoteViewProps) {
+export function NoteView({ pitches, duration, middle, ledgerOf, keySignature = 0, resolve, x, color, opacity = 1, beam }: NoteViewProps) {
   if (pitches.length === 0) return null;
 
   // noteheads low -> high
@@ -30,7 +31,7 @@ export function NoteView({ pitches, duration, staff, keySignature = 0, resolve, 
   const minD = ds[0];
   const maxD = ds[ds.length - 1];
 
-  const stemUp = beam ? beam.stemUp : stemUpForChord(ds, staff);
+  const stemUp = beam ? beam.stemUp : stemUpForChord(ds, middle);
 
   const value = duration.value;
   const isWhole = value === 1;
@@ -70,7 +71,7 @@ export function NoteView({ pitches, duration, staff, keySignature = 0, resolve, 
     <g opacity={opacity}>
       {/* per-note ledger lines, centred on each (possibly displaced) notehead */}
       {notes.map((n, i) =>
-        ledgerLineDiatonics(n.d).map((q) => {
+        ledgerOf(n.d).map((q) => {
           const cx = cxOf(i);
           const y = diatonicToY(q);
           return (

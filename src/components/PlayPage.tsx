@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { StoredPiece, getPiece } from '../api';
 import { Player } from '../music/audio';
 import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, ensureInstrument, getLoadedSampler, isSynth } from '../music/instruments';
-import { PiecePlayback, STAFF_IDS, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffTranspose } from '../music/playback';
+import { PiecePlayback, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffTranspose } from '../music/playback';
+import { scoreStaves } from '../music/staves';
 import { InstrumentIcon } from './InstrumentIcon';
 import { Score } from './Score';
 
@@ -82,7 +83,8 @@ export function PlayPage({ id }: { id: string }) {
   const handlePlay = useCallback(async () => {
     if (!piece) return;
     const pb: PiecePlayback = { ...piecePlayback, instrument };
-    const need = [...new Set(STAFF_IDS.map((s) => effectiveInstrumentId(pb, s)).filter((id) => !isSynth(id)))];
+    const staffIds = scoreStaves(piece.score).map((s) => s.id);
+    const need = [...new Set(staffIds.map((s) => effectiveInstrumentId(pb, s)).filter((id) => !isSynth(id)))];
     if (need.length > 0) {
       const req = ++playReqRef.current;
       setInstrumentLoading(true);
@@ -99,7 +101,7 @@ export function PlayPage({ id }: { id: string }) {
     const player = playerRef.current ?? new Player();
     playerRef.current = player;
     player.staves = Object.fromEntries(
-      STAFF_IDS.map((s) => {
+      staffIds.map((s) => {
         const iid = effectiveInstrumentId(pb, s);
         return [s, { sampler: isSynth(iid) ? null : getLoadedSampler(iid), gain: staffGain(pb, s), transpose: staffTranspose(pb, s) }];
       }),

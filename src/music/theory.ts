@@ -1,4 +1,4 @@
-import { Alter, Duration, Pitch, Staff, StepName, TimeSignature, Tuplet } from './types';
+import { Alter, Duration, Pitch, StepName, TimeSignature, Tuplet } from './types';
 import { TICKS_PER_WHOLE } from './constants';
 
 export const STEP_NAMES: StepName[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
@@ -17,11 +17,6 @@ export function diatonicToPitch(d: number, alter: Alter = 0): Pitch {
   const octave = Math.floor(d / 7);
   const idx = ((d % 7) + 7) % 7;
   return { step: STEP_NAMES[idx], octave, alter };
-}
-
-/** Default staff for a diatonic position: middle C (28) and up = treble. */
-export function staffForDiatonic(d: number): Staff {
-  return d >= 28 ? 'treble' : 'bass';
 }
 
 export function pitchToMidi(p: Pitch): number {

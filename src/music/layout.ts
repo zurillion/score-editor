@@ -1,4 +1,4 @@
-import { Measure, Staff, TimeSignature } from './types';
+import { Measure, TimeSignature } from './types';
 import { eventTicks, measureTicks } from './theory';
 import { MeasureMeta } from './meta';
 import { keyChangeNaturals } from './key';
@@ -29,8 +29,7 @@ export function noteheadHalfWidth(value: number): number {
 }
 
 /** Stem points up when the chord's average pitch is below the staff's middle line. */
-export function stemUpForChord(diatonics: number[], staff: Staff): boolean {
-  const middle = staff === 'treble' ? TREBLE_MIDDLE : BASS_MIDDLE;
+export function stemUpForChord(diatonics: number[], middle: number): boolean {
   const avg = diatonics.reduce((a, b) => a + b, 0) / diatonics.length;
   return avg < middle;
 }
@@ -58,15 +57,6 @@ export function secondOffsets(diatonicsAsc: number[], stemUp: boolean, headHW: n
   }
   const disp = 2 * (headHW - STEM_INSET);
   return displaced.map((d) => (d ? (stemUp ? disp : -disp) : 0));
-}
-
-/** Diatonic positions of the ledger lines needed to reach pitch `d`. */
-export function ledgerLineDiatonics(d: number): number[] {
-  const lines: number[] = [];
-  if (d >= 40) for (let q = 40; q <= d; q += 2) lines.push(q); // above the treble staff
-  if (d <= 16) for (let q = 16; q >= d; q -= 2) lines.push(q); // below the bass staff
-  if (d === 28) lines.push(28); // middle C, between the staves
-  return lines;
 }
 
 // ---- Horizontal mapping ----

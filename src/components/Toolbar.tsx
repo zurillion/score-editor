@@ -1,4 +1,4 @@
-import { Duration, DurationValue, Alter, TimeSignature } from '../music/types';
+import { Duration, DurationValue, Alter, StaffDef, TimeSignature } from '../music/types';
 import { SMUFL } from '../music/smufl';
 import { LayoutMode } from '../music/layout';
 import { Tool } from '../state/tool';
@@ -7,7 +7,8 @@ import { MidiOutputInfo } from '../music/midi';
 import { INSTRUMENTS } from '../music/instruments';
 import { InstrumentIcon } from './InstrumentIcon';
 import { MixerPanel } from './MixerPanel';
-import { PiecePlayback, STAFF_IDS } from '../music/playback';
+import { PiecePlayback } from '../music/playback';
+import type { ScoreAction } from '../state/scoreReducer';
 import { useState } from 'react';
 import { PieceSummary } from '../api';
 import { ExportFormat, ExportMenuButton } from './ExportMenuButton';
@@ -88,6 +89,8 @@ interface ToolbarProps {
   setLoop: (v: boolean) => void;
   playback: PiecePlayback;
   onPlaybackChange: (pb: PiecePlayback) => void;
+  staves: StaffDef[]; // the score's staves (drives the mixer rows)
+  onScoreAction: (a: ScoreAction) => void; // staff management from the mixer
   instrumentLoading: boolean;
   midiOn: boolean;
   onToggleMidi: () => void;
@@ -153,6 +156,8 @@ export function Toolbar(props: ToolbarProps) {
     setLoop,
     playback,
     onPlaybackChange,
+    staves,
+    onScoreAction,
     instrumentLoading,
     midiOn,
     onToggleMidi,
@@ -226,7 +231,7 @@ export function Toolbar(props: ToolbarProps) {
   const staccatoClass = tool.kind === 'staccato' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const [mixerOpen, setMixerOpen] = useState(false);
   // every staff has its own instrument in the mixer: the general one has no effect
-  const generalUnused = STAFF_IDS.every((s) => playback.staves[s]?.instrument);
+  const generalUnused = staves.every((s) => playback.staves[s.id]?.instrument);
 
   return (
     <div className="toolbar">
@@ -348,7 +353,7 @@ export function Toolbar(props: ToolbarProps) {
                 ))}
               </select>
             </label>
-            <MixerPanel open={mixerOpen} onToggle={() => setMixerOpen(!mixerOpen)} playback={playback} onChange={onPlaybackChange} />
+            <MixerPanel open={mixerOpen} onToggle={() => setMixerOpen(!mixerOpen)} playback={playback} onChange={onPlaybackChange} staves={staves} onScoreAction={onScoreAction} />
             <button className={loop ? 'on' : ''} onClick={() => setLoop(!loop)} title="Ripeti il brano in loop">
               ↻ Loop
             </button>

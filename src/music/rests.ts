@@ -42,16 +42,14 @@ function fillGap(staff: Staff, start: number, len: number): RestSeg[] {
   return out;
 }
 
-const STAVES: Staff[] = ['treble', 'bass'];
-
 /**
  * Rests are derived per staff. A staff with events gets its gaps filled; an
- * empty staff gets a single whole-measure rest, but only when the *other* staff
+ * empty staff gets a single whole-measure rest, but only when *another* staff
  * has at least one note (so a fully empty measure stays blank).
  */
-export function measureRests(events: ScoreEvent[], total: number, allowWhole = true): RestSeg[] {
+export function measureRests(events: ScoreEvent[], total: number, allowWhole = true, staves: Staff[] = ['treble', 'bass']): RestSeg[] {
   const out: RestSeg[] = [];
-  for (const staff of STAVES) {
+  for (const staff of staves) {
     const se = events.filter((e) => e.staff === staff).slice().sort((a, b) => a.startTick - b.startTick);
     if (se.length > 0) {
       let pos = 0;

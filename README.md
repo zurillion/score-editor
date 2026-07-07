@@ -51,8 +51,18 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   **trasposizione** in semitoni (es. +12 per un basso notato un'ottava sopra),
   più una **trasposizione generale** che si somma a quelle di rigo. Tutto
   viene salvato nel JSON del brano; al caricamento uno strumento generale
-  «—» mantiene quello già impostato. Il modello è pronto per più di due
-  righi.
+  «—» mantiene quello già impostato.
+- **Pentagrammi aggiuntivi** — dal pannellino del mixer si aggiungono
+  **righi singoli** (con chiave di violino o basso a scelta) o **interi
+  endecalinei** sopra e sotto quelli esistenti (es. una voce sopra il piano,
+  o una partitura per **due pianoforti**). Ogni rigo ha il suo strumento,
+  volume, trasposizione e anche una **tonalità propria** («= brano» segue
+  quella del brano e i suoi cambi; una tonalità fissa serve agli strumenti
+  traspositori). Ogni rigo si può **mostrare/nascondere** (nascosto continua
+  a suonare) — si può quindi disattivare anche l'endecalineo, in tutto o in
+  parte. Tutti i righi sono uniti dalla linea verticale iniziale; ogni
+  endecalineo conserva la sua graffa. La configurazione dei righi è salvata
+  nel JSON e viaggia in MusicXML (una parte per rigo/endecalineo).
 - **Accordi** — con lo strumento *Accordo* (1 click: una volta · doppio:
   fisso) si scrive il nome dell'accordo sotto i pentagrammi, agganciato a
   una griglia di ottavi nel punto cliccato. Testo libero (nessun
@@ -141,6 +151,7 @@ src/
     audio.ts       scheduler e player Web Audio + playhead
     instruments.ts catalogo strumenti campionati e lazy loading dei sample
     playback.ts    strumenti/volumi/trasposizioni per rigo (salvati nel brano)
+    staves.ts      elenco righi del brano e layout verticale multi-rigo
   state/
     scoreReducer.ts  stato della partitura e azioni
   components/

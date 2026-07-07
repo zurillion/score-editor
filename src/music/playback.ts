@@ -3,8 +3,8 @@
 //
 // Resolution: a staff plays its own instrument when set, otherwise the general
 // one; '' (shown as "—") means "no choice". A general '' in a loaded file
-// keeps whatever instrument is currently selected. The staff list is a map so
-// more staves can join later without changing the format.
+// keeps whatever instrument is currently selected. The staff map is keyed by
+// staff id, so it follows whatever staves the score defines (see staves.ts).
 import { Staff } from './types';
 import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS } from './instruments';
 
@@ -20,31 +20,23 @@ export interface PiecePlayback {
   staves: Record<string, StaffPlayback>;
 }
 
-/** The staves a piece has today (the format is ready for more). */
-export const STAFF_IDS: Staff[] = ['treble', 'bass'];
-export const STAFF_LABELS: Record<string, string> = { treble: 'Rigo di violino', bass: 'Rigo di basso' };
-
 export const defaultStaffPlayback = (): StaffPlayback => ({ instrument: '', volume: 100, transpose: 0 });
 
 export function defaultPlayback(instrument: string = DEFAULT_INSTRUMENT_ID): PiecePlayback {
-  return {
-    instrument,
-    transpose: 0,
-    staves: Object.fromEntries(STAFF_IDS.map((s) => [s, defaultStaffPlayback()])),
-  };
+  return { instrument, transpose: 0, staves: {} };
 }
 
 /** Instrument that actually sounds on a staff: specific wins over general. */
-export function effectiveInstrumentId(pb: PiecePlayback, staff: string): string {
+export function effectiveInstrumentId(pb: PiecePlayback, staff: Staff): string {
   return pb.staves[staff]?.instrument || pb.instrument || DEFAULT_INSTRUMENT_ID;
 }
 
-export function staffGain(pb: PiecePlayback, staff: string): number {
+export function staffGain(pb: PiecePlayback, staff: Staff): number {
   const v = pb.staves[staff]?.volume;
   return (typeof v === 'number' ? Math.min(100, Math.max(0, v)) : 100) / 100;
 }
 
-export function staffTranspose(pb: PiecePlayback, staff: string): number {
+export function staffTranspose(pb: PiecePlayback, staff: Staff): number {
   return (pb.transpose || 0) + (pb.staves[staff]?.transpose || 0);
 }
 
@@ -59,10 +51,9 @@ export function sanitizePlayback(raw: unknown): PiecePlayback | null {
   pb.instrument = validInstrument(r.instrument) ? r.instrument : '';
   pb.transpose = clampTranspose(r.transpose);
   if (r.staves && typeof r.staves === 'object') {
-    for (const s of STAFF_IDS) {
-      const st = r.staves[s];
+    for (const [id, st] of Object.entries(r.staves)) {
       if (!st || typeof st !== 'object') continue;
-      pb.staves[s] = {
+      pb.staves[id] = {
         instrument: validInstrument(st.instrument) ? st.instrument : '',
         volume: typeof st.volume === 'number' && Number.isFinite(st.volume) ? Math.min(100, Math.max(0, Math.round(st.volume))) : 100,
         transpose: clampTranspose(st.transpose),
@@ -77,9 +68,6 @@ export function isNeutralPlayback(pb: PiecePlayback): boolean {
   return (
     !pb.instrument &&
     !pb.transpose &&
-    STAFF_IDS.every((s) => {
-      const st = pb.staves[s];
-      return !st || (!st.instrument && st.volume === 100 && !st.transpose);
-    })
+    Object.values(pb.staves).every((st) => !st || (!st.instrument && st.volume === 100 && !st.transpose))
   );
 }

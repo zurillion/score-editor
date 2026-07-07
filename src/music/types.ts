@@ -3,8 +3,23 @@ export type StepName = 'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B';
 /** Accidental offset in semitones: double-flat .. double-sharp. */
 export type Alter = -2 | -1 | 0 | 1 | 2;
 
-/** Which staff of the grand staff an event belongs to (kept independent of pitch). */
-export type Staff = 'treble' | 'bass';
+/**
+ * Id of the staff an event belongs to. The default grand staff uses 'treble'
+ * and 'bass'; additional staves get generated ids ('s3', 's4', …).
+ */
+export type Staff = string;
+
+export type Clef = 'treble' | 'bass';
+
+/** One staff of the score: its clef, an optional key override and grouping. */
+export interface StaffDef {
+  id: Staff;
+  clef: Clef;
+  key: number | null; // per-staff key signature (transposing instruments); null = follow the score
+  hidden?: boolean; // not drawn (it still plays; volume 0 in the mixer mutes it)
+  group?: string; // staves sharing a group form a grand staff (brace + shared vertical axis)
+  name?: string; // label shown in the mixer
+}
 
 /** A pitch in scientific notation (C4 = middle C). `alter` is the accidental. */
 export interface Pitch {
@@ -80,5 +95,6 @@ export interface TimeSignature {
 export interface ScoreState {
   timeSignature: TimeSignature;
   keySignature: number; // + = sharps, − = flats (−7..7)
+  staves?: StaffDef[]; // top-to-bottom; missing = the classic grand staff (see scoreStaves)
   measures: Measure[];
 }

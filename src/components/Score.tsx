@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Duration, Pitch, ScoreState } from '../music/types';
+import { Duration, Pitch, Staff, ScoreState } from '../music/types';
 import { pitchToDiatonic } from '../music/theory';
 import { scoreMeta, measureIndexAtTick } from '../music/meta';
 import { resolveTies } from '../music/ties';
 import { LayoutMode, layoutSystems, measureTickToX, diatonicToY, clamp } from '../music/layout';
-import { SYSTEM_HEIGHT, SYSTEM_GAP } from '../music/constants';
+import { layoutStaves, scoreStaves } from '../music/staves';
+import { SYSTEM_GAP } from '../music/constants';
 import type { ScoreAction } from '../state/scoreReducer';
 import { Tool } from '../state/tool';
 import { Selection } from '../state/selection';
@@ -28,7 +29,7 @@ interface ScoreProps {
   playOnly?: boolean; // shared "listen" view: no editing interactions
   onAction: (action: ScoreAction) => void;
   onAfterApply: () => void;
-  onPreviewNote: (pitches: Pitch[]) => void;
+  onPreviewNote: (pitches: Pitch[], staff?: Staff) => void;
   onSelectMeasures: (indices: number[]) => void;
   onSelectNotes: (ids: string[]) => void;
   onClearSelection: () => void;
@@ -44,7 +45,6 @@ interface Rect {
   height: number;
 }
 
-const STRIDE = SYSTEM_HEIGHT + SYSTEM_GAP;
 const PAD = 16; // .score-inner padding
 
 export function Score({
@@ -86,6 +86,11 @@ export function Score({
   const meta = scoreMeta(state);
   const systems = layoutSystems(state.measures, meta.measures, mode, containerWidth);
   const ties = resolveTies(state, meta);
+  const stavesLayout = layoutStaves(scoreStaves(state));
+  const STRIDE = stavesLayout.height + SYSTEM_GAP;
+  // vertical shift of each staff's row (for the note lasso)
+  const dyByStaff = new Map<Staff, number>();
+  for (const row of stavesLayout.rows) for (const s of row.staves) dyByStaff.set(s.def.id, row.dy);
 
   // report system measure-ranges so the parent can move the cursor by whole rows
   const rangesKey = systems.map((s) => (s.measures.length ? `${s.measures[0].index}-${s.measures[s.measures.length - 1].index}` : '')).join('|');
@@ -147,10 +152,10 @@ export function Score({
       const top = PAD + i * STRIDE;
       sys.measures.forEach((pm) => {
         pm.measure.events.forEach((ev) => {
-          if (ev.kind !== 'note') return;
+          if (ev.kind !== 'note' || !dyByStaff.has(ev.staff)) return; // hidden staves aren't lassoable
           const ncx = PAD + measureTickToX(pm, ev.startTick);
           for (const p of ev.pitches) {
-            const ncy = top + diatonicToY(pitchToDiatonic(p));
+            const ncy = top + dyByStaff.get(ev.staff)! + diatonicToY(pitchToDiatonic(p));
             if (ncx >= r.left && ncx <= r.left + r.width && ncy >= r.top && ncy <= r.top + r.height) {
               ids.add(ev.id);
               break;
@@ -225,6 +230,7 @@ export function Score({
           <System
             key={i}
             layout={sys}
+            stavesLayout={stavesLayout}
             headerTs={sys.headerTs}
             headerKeySig={sys.headerKeySig}
             showTimeSig={i === 0 || sys.headerTsChanged}
