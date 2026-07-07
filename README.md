@@ -42,6 +42,14 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   archi, fiati, chitarre, … con relativa icona). I campioni si scaricano
   **lazy** al primo uso e la scelta è ricordata tra le sessioni; il synth
   storico dell'app resta disponibile come **"8 bit sound"**.
+- **Mixer per rigo** — lo strumento generale può anche essere «—» (nessuna
+  scelta) e l'icona del mixer accanto apre un pannellino con, per ogni rigo,
+  **strumento** (ha priorità su quello generale), **volume** e
+  **trasposizione** in semitoni (es. +12 per un basso notato un'ottava sopra),
+  più una **trasposizione generale** che si somma a quelle di rigo. Tutto
+  viene salvato nel JSON del brano; al caricamento uno strumento generale
+  «—» mantiene quello già impostato. Il modello è pronto per più di due
+  righi.
 - **Accordi** — con lo strumento *Accordo* (1 click: una volta · doppio:
   fisso) si scrive il nome dell'accordo sotto i pentagrammi, agganciato a
   una griglia di ottavi nel punto cliccato. Testo libero (nessun
@@ -129,6 +137,7 @@ src/
     smufl.ts       code point SMuFL (Bravura) usati
     audio.ts       scheduler e player Web Audio + playhead
     instruments.ts catalogo strumenti campionati e lazy loading dei sample
+    playback.ts    strumenti/volumi/trasposizioni per rigo (salvati nel brano)
   state/
     scoreReducer.ts  stato della partitura e azioni
   components/
@@ -138,6 +147,7 @@ src/
     Note.tsx       testa/e, gambo, code (flag), tagli addizionali, alterazioni, punti
     Rest.tsx       pause
     InstrumentIcon.tsx  icone SVG degli strumenti del playback
+    MixerPanel.tsx  pannellino con strumento/volume/trasposizione per rigo
   App.tsx          stato dell'interfaccia e collegamenti
 ```
 

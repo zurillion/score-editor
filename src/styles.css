@@ -265,6 +265,65 @@ body {
   border: none;
 }
 
+/* ---- Mixer panel (per-staff instrument / volume / transpose) ---- */
+.mixer-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 360px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.15);
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.mixer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+.mixer-row + .mixer-row {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.mixer-row strong {
+  min-width: 58px;
+}
+.mixer-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.mixer-row select {
+  max-width: 130px;
+}
+.mixer-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mixer-slider input[type='range'] {
+  width: 90px;
+}
+.mixer-slider input[type='number'] {
+  width: 52px;
+}
+.mixer-value {
+  min-width: 32px;
+  font-variant-numeric: tabular-nums;
+}
+/* the unit after a number box doesn't need the % readout's reserved width */
+.mixer-slider input[type='number'] + .mixer-value {
+  min-width: 0;
+}
+
 /* ---- Play-only page ---- */
 .play-page .play-toolbar {
   padding: 8px 16px 12px;

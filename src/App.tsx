@@ -1,10 +1,11 @@
 import { MutableRefObject, useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { Duration, DurationValue, NoteEvent, Pitch, ScoreState } from './music/types';
 import { LayoutMode } from './music/layout';
-import { durationTicks } from './music/theory';
 import { scoreMeta, measureIndexAtTick } from './music/meta';
 import { Player, playPreview } from './music/audio';
-import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, Sampler, ensureInstrument, getInstrument, getLoadedSampler, isSynth } from './music/instruments';
+import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, ensureInstrument, getLoadedSampler, isSynth } from './music/instruments';
+import { PiecePlayback, STAFF_IDS, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffTranspose } from './music/playback';
+import { durationTicks, pitchToDiatonic, staffForDiatonic } from './music/theory';
 import { DEFAULT_ARPEGGIO_MS, DEFAULT_STACCATO_PCT, setArpeggioStepMs, setStaccatoPct } from './music/playbackPrefs';
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
 import { initialHistory, historyReducer } from './state/scoreReducer';
@@ -24,6 +25,7 @@ export interface EditorSnapshot {
   name: string;
   bpm: number;
   score: ScoreState;
+  playback: PiecePlayback; // instruments / volumes / transposes travel with the piece
   sourceId: string | null; // server id the piece was loaded from (null = new/local)
 }
 
@@ -84,11 +86,6 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       /* ignore */
     }
   }, [loopSkipAnacrusis]);
-  // expose the current piece to the admin page ("add current to the list")
-  useEffect(() => {
-    if (snapshotRef) snapshotRef.current = { name: pieceName, bpm, score, sourceId };
-  }, [snapshotRef, pieceName, bpm, score, sourceId]);
-
   // server-side piece list for the Libreria dropdown (refreshed when the
   // editor regains the foreground, e.g. coming back from the admin page)
   useEffect(() => {
@@ -102,37 +99,47 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     };
   }, [active]);
 
-  // ---- playback instrument (persisted) ----
-  const [instrument, setInstrument] = useState<string>(() => {
+  // ---- playback routing: general instrument + per-staff mixer (saved with the piece) ----
+  const [playback, setPlayback] = useState<PiecePlayback>(() => {
     try {
       const stored = localStorage.getItem('opt.instrument');
-      return stored && INSTRUMENTS.some((i) => i.id === stored) ? stored : DEFAULT_INSTRUMENT_ID;
+      return defaultPlayback(stored !== null && (stored === '' || INSTRUMENTS.some((i) => i.id === stored)) ? stored : DEFAULT_INSTRUMENT_ID);
     } catch {
-      return DEFAULT_INSTRUMENT_ID;
+      return defaultPlayback();
     }
   });
   useEffect(() => {
     try {
-      localStorage.setItem('opt.instrument', instrument);
+      localStorage.setItem('opt.instrument', playback.instrument); // the general choice is the ambient default
     } catch {
       /* ignore */
     }
-  }, [instrument]);
+  }, [playback.instrument]);
   const [instrumentLoading, setInstrumentLoading] = useState(false);
-  // fetch the sample set as soon as the instrument is picked, so Play starts instantly
+  /** Distinct sampled instruments the current routing needs. */
+  const neededInstruments = useCallback(
+    () => [...new Set(STAFF_IDS.map((s) => effectiveInstrumentId(playback, s)).filter((id) => !isSynth(id)))],
+    [playback],
+  );
+  // fetch the sample sets as soon as the routing changes, so Play starts instantly
   useEffect(() => {
-    if (isSynth(instrument)) return;
+    const need = neededInstruments();
+    if (need.length === 0) return;
     let alive = true;
     setInstrumentLoading(true);
-    ensureInstrument(instrument)
-      .catch(() => {}) // Play reports the failure; a later attempt retries
+    Promise.all(need.map((id) => ensureInstrument(id).catch(() => {}))) // Play reports failures; a later attempt retries
       .finally(() => {
         if (alive) setInstrumentLoading(false);
       });
     return () => {
       alive = false;
     };
-  }, [instrument]);
+  }, [neededInstruments]);
+
+  // expose the current piece to the admin page ("add current to the list")
+  useEffect(() => {
+    if (snapshotRef) snapshotRef.current = { name: pieceName, bpm, score, playback, sourceId };
+  }, [snapshotRef, pieceName, bpm, score, playback, sourceId]);
 
   // playback feel: arpeggio speed and staccato length (persisted, pushed into the schedulers)
   const [arpeggioMs, setArpeggioMs] = useState<number>(() => {
@@ -277,23 +284,22 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       mp.loop = loopRef.current;
       mp.skipPickupInLoop = loopSkipAnacrusis;
       mp.channel = midiChannel - 1;
+      mp.staves = Object.fromEntries(STAFF_IDS.map((s) => [s, { gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }]));
       mp.onTick = onTick;
       mp.onEnd = onEnd;
       mp.play(score, bpm, startTick);
       setIsPlaying(true);
       return;
     }
-    let sampler: Sampler | null = null;
-    if (!isSynth(instrument)) {
+    // load every sampled instrument the per-staff routing needs
+    const need = neededInstruments();
+    if (need.length > 0) {
       const req = ++playReqRef.current;
       setInstrumentLoading(true);
       try {
-        sampler = await ensureInstrument(instrument);
+        await Promise.all(need.map((id) => ensureInstrument(id)));
       } catch {
-        window.alert(
-          `Impossibile scaricare i campioni di "${getInstrument(instrument)?.name ?? instrument}".\n` +
-            'Controlla la connessione, oppure scegli "8 bit sound".',
-        );
+        window.alert('Impossibile scaricare i campioni di uno degli strumenti.\nControlla la connessione, oppure scegli "8 bit sound".');
         return;
       } finally {
         setInstrumentLoading(false);
@@ -302,14 +308,19 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     }
     const player = playerRef.current ?? new Player();
     playerRef.current = player;
-    player.sampler = sampler;
+    player.staves = Object.fromEntries(
+      STAFF_IDS.map((s) => {
+        const id = effectiveInstrumentId(playback, s);
+        return [s, { sampler: isSynth(id) ? null : getLoadedSampler(id), gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }];
+      }),
+    );
     player.loop = loopRef.current; // looping is handled inside the Player (seamless)
     player.skipPickupInLoop = loopSkipAnacrusis;
     player.onTick = onTick;
     player.onEnd = onEnd;
     player.play(score, bpm, startTick);
     setIsPlaying(true);
-  }, [bpm, score, midiOn, midiChannel, loopSkipAnacrusis, cursorTick, instrument]);
+  }, [bpm, score, midiOn, midiChannel, loopSkipAnacrusis, cursorTick, playback, neededInstruments]);
 
   const handleToStart = useCallback(() => setCursorTick(0), []);
 
@@ -325,9 +336,26 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser' || t.kind === 'dot' || t.kind === 'tuplet' || t.kind === 'tie' || t.kind === 'chord' || t.kind === 'arpeggio' || t.kind === 'staccato') && !t.sticky ? NOTE_TOOL : t));
   }, []);
 
-  // preview with the selected instrument when its samples are already in memory
-  // (they load in the background on selection); synth otherwise
-  const handlePreviewNote = useCallback((pitches: Pitch[]) => playPreview(pitches, 0.5, getLoadedSampler(instrument)), [instrument]);
+  // preview with the staff's effective instrument (samples load in the
+  // background on selection; synth otherwise), honouring volume and transpose
+  const handlePreviewNote = useCallback(
+    (pitches: Pitch[]) => {
+      if (pitches.length === 0) return;
+      const staff = staffForDiatonic(pitchToDiatonic(pitches[0]));
+      const id = effectiveInstrumentId(playback, staff);
+      playPreview(pitches, 0.5, isSynth(id) ? null : getLoadedSampler(id), {
+        gain: staffGain(playback, staff),
+        transpose: staffTranspose(playback, staff),
+      });
+    },
+    [playback],
+  );
+
+  // apply a loaded piece's playback block; a general "—" keeps the current instrument
+  const applyLoadedPlayback = useCallback((raw: unknown) => {
+    const pb = sanitizePlayback(raw) ?? defaultPlayback('');
+    setPlayback((cur) => ({ ...pb, instrument: pb.instrument || cur.instrument }));
+  }, []);
 
   const handleLoadPiece = useCallback(
     async (id: string) => {
@@ -340,11 +368,12 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         setBpm(p.bpm);
         setPieceName(p.title);
         setSourceId(id);
+        applyLoadedPlayback(p.playback);
       } catch {
         window.alert('Impossibile caricare il brano dal server.');
       }
     },
-    [handleStop],
+    [handleStop, applyLoadedPlayback],
   );
 
   // the admin page's "Apri nell'editor" hands the piece over via sessionStorage
@@ -382,7 +411,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       const [content, filename, type] =
         format === 'musicxml'
           ? [exportMusicXML(title, bpm, score), `${safe}.musicxml`, 'application/vnd.recordare.musicxml+xml']
-          : [JSON.stringify({ format: 'score-composer', version: 1, name: title, bpm, score }, null, 2), `${safe}.json`, 'application/json'];
+          : [JSON.stringify({ format: 'score-composer', version: 1, name: title, bpm, playback, score }, null, 2), `${safe}.json`, 'application/json'];
       const url = URL.createObjectURL(new Blob([content], { type }));
       const a = document.createElement('a');
       a.href = url;
@@ -392,7 +421,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       a.remove();
       URL.revokeObjectURL(url);
     },
-    [bpm, score, pieceName],
+    [bpm, score, pieceName, playback],
   );
 
   const handleRequestLoadFile = useCallback(() => fileInputRef.current?.click(), []);
@@ -403,7 +432,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       e.target.value = ''; // allow re-loading the same file later
       if (!file) return;
       const raw = await file.text();
-      const applyLoaded = (loaded: ScoreState, loadedBpm: number | null, title: string) => {
+      const applyLoaded = (loaded: ScoreState, loadedBpm: number | null, title: string, playbackRaw?: unknown) => {
         handleStop();
         setSelection(null);
         setCursorTick(0);
@@ -411,6 +440,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         if (loadedBpm !== null) setBpm(loadedBpm);
         setPieceName(title);
         setSourceId(null);
+        applyLoadedPlayback(playbackRaw);
       };
       // MusicXML (by extension or content) or the app's own JSON
       if (/\.(xml|musicxml)$/i.test(file.name) || raw.trimStart().startsWith('<')) {
@@ -429,12 +459,12 @@ export default function App({ active = true, snapshotRef }: AppProps) {
           window.alert('File non valido: non sembra un brano di Score Composer.');
           return;
         }
-        applyLoaded(loaded, typeof obj?.bpm === 'number' ? obj.bpm : null, typeof obj?.name === 'string' ? obj.name : '');
+        applyLoaded(loaded, typeof obj?.bpm === 'number' ? obj.bpm : null, typeof obj?.name === 'string' ? obj.name : '', obj?.playback);
       } catch {
         window.alert('Impossibile leggere il file (JSON non valido).');
       }
     },
-    [handleStop],
+    [handleStop, applyLoadedPlayback],
   );
 
   const handleInsertMeasures = useCallback(() => {
@@ -637,8 +667,8 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         setBpm={setBpm}
         loop={loop}
         setLoop={handleSetLoop}
-        instrument={instrument}
-        setInstrument={setInstrument}
+        playback={playback}
+        onPlaybackChange={setPlayback}
         instrumentLoading={instrumentLoading}
         midiOn={midiOn}
         onToggleMidi={handleToggleMidi}

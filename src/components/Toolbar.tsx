@@ -6,6 +6,9 @@ import { KEY_OPTIONS } from '../music/key';
 import { MidiOutputInfo } from '../music/midi';
 import { INSTRUMENTS } from '../music/instruments';
 import { InstrumentIcon } from './InstrumentIcon';
+import { MixerPanel } from './MixerPanel';
+import { PiecePlayback } from '../music/playback';
+import { useState } from 'react';
 import { PieceSummary } from '../api';
 import { ExportFormat, ExportMenuButton } from './ExportMenuButton';
 
@@ -83,8 +86,8 @@ interface ToolbarProps {
   setBpm: (n: number) => void;
   loop: boolean;
   setLoop: (v: boolean) => void;
-  instrument: string;
-  setInstrument: (id: string) => void;
+  playback: PiecePlayback;
+  onPlaybackChange: (pb: PiecePlayback) => void;
   instrumentLoading: boolean;
   midiOn: boolean;
   onToggleMidi: () => void;
@@ -139,8 +142,8 @@ export function Toolbar(props: ToolbarProps) {
     setBpm,
     loop,
     setLoop,
-    instrument,
-    setInstrument,
+    playback,
+    onPlaybackChange,
     instrumentLoading,
     midiOn,
     onToggleMidi,
@@ -212,6 +215,7 @@ export function Toolbar(props: ToolbarProps) {
   const tupletClass = tool.kind === 'tuplet' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const tieClass = tool.kind === 'tie' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const staccatoClass = tool.kind === 'staccato' ? (tool.sticky ? 'on sticky' : 'on') : '';
+  const [mixerOpen, setMixerOpen] = useState(false);
 
   return (
     <div className="toolbar">
@@ -307,17 +311,18 @@ export function Toolbar(props: ToolbarProps) {
             <button className={`play ${isPlaying ? 'stop' : ''}`} onClick={isPlaying ? onStop : onPlay}>
               {isPlaying ? '■ Stop' : '▶ Play'}
             </button>
-            <label className="instrument" title="Strumento usato dal playback (i campioni si scaricano al primo uso)">
-              <InstrumentIcon id={instrument} />
+            <label className="instrument" title="Strumento generale del playback (i righi senza strumento specifico usano questo; '—' = nessuna scelta)">
+              <InstrumentIcon id={playback.instrument} />
               <select
-                value={instrument}
+                value={playback.instrument}
                 onChange={(e) => {
-                  setInstrument(e.target.value);
+                  onPlaybackChange({ ...playback, instrument: e.target.value });
                   e.currentTarget.blur();
                 }}
                 disabled={isPlaying}
-                aria-label="Strumento"
+                aria-label="Strumento generale"
               >
+                <option value="">—</option>
                 {INSTRUMENTS.map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.name}
@@ -325,6 +330,7 @@ export function Toolbar(props: ToolbarProps) {
                 ))}
               </select>
             </label>
+            <MixerPanel open={mixerOpen} onToggle={() => setMixerOpen(!mixerOpen)} playback={playback} onChange={onPlaybackChange} />
             <button className={loop ? 'on' : ''} onClick={() => setLoop(!loop)} title="Ripeti il brano in loop">
               ↻ Loop
             </button>

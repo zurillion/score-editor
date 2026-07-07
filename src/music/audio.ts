@@ -19,6 +19,7 @@ function startVoice(
   dur: number,
   freq: number,
   midi: number,
+  level = 1, // per-staff mixer gain
 ): AudioScheduledSourceNode {
   const gain = ctx.createGain();
   gain.connect(dest);
@@ -32,7 +33,7 @@ function startVoice(
     // Samples carry their own attack/decay: sustain for the full value, then
     // a short release past the end so the cutoff doesn't click.
     const release = 0.12;
-    const peak = 0.8;
+    const peak = 0.8 * level;
     gain.gain.setValueAtTime(peak, start);
     gain.gain.setValueAtTime(peak, start + dur);
     gain.gain.linearRampToValueAtTime(0, start + dur + release);
@@ -45,7 +46,7 @@ function startVoice(
     osc.frequency.value = freq;
     const attack = 0.006;
     const release = Math.min(0.12, dur * 0.4);
-    const peak = 0.28;
+    const peak = 0.28 * level;
     const susEnd = Math.max(start + attack, start + dur - release);
     gain.gain.setValueAtTime(0, start);
     gain.gain.linearRampToValueAtTime(peak, start + attack);
@@ -66,8 +67,16 @@ function startVoice(
 let previewCtx: AudioContext | null = null;
 
 /** Play the given pitches immediately with a short, fixed-length envelope. */
-export function playPreview(pitches: Pitch[], durSec = 0.5, sampler: Sampler | null = null): void {
+export function playPreview(
+  pitches: Pitch[],
+  durSec = 0.5,
+  sampler: Sampler | null = null,
+  opts: { gain?: number; transpose?: number } = {},
+): void {
   if (pitches.length === 0) return;
+  const level = opts.gain ?? 1;
+  if (level <= 0) return;
+  const t = opts.transpose ?? 0;
   const AudioCtx: typeof AudioContext =
     window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   if (!previewCtx) previewCtx = new AudioCtx();
@@ -79,7 +88,7 @@ export function playPreview(pitches: Pitch[], durSec = 0.5, sampler: Sampler | n
   master.gain.value = 0.8;
   master.connect(ctx.destination);
 
-  for (const p of pitches) startVoice(ctx, master, sampler, t0, durSec, pitchToFrequency(p), pitchToMidi(p));
+  for (const p of pitches) startVoice(ctx, master, sampler, t0, durSec, pitchToFrequency(p) * Math.pow(2, t / 12), pitchToMidi(p) + t, level);
 }
 
 export interface ScheduledNote {
@@ -87,7 +96,15 @@ export interface ScheduledNote {
   durTicks: number;
   freqs: number[];
   midis: number[];
+  staff: string; // which staff sounds it (per-staff instrument/volume)
   arpIndex?: number; // position (bottom-up) inside a rolled chord: the attack is delayed by arpIndex steps
+}
+
+/** Per-staff playback routing used by the players. */
+export interface StaffAudioConfig {
+  sampler: Sampler | null; // null = the built-in synth
+  gain: number; // 0..1 mixer level
+  transpose: number; // semitones (already summed general + staff)
 }
 
 /** Attack delay in seconds for a scheduled note inside a rolled chord (end stays put). */
@@ -176,11 +193,11 @@ function expandRepeats(score: ScoreState, meta: ReturnType<typeof scoreMeta>): {
  * Builds a tempo-independent schedule (positions in ticks). The players turn
  * ticks into real time on the fly, so the tempo can change during playback.
  */
-export function buildSchedule(score: ScoreState): Schedule {
+export function buildSchedule(score: ScoreState, transposes: Partial<Record<string, number>> = {}): Schedule {
   const meta = scoreMeta(score);
   // Flatten to one entry per (pitch) occurrence in global time, so a tie of value
   // can merge a pitch across consecutive notes (within a bar or across bars).
-  interface Entry { key: string; startG: number; endG: number; freq: number; midi: number; tie: boolean; absorbed: boolean; arp?: number; stac?: boolean }
+  interface Entry { key: string; staff: string; startG: number; endG: number; freq: number; midi: number; tie: boolean; absorbed: boolean; arp?: number; stac?: boolean }
   const entries: Entry[] = [];
   for (const mm of meta.measures) {
     const m = score.measures[mm.index];
@@ -192,12 +209,13 @@ export function buildSchedule(score: ScoreState): Schedule {
     };
     // rolled chords: flagged events sharing a start tick (either staff) form one
     // roll; every pitch gets its bottom-up position within that roll
+    // (transposes count: the roll order follows the sounding pitches)
     const arpIdx = new Map<string, number>(); // `${ev.id}|${step}${octave}` -> index
     const rolls = new Map<number, { key: string; midi: number }[]>();
     for (const ev of m.events) {
       if (ev.kind !== 'note' || !ev.arpeggio) continue;
       const list = rolls.get(ev.startTick) ?? [];
-      for (const p of ev.pitches) list.push({ key: `${ev.id}|${p.step}${p.octave}`, midi: pitchToMidi(effOf(ev.id, p)) });
+      for (const p of ev.pitches) list.push({ key: `${ev.id}|${p.step}${p.octave}`, midi: pitchToMidi(effOf(ev.id, p)) + (transposes[ev.staff] ?? 0) });
       rolls.set(ev.startTick, list);
     }
     for (const list of rolls.values()) {
@@ -208,15 +226,17 @@ export function buildSchedule(score: ScoreState): Schedule {
       if (ev.kind !== 'note') continue;
       const startG = mm.startTick + ev.startTick;
       const endG = startG + eventTicks(ev);
+      const t = transposes[ev.staff] ?? 0;
       for (const p of ev.pitches) {
         const eff = effOf(ev.id, p);
         const arp = arpIdx.get(`${ev.id}|${p.step}${p.octave}`);
         entries.push({
           key: `${ev.staff}|${p.step}${p.octave}`,
+          staff: ev.staff,
           startG,
           endG,
-          freq: pitchToFrequency(eff),
-          midi: pitchToMidi(eff),
+          freq: pitchToFrequency(eff) * Math.pow(2, t / 12),
+          midi: pitchToMidi(eff) + t,
           tie: !!ev.tieToNext,
           absorbed: false,
           ...(arp ? { arp } : {}), // index 0 attacks on the beat: no field needed
@@ -246,7 +266,7 @@ export function buildSchedule(score: ScoreState): Schedule {
       // staccato: sound only a fraction of the written span (attack unchanged)
       let durT = end - arr[i].startG;
       if (arr[i].stac) durT = Math.max(24, Math.round(durT * getStaccatoFraction()));
-      scoreNotes.push({ startTick: arr[i].startG, durTicks: durT, freqs: [arr[i].freq], midis: [arr[i].midi], ...(arr[i].arp ? { arpIndex: arr[i].arp } : {}) });
+      scoreNotes.push({ startTick: arr[i].startG, durTicks: durT, freqs: [arr[i].freq], midis: [arr[i].midi], staff: arr[i].staff, ...(arr[i].arp ? { arpIndex: arr[i].arp } : {}) });
     }
   }
   const pickupTicks = meta.measures[0]?.pickup ? meta.measures[0].total : 0;
@@ -331,7 +351,8 @@ export class Player {
 
   loop = false;
   skipPickupInLoop = true; // play a leading anacrusis once, then loop only the body
-  sampler: Sampler | null = null; // sampled instrument; null = built-in synth ("8 bit sound")
+  sampler: Sampler | null = null; // fallback instrument when a staff has no routing below
+  staves: Record<string, StaffAudioConfig> = {}; // per-staff instrument / volume / transpose
   onTick: (tick: number) => void = () => {};
   onEnd: () => void = () => {};
 
@@ -355,7 +376,8 @@ export class Player {
     master.connect(ctx.destination);
     this.master = master;
 
-    const sched = buildSchedule(score);
+    const transposes = Object.fromEntries(Object.entries(this.staves).map(([s, c]) => [s, c.transpose]));
+    const sched = buildSchedule(score, transposes);
     this.notes = sched.notes;
     this.totalTicks = sched.totalTicks;
     this.pickupTicks = sched.pickupTicks;
@@ -391,7 +413,7 @@ export class Player {
             const start = Math.max(now, now + (g - this.posTicks) * this.secPerTick);
             const durSec = n.durTicks * this.secPerTick;
             const off = arpeggioOffsetSec(n, durSec); // rolled chord: staggered attack, common end
-            for (let i = 0; i < n.freqs.length; i++) this.scheduleNote(start + off, durSec - off, n.freqs[i], n.midis[i]);
+            for (let i = 0; i < n.freqs.length; i++) this.scheduleNote(start + off, durSec - off, n.freqs[i], n.midis[i], n.staff);
           }
         }
         this.scheduledTick = target;
@@ -404,11 +426,13 @@ export class Player {
     this.raf = requestAnimationFrame(frame);
   }
 
-  private scheduleNote(start: number, dur: number, freq: number, midi: number): void {
+  private scheduleNote(start: number, dur: number, freq: number, midi: number, staff: string): void {
     const ctx = this.ctx;
     const dest = this.master;
     if (!ctx || !dest) return;
-    const src = startVoice(ctx, dest, this.sampler, start, dur, freq, midi);
+    const cfg = this.staves[staff] ?? { sampler: this.sampler, gain: 1, transpose: 0 };
+    if (cfg.gain <= 0) return; // muted staff
+    const src = startVoice(ctx, dest, cfg.sampler, start, dur, freq, midi, cfg.gain);
     this.sources.add(src);
     src.onended = () => this.sources.delete(src); // prune so a long loop doesn't accumulate
   }

@@ -110,6 +110,7 @@ export default async (req: Request) => {
         inMenu: raw.inMenu !== false,
         bpm: raw.bpm,
         score: raw.score,
+        ...(raw.playback && typeof raw.playback === 'object' ? { playback: raw.playback } : {}),
         updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
       });
     }
@@ -127,7 +128,8 @@ export default async (req: Request) => {
     if (!title || typeof body.bpm !== 'number' || !validScore(body.score)) return fail(400, 'invalid piece');
     const index = await readIndex(); // before the piece write: may seed the examples first
     const pieceId = newId();
-    await store().setJSON(`piece/${pieceId}`, { id: pieceId, title, bpm: body.bpm, score: body.score, updatedAt: new Date().toISOString() });
+    const playback = body.playback && typeof body.playback === 'object' ? { playback: body.playback } : {};
+    await store().setJSON(`piece/${pieceId}`, { id: pieceId, title, bpm: body.bpm, score: body.score, ...playback, updatedAt: new Date().toISOString() });
     index.push({ id: pieceId, title, inMenu: body.inMenu !== false });
     await store().setJSON('index', index);
     return json({ id: pieceId }, 201);
@@ -159,9 +161,10 @@ export default async (req: Request) => {
     const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : (cur.title as string);
     const bpm = typeof body.bpm === 'number' ? body.bpm : cur.bpm;
     const score = validScore(body.score) ? body.score : cur.score;
-    const contentChanged = title !== cur.title || bpm !== cur.bpm || score !== cur.score;
+    const playback = body.playback && typeof body.playback === 'object' ? body.playback : cur.playback;
+    const contentChanged = title !== cur.title || bpm !== cur.bpm || score !== cur.score || playback !== cur.playback;
     if (contentChanged) {
-      await store().setJSON(`piece/${id}`, { ...cur, title, bpm, score, updatedAt: new Date().toISOString() });
+      await store().setJSON(`piece/${id}`, { ...cur, title, bpm, score, ...(playback !== undefined ? { playback } : {}), updatedAt: new Date().toISOString() });
     }
     if (title !== cur.title || typeof body.inMenu === 'boolean') {
       const index = await readIndex();

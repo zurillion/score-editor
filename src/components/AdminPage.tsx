@@ -15,6 +15,7 @@ import {
   updatePiece,
 } from '../api';
 import { MiniScore } from './MiniScore';
+import { sanitizePlayback } from '../music/playback';
 import { ExportFormat, ExportMenuButton } from './ExportMenuButton';
 import { exportMusicXML, importMusicXML } from '../music/musicxml';
 import type { EditorSnapshot } from '../App';
@@ -140,11 +141,11 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
       if (!s || !key) return;
       if (overwrite && snapSource) {
         if (!window.confirm(`Aggiornare il brano esistente "${snapSource.title}" con la versione corrente dell'editor?`)) return;
-        await updatePiece(key, snapSource.id, { title: s.name.trim() || snapSource.title, bpm: s.bpm, score: s.score });
+        await updatePiece(key, snapSource.id, { title: s.name.trim() || snapSource.title, bpm: s.bpm, score: s.score, playback: s.playback });
       } else {
         const title = titleFor(s.name);
         if (!title) return;
-        await createPiece(key, { title, bpm: s.bpm, score: s.score });
+        await createPiece(key, { title, bpm: s.bpm, score: s.score, playback: s.playback });
       }
       await refresh();
     });
@@ -196,7 +197,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
     if (format === 'musicxml') {
       downloadFile(`${safe}.musicxml`, exportMusicXML(piece.title, piece.bpm, piece.score), 'application/vnd.recordare.musicxml+xml');
     } else {
-      downloadJson(`${safe}.json`, { format: 'score-composer', version: 1, name: piece.title, bpm: piece.bpm, score: piece.score });
+      downloadJson(`${safe}.json`, { format: 'score-composer', version: 1, name: piece.title, bpm: piece.bpm, ...(piece.playback ? { playback: piece.playback } : {}), score: piece.score });
     }
   }
 
@@ -213,6 +214,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
         inMenu: e.inMenu,
         bpm: full[i].bpm,
         score: full[i].score,
+        ...(full[i].playback ? { playback: full[i].playback } : {}),
         ...(full[i].updatedAt ? { updatedAt: full[i].updatedAt } : {}),
       }));
       const stamp = new Date().toISOString().slice(0, 10);
@@ -281,7 +283,8 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
       }
       const title = titleFor(typeof obj?.name === 'string' ? obj.name : stripExt(file.name));
       if (!title) return;
-      await createPiece(key, { title, bpm: typeof obj?.bpm === 'number' ? obj.bpm : 96, score });
+      const playback = sanitizePlayback((obj as { playback?: unknown })?.playback) ?? undefined;
+      await createPiece(key, { title, bpm: typeof obj?.bpm === 'number' ? obj.bpm : 96, score, ...(playback ? { playback } : {}) });
       await refresh();
     });
 

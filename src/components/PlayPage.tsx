@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StoredPiece, getPiece } from '../api';
 import { Player } from '../music/audio';
-import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, Sampler, ensureInstrument, getInstrument, isSynth } from '../music/instruments';
+import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, ensureInstrument, getLoadedSampler, isSynth } from '../music/instruments';
+import { PiecePlayback, STAFF_IDS, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffTranspose } from '../music/playback';
 import { InstrumentIcon } from './InstrumentIcon';
 import { Score } from './Score';
 
@@ -12,6 +13,7 @@ import { Score } from './Score';
  */
 export function PlayPage({ id }: { id: string }) {
   const [piece, setPiece] = useState<StoredPiece | null>(null);
+  const [piecePlayback, setPiecePlayback] = useState<PiecePlayback>(() => defaultPlayback(''));
   const [error, setError] = useState<string | null>(null);
 
   const [bpm, setBpm] = useState(96);
@@ -53,6 +55,9 @@ export function PlayPage({ id }: { id: string }) {
         if (!alive) return;
         setPiece(p);
         setBpm(p.bpm);
+        const pb = sanitizePlayback(p.playback) ?? defaultPlayback('');
+        setPiecePlayback(pb);
+        if (pb.instrument) setInstrument(pb.instrument); // '—' keeps the listener's choice
       })
       .catch(() => alive && setError('Brano non trovato (il link potrebbe non essere più valido).'));
     return () => {
@@ -76,14 +81,15 @@ export function PlayPage({ id }: { id: string }) {
 
   const handlePlay = useCallback(async () => {
     if (!piece) return;
-    let sampler: Sampler | null = null;
-    if (!isSynth(instrument)) {
+    const pb: PiecePlayback = { ...piecePlayback, instrument };
+    const need = [...new Set(STAFF_IDS.map((s) => effectiveInstrumentId(pb, s)).filter((id) => !isSynth(id)))];
+    if (need.length > 0) {
       const req = ++playReqRef.current;
       setInstrumentLoading(true);
       try {
-        sampler = await ensureInstrument(instrument);
+        await Promise.all(need.map((id) => ensureInstrument(id)));
       } catch {
-        window.alert(`Impossibile scaricare i campioni di "${getInstrument(instrument)?.name ?? instrument}".\nControlla la connessione, oppure scegli "8 bit sound".`);
+        window.alert('Impossibile scaricare i campioni di uno degli strumenti.\nControlla la connessione, oppure scegli "8 bit sound".');
         return;
       } finally {
         setInstrumentLoading(false);
@@ -92,7 +98,12 @@ export function PlayPage({ id }: { id: string }) {
     }
     const player = playerRef.current ?? new Player();
     playerRef.current = player;
-    player.sampler = sampler;
+    player.staves = Object.fromEntries(
+      STAFF_IDS.map((s) => {
+        const iid = effectiveInstrumentId(pb, s);
+        return [s, { sampler: isSynth(iid) ? null : getLoadedSampler(iid), gain: staffGain(pb, s), transpose: staffTranspose(pb, s) }];
+      }),
+    );
     player.loop = loop;
     player.onTick = (tick) => {
       playheadTickRef.current = tick;
@@ -106,7 +117,7 @@ export function PlayPage({ id }: { id: string }) {
     };
     player.play(piece.score, bpm, Math.max(0, Math.round(cursorTick)));
     setIsPlaying(true);
-  }, [piece, bpm, loop, cursorTick, instrument]);
+  }, [piece, piecePlayback, bpm, loop, cursorTick, instrument]);
 
   useEffect(
     () => () => {

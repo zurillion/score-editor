@@ -2,6 +2,7 @@
 // netlify/functions/api.mts). Reads are public; writes need the admin
 // password, sent as the `x-admin-key` header.
 import { ScoreState } from './music/types';
+import { PiecePlayback } from './music/playback';
 
 export interface PieceSummary {
   id: string;
@@ -14,6 +15,7 @@ export interface StoredPiece {
   title: string;
   bpm: number;
   score: ScoreState;
+  playback?: PiecePlayback; // per-staff instruments / volumes / transposes
   updatedAt?: string;
 }
 
@@ -52,11 +54,11 @@ export async function checkAdmin(key: string): Promise<boolean> {
   return res.status === 204;
 }
 
-export async function createPiece(key: string, piece: { title: string; bpm: number; score: ScoreState }): Promise<string> {
+export async function createPiece(key: string, piece: { title: string; bpm: number; score: ScoreState; playback?: PiecePlayback }): Promise<string> {
   return (await request<{ id: string }>('pieces', adminInit(key, 'POST', piece))).id;
 }
 
-export function updatePiece(key: string, id: string, patch: { title?: string; bpm?: number; score?: ScoreState; inMenu?: boolean }): Promise<void> {
+export function updatePiece(key: string, id: string, patch: { title?: string; bpm?: number; score?: ScoreState; playback?: PiecePlayback; inMenu?: boolean }): Promise<void> {
   return request(`pieces/${id}`, adminInit(key, 'PUT', patch));
 }
 
@@ -74,6 +76,7 @@ export interface LibraryPieceExport {
   inMenu: boolean;
   bpm: number;
   score: ScoreState;
+  playback?: PiecePlayback;
   updatedAt?: string;
 }
 

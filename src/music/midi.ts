@@ -40,6 +40,7 @@ export class MidiPlayer {
   private access: MIDIAccess;
   output: MIDIOutput | null = null;
   channel = 0; // 0..15
+  staves: Record<string, { gain: number; transpose: number }> = {}; // per-staff volume / transpose
   loop = false;
   skipPickupInLoop = true; // play a leading anacrusis once, then loop only the body
   onTick: (tick: number) => void = () => {};
@@ -76,7 +77,8 @@ export class MidiPlayer {
   play(score: ScoreState, bpm: number, startTick = 0): void {
     this.stop();
     if (!this.output) return;
-    const sched = buildSchedule(score);
+    const transposes = Object.fromEntries(Object.entries(this.staves).map(([s, c]) => [s, c.transpose]));
+    const sched = buildSchedule(score, transposes);
     this.notes = sched.notes;
     this.totalTicks = sched.totalTicks;
     this.pickupTicks = sched.pickupTicks;
@@ -113,8 +115,12 @@ export class MidiPlayer {
             const arpMs = arpeggioOffsetSec(n, durSec) * 1000; // rolled chord: staggered attack, common end
             const onMs = now + Math.max(0, (g - this.posTicks) * this.secPerTick * 1000) + arpMs;
             const offMs = onMs + durSec * 1000 - arpMs;
+            const gain = this.staves[n.staff]?.gain ?? 1;
+            if (gain <= 0) continue; // muted staff
+            const velocity = Math.max(1, Math.min(127, Math.round(96 * gain)));
             for (const m of n.midis) {
-              this.output.send([0x90 | ch, m, 96], onMs);
+              if (m < 0 || m > 127) continue; // out of MIDI range after transposition
+              this.output.send([0x90 | ch, m, velocity], onMs);
               this.output.send([0x80 | ch, m, 0], offMs);
             }
           }
