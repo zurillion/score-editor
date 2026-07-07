@@ -39,8 +39,8 @@ export function listOutputs(access: MIDIAccess): MidiOutputInfo[] {
 export class MidiPlayer {
   private access: MIDIAccess;
   output: MIDIOutput | null = null;
-  channel = 0; // 0..15
-  staves: Record<string, { gain: number; transpose: number }> = {}; // per-staff volume / transpose
+  channel = 0; // 0..15 (the piece's general channel)
+  staves: Record<string, { gain: number; transpose: number; channel?: number | null }> = {}; // per-staff volume / transpose / MIDI channel (0..15; null = general)
   loop = false;
   skipPickupInLoop = true; // play a leading anacrusis once, then loop only the body
   onTick: (tick: number) => void = () => {};
@@ -95,7 +95,6 @@ export class MidiPlayer {
       const now = performance.now();
       this.posTicks += (now - this.lastTime) / 1000 / this.secPerTick;
       this.lastTime = now;
-      const ch = this.channel & 0x0f;
       // an ∞ repeat cycles its own section regardless of the Loop toggle
       const looping = this.loop || forcedLoopStart !== null;
       const loopStart = forcedLoopStart ?? (this.skipPickupInLoop ? this.pickupTicks : 0);
@@ -119,6 +118,7 @@ export class MidiPlayer {
             const gain = cfg?.gain ?? 1;
             if (gain <= 0) continue; // muted staff
             const t = cfg?.transpose ?? 0;
+            const ch = (cfg?.channel ?? this.channel) & 0x0f; // per-staff channel, general as fallback
             const velocity = Math.max(1, Math.min(127, Math.round(96 * gain)));
             for (const m0 of n.midis) {
               const m = m0 + t;
@@ -144,15 +144,19 @@ export class MidiPlayer {
       this.raf = 0;
     }
     if (this.output) {
-      const ch = this.channel & 0x0f;
       try {
         // clear() drops queued messages where supported; it's not in every typedef.
         (this.output as MIDIOutput & { clear?: () => void }).clear?.();
       } catch {
         /* ignore */
       }
-      this.output.send([0xb0 | ch, 120, 0]); // all sound off
-      this.output.send([0xb0 | ch, 123, 0]); // all notes off
+      // silence the general channel plus every per-staff channel in use
+      const channels = new Set<number>([this.channel & 0x0f]);
+      for (const cfg of Object.values(this.staves)) if (typeof cfg.channel === 'number') channels.add(cfg.channel & 0x0f);
+      for (const ch of channels) {
+        this.output.send([0xb0 | ch, 120, 0]); // all sound off
+        this.output.send([0xb0 | ch, 123, 0]); // all notes off
+      }
     }
     this.playingFlag = false;
   }

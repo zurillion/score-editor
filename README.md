@@ -49,8 +49,9 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
 - **Mixer per rigo** — lo strumento generale può anche essere «—» (nessuna
   scelta) e l'icona del mixer accanto apre un pannellino con, per ogni rigo,
   **strumento** (ha priorità su quello generale), **volume**, **mute/solo**
-  (M ammutolisce il rigo; con uno o più S premuti suonano solo quelli) e
-  **trasposizione** in semitoni (es. +12 per un basso notato un'ottava sopra),
+  (M ammutolisce il rigo; con uno o più S premuti suonano solo quelli),
+  **trasposizione** in semitoni (es. +12 per un basso notato un'ottava sopra)
+  e **canale MIDI** per l'uscita MIDI («—» usa quello generale del brano),
   più una **trasposizione generale** che si somma a quelle di rigo. I
   controlli agiscono **in tempo reale** anche durante il playback. Tutto
   viene salvato nel JSON del brano; al caricamento uno strumento generale

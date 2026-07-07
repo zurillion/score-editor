@@ -52,7 +52,7 @@ export function MixerPanel({
     playback.transpose !== 0 ||
     staves.some((s) => {
       const st = staffOf(s.id);
-      return st.instrument || st.volume !== 100 || st.transpose !== 0 || st.mute || st.solo;
+      return st.instrument || st.volume !== 100 || st.transpose !== 0 || st.mute || st.solo || !!st.midiChannel;
     });
 
   const visibleCount = staves.filter((s) => !s.hidden).length;
@@ -142,6 +142,25 @@ export function MixerPanel({
             <span className="mixer-value">st</span>
           </span>
         </label>
+        {manage && (
+          <label title="Canale MIDI del rigo per l'uscita MIDI esterna; '—' usa il canale generale impostato nel gruppo MIDI">
+            Can. MIDI
+            <select
+              value={st.midiChannel ?? ''}
+              onChange={(e) => {
+                const { midiChannel: _drop, ...rest } = staffOf(def.id);
+                onChange({ ...playback, staves: { ...playback.staves, [def.id]: e.target.value === '' ? rest : { ...rest, midiChannel: Number(e.target.value) } } });
+              }}
+            >
+              <option value="">—</option>
+              {Array.from({ length: 16 }, (_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {i + 1}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {manage && !def.group && (
           <label title="Chiave del pentagramma">
             Chiave

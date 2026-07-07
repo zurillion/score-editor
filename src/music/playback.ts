@@ -14,6 +14,7 @@ export interface StaffPlayback {
   transpose: number; // semitones (added to the general transpose)
   mute?: boolean; // M: the staff is silent
   solo?: boolean; // S: when any staff is soloed, only soloed staves sound
+  midiChannel?: number; // 1..16 (MIDI output); absent = the piece's general channel
 }
 
 export interface PiecePlayback {
@@ -50,6 +51,12 @@ export function staffTranspose(pb: PiecePlayback, staff: Staff): number {
   return (pb.transpose || 0) + (pb.staves[staff]?.transpose || 0);
 }
 
+/** Per-staff MIDI channel (1..16), or null to use the piece's general one. */
+export function staffMidiChannel(pb: PiecePlayback, staff: Staff): number | null {
+  const c = pb.staves[staff]?.midiChannel;
+  return typeof c === 'number' && c >= 1 && c <= 16 ? c : null;
+}
+
 const clampTranspose = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(48, Math.max(-48, Math.round(v))) : 0);
 const validInstrument = (id: unknown): id is string => id === '' || (typeof id === 'string' && INSTRUMENTS.some((i) => i.id === id));
 
@@ -63,13 +70,16 @@ export function sanitizePlayback(raw: unknown): PiecePlayback | null {
   if (r.staves && typeof r.staves === 'object') {
     for (const [id, st] of Object.entries(r.staves)) {
       if (!st || typeof st !== 'object') continue;
-      const entry = st as { mute?: unknown; solo?: unknown; instrument?: unknown; volume?: unknown; transpose?: unknown };
+      const entry = st as { mute?: unknown; solo?: unknown; instrument?: unknown; volume?: unknown; transpose?: unknown; midiChannel?: unknown };
       pb.staves[id] = {
         instrument: validInstrument(entry.instrument) ? entry.instrument : '',
         volume: typeof entry.volume === 'number' && Number.isFinite(entry.volume) ? Math.min(100, Math.max(0, Math.round(entry.volume))) : 100,
         transpose: clampTranspose(entry.transpose),
         ...(entry.mute === true ? { mute: true } : {}),
         ...(entry.solo === true ? { solo: true } : {}),
+        ...(typeof entry.midiChannel === 'number' && Number.isFinite(entry.midiChannel) && Math.round(entry.midiChannel) >= 1 && Math.round(entry.midiChannel) <= 16
+          ? { midiChannel: Math.round(entry.midiChannel) }
+          : {}),
       };
     }
   }
@@ -81,6 +91,6 @@ export function isNeutralPlayback(pb: PiecePlayback): boolean {
   return (
     !pb.instrument &&
     !pb.transpose &&
-    Object.values(pb.staves).every((st) => !st || (!st.instrument && st.volume === 100 && !st.transpose && !st.mute && !st.solo))
+    Object.values(pb.staves).every((st) => !st || (!st.instrument && st.volume === 100 && !st.transpose && !st.mute && !st.solo && !st.midiChannel))
   );
 }

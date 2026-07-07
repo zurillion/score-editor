@@ -4,7 +4,7 @@ import { LayoutMode } from './music/layout';
 import { scoreMeta, measureIndexAtTick } from './music/meta';
 import { Player, playPreview } from './music/audio';
 import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, ensureInstrument, getLoadedSampler, isSynth } from './music/instruments';
-import { PiecePlayback, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffTranspose } from './music/playback';
+import { PiecePlayback, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffMidiChannel, staffTranspose } from './music/playback';
 import { scoreStaves } from './music/staves';
 import { Staff } from './music/types';
 import { durationTicks } from './music/theory';
@@ -154,7 +154,12 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       );
     }
     if (midiPlayerRef.current) {
-      midiPlayerRef.current.staves = Object.fromEntries(defs.map(({ id: s }) => [s, { gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }]));
+      midiPlayerRef.current.staves = Object.fromEntries(
+        defs.map(({ id: s }) => {
+          const c = staffMidiChannel(playback, s);
+          return [s, { gain: staffGain(playback, s), transpose: staffTranspose(playback, s), channel: c !== null ? c - 1 : null }];
+        }),
+      );
     }
   }, [playback, staffIdsKey, instrumentLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -306,7 +311,12 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       mp.loop = loopRef.current;
       mp.skipPickupInLoop = loopSkipAnacrusis;
       mp.channel = midiChannel - 1;
-      mp.staves = Object.fromEntries(scoreStaves(score).map(({ id: s }) => [s, { gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }]));
+      mp.staves = Object.fromEntries(
+        scoreStaves(score).map(({ id: s }) => {
+          const c = staffMidiChannel(playback, s);
+          return [s, { gain: staffGain(playback, s), transpose: staffTranspose(playback, s), channel: c !== null ? c - 1 : null }];
+        }),
+      );
       mp.onTick = onTick;
       mp.onEnd = onEnd;
       mp.play(score, bpm, startTick);
