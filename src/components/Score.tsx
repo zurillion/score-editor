@@ -131,6 +131,28 @@ export function Score({
     }
   }, [playheadTick, barX, barSystem, mode]);
 
+  // ---- keep the persistent cursor in view when it moves (arrow keys, paste, …):
+  // scroll only when it left the visible area, without recentring otherwise ----
+  const lastCursorRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const prev = lastCursorRef.current;
+    lastCursorRef.current = cursorTick;
+    if (prev === null || prev === cursorTick) return; // initial render / no movement: never scroll
+    if (!el || playheadTick !== null || barX === null) return; // live playback has its own follower
+    if (mode === 'horizontal') {
+      const x = PAD + barX;
+      if (x < el.scrollLeft + 30) el.scrollLeft = Math.max(0, x - el.clientWidth * 0.3);
+      else if (x > el.scrollLeft + el.clientWidth - 30) el.scrollLeft = x - el.clientWidth * 0.7;
+    } else if (barSystem >= 0) {
+      const top = PAD + barSystem * STRIDE;
+      const bottom = top + stavesLayout.height;
+      if (top < el.scrollTop) el.scrollTop = Math.max(0, top - 12);
+      // a system taller than the view gets top-aligned instead of bottom-aligned
+      else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = Math.min(bottom - el.clientHeight + 12, Math.max(0, top - 12));
+    }
+  }, [cursorTick, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- selection drag (measures / note lasso), tracked on window so it survives leaving a staff ----
   function clientToContent(cx: number, cy: number): { x: number; y: number } {
     const r = innerRef.current!.getBoundingClientRect();
