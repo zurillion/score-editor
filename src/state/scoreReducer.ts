@@ -53,6 +53,7 @@ export type ScoreAction =
   | { type: 'ADD_STAFF'; where: 'above' | 'below'; clef: Clef; grand?: boolean } // a new staff (or grand pair) at the top/bottom
   | { type: 'REMOVE_STAFF'; id: Staff } // drops the staff and every event on it
   | { type: 'UPDATE_STAFF'; id: Staff; patch: Partial<Pick<StaffDef, 'clef' | 'key' | 'hidden' | 'name'>> }
+  | { type: 'REORDER_STAVES'; order: Staff[] } // permutation of the staff ids (grand pairs stay adjacent)
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
   | { type: 'CLEAR' }
@@ -605,6 +606,28 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       if (JSON.stringify(patched) === JSON.stringify(cur)) return state;
       const next = staves.slice();
       next[idx] = patched;
+      return { ...state, staves: next };
+    }
+
+    case 'REORDER_STAVES': {
+      const staves = scoreStaves(state);
+      const byId = new Map(staves.map((s) => [s.id, s]));
+      if (action.order.length !== staves.length || new Set(action.order).size !== action.order.length) return state;
+      const next: StaffDef[] = [];
+      for (const id of action.order) {
+        const def = byId.get(id);
+        if (!def) return state; // not a permutation of the current staves
+        next.push(def);
+      }
+      // the staves of a group must stay adjacent (they render as one unit)
+      const seenGroups = new Set<string>();
+      for (let i = 0; i < next.length; i++) {
+        const g = next[i].group;
+        if (!g) continue;
+        if (seenGroups.has(g) && next[i - 1]?.group !== g) return state;
+        seenGroups.add(g);
+      }
+      if (next.every((s, i) => s === staves[i])) return state;
       return { ...state, staves: next };
     }
 

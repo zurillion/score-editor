@@ -306,6 +306,47 @@ body {
   padding: 3px 8px;
   font-size: 12px;
 }
+/* a draggable unit: one staff, or the linked pair of a grand staff */
+.mixer-unit {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.mixer-unit + .mixer-unit,
+.mixer-panel > .mixer-row.general {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.mixer-unit-rows {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mixer-drag {
+  display: flex;
+  align-items: center;
+  padding: 0 3px;
+  color: var(--muted);
+  cursor: grab;
+  user-select: none;
+  font-size: 14px;
+  letter-spacing: -2.5px;
+  border-radius: 5px;
+}
+.mixer-drag:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.mixer-unit.dragging {
+  opacity: 0.45;
+}
+.mixer-unit.drop-above {
+  box-shadow: 0 -2px 0 0 var(--accent);
+}
+.mixer-unit.drop-below {
+  box-shadow: 0 2px 0 0 var(--accent);
+}
 .mixer-row {
   display: flex;
   align-items: center;

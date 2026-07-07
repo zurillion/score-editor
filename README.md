@@ -66,8 +66,11 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   traspositori). Ogni rigo si può **mostrare/nascondere** (nascosto continua
   a suonare) — si può quindi disattivare anche l'endecalineo, in tutto o in
   parte. Tutti i righi sono uniti dalla linea verticale iniziale; ogni
-  endecalineo conserva la sua graffa. La configurazione dei righi è salvata
-  nel JSON e viaggia in MusicXML (una parte per rigo/endecalineo).
+  endecalineo conserva la sua graffa. Nel mixer i pentagrammi si
+  **riordinano trascinandoli** dalla maniglia ⋮⋮ (i due righi di un
+  endecalineo sono legati e si spostano insieme). La configurazione dei
+  righi è salvata nel JSON e viaggia in MusicXML (una parte per
+  rigo/endecalineo).
 - **Accordi** — con lo strumento *Accordo* (1 click: una volta · doppio:
   fisso) si scrive il nome dell'accordo sotto i pentagrammi, agganciato a
   una griglia di ottavi nel punto cliccato. Testo libero (nessun
