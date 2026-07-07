@@ -283,12 +283,14 @@ const GHOST_COLOR: Record<PlaceAction, string> = {
   create: '#94a3b8',
   chord: '#2563eb',
   delete: '#dc2626',
+  resize: '#0891b2',
   blocked: '#dc2626',
 };
 const GHOST_OPACITY: Record<PlaceAction, number> = {
   create: 0.6,
   chord: 0.65,
   delete: 0.65,
+  resize: 0.7,
   blocked: 0.25,
 };
 
@@ -509,7 +511,7 @@ export function System(props: SystemProps) {
   function setHoverState(h: Hover | null) {
     setHover(h);
     const name =
-      h?.mode === 'place' && tool.kind === 'note' && (h.action === 'create' || h.action === 'chord')
+      h?.mode === 'place' && tool.kind === 'note' && (h.action === 'create' || h.action === 'chord' || h.action === 'resize')
         ? pitchNameIt({ ...diatonicToPitch(h.diatonic, 0), alter: h.alter })
         : null;
     if (name !== lastHoverName.current) {
@@ -539,6 +541,25 @@ export function System(props: SystemProps) {
             const dist = Math.hypot(dx, dyy);
             if (!best || dist < best.dist) best = { measureIndex: pm.index, eventId: ev.id, staff: ev.staff, diatonic: d, hx, hy: ey, dist };
           }
+        }
+      }
+    }
+    return best;
+  }
+
+  // nearest EXPLICIT rest to (x,y) — for the eraser (auto-derived rests aren't events)
+  function pickRest(x: number, y: number) {
+    let best: { measureIndex: number; eventId: string; hx: number; hy: number; dist: number } | null = null;
+    for (const pm of layout.measures) {
+      for (const ev of pm.measure.events) {
+        if (ev.kind !== 'rest' || !rowByStaff.has(ev.staff)) continue;
+        const hx = measureTickToX(pm, ev.startTick);
+        const hy = dyOf(ev.staff) + diatonicToY(middleOf(ev.staff));
+        const dx = x - hx;
+        const dyy = y - hy;
+        if (Math.abs(dx) <= 11 && Math.abs(dyy) <= 2 * STAFF_SPACE) {
+          const dist = Math.hypot(dx, dyy);
+          if (!best || dist < best.dist) best = { measureIndex: pm.index, eventId: ev.id, hx, hy, dist };
         }
       }
     }
@@ -618,8 +639,13 @@ export function System(props: SystemProps) {
   // ---- modal tools (accidental / eraser): hit-test an existing notehead ----
   function computeTarget(x: number, y: number): TargetHover | null {
     const hit = pickNotehead(x, y, tool.kind === 'accidental' ? 20 : 0);
-    if (!hit) return null;
-    return { mode: 'target', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic, hx: hit.hx, hy: hit.hy };
+    if (hit) return { mode: 'target', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic, hx: hit.hx, hy: hit.hy };
+    // the eraser also removes an explicit rest (no notehead there)
+    if (tool.kind === 'eraser') {
+      const r = pickRest(x, y);
+      if (r) return { mode: 'target', measureIndex: r.measureIndex, eventId: r.eventId, diatonic: null, hx: r.hx, hy: r.hy };
+    }
+    return null;
   }
 
   // mousedown on a notehead with the note tool starts a diatonic drag-to-move
@@ -804,7 +830,7 @@ export function System(props: SystemProps) {
         // accidental already in effect in the measure
         const pitch = diatonicToPitch(target.diatonic, 0);
         onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration, staff: target.staff });
-        if (previewOnCreate && (target.action === 'create' || target.action === 'chord'))
+        if (previewOnCreate && (target.action === 'create' || target.action === 'chord' || target.action === 'resize'))
           onPreviewNote([{ ...pitch, alter: target.alter }], target.staff); // sound it with its effective alteration
 
       }

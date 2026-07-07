@@ -112,9 +112,21 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         return withMeasureEvents(state, action.measureIndex, [...m.events, note]);
       }
 
-      // chord / delete operate on the event of this staff that starts exactly here
+      // resize / chord / delete operate on the event of this staff that starts exactly here
       const target = m.events.find((e) => e.startTick === action.tick && e.staff === staff);
-      if (!target || target.kind !== 'note') return state;
+      if (!target) return state;
+
+      if (verdict === 'resize') {
+        // a rest becomes a note of the chosen value; a note keeps its pitches but
+        // changes value. Any span freed to the right auto-fills with rests.
+        if (target.kind === 'rest') {
+          const note: NoteEvent = { id: uid('n'), kind: 'note', staff, startTick: action.tick, duration: action.duration, pitches: [action.pitch] };
+          return withMeasureEvents(state, action.measureIndex, m.events.map((e) => (e.id === target.id ? note : e)));
+        }
+        return withMeasureEvents(state, action.measureIndex, m.events.map((e) => (e.id === target.id ? { ...target, duration: action.duration } : e)));
+      }
+
+      if (target.kind !== 'note') return state;
 
       if (verdict === 'delete') {
         const pitches = target.pitches.filter((p) => !pitchEquals(p, action.pitch));
