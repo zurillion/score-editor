@@ -356,14 +356,14 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         return { mi: nextIdx + extra, local: g - (base + extra * tailTotal) };
       };
       // group pasted notes by target measure, preserving their relative offsets
-      type Item = { tick: number; staff: Staff; duration: Duration; pitches: Pitch[]; tuplet?: Tuplet };
+      type Item = { tick: number; staff: Staff; duration: Duration; pitches: Pitch[]; tuplet?: Tuplet; tieToNext?: boolean; staccato?: boolean; arpeggio?: boolean };
       const groups = new Map<number, Item[]>();
       for (const ev of action.events) {
         const g = action.baseTick + ev.offset;
         if (g < 0) continue;
         const { mi, local } = locate(g);
         const list = groups.get(mi) ?? [];
-        list.push({ tick: local, staff: ev.staff, duration: ev.duration, pitches: ev.pitches, tuplet: ev.tuplet });
+        list.push({ tick: local, staff: ev.staff, duration: ev.duration, pitches: ev.pitches, tuplet: ev.tuplet, tieToNext: ev.tieToNext, staccato: ev.staccato, arpeggio: ev.arpeggio });
         groups.set(mi, list);
       }
       if (groups.size === 0) return state;
@@ -403,6 +403,9 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
             startTick: it.tick,
             duration: it.duration,
             ...(tup ? { tuplet: tup } : {}),
+            ...(it.tieToNext ? { tieToNext: true } : {}),
+            ...(it.staccato ? { staccato: true } : {}),
+            ...(it.arpeggio ? { arpeggio: true } : {}),
             pitches: it.pitches.map((p) => ({ ...p })),
           };
         });

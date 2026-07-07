@@ -13,6 +13,9 @@ export interface ClipNote {
   duration: Duration;
   pitches: Pitch[];
   tuplet?: Tuplet;
+  tieToNext?: boolean;
+  staccato?: boolean;
+  arpeggio?: boolean;
 }
 
 /** What a copy/cut put aside. */

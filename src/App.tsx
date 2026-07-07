@@ -467,15 +467,25 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         return { kind: 'measures', measures: score.measures.filter((_, i) => idx.has(i)).map(clone) };
       }
       const ids = new Set(selection.ids);
-      const picked: { g: number; staff: NoteEvent['staff']; duration: NoteEvent['duration']; pitches: NoteEvent['pitches']; tuplet: NoteEvent['tuplet'] }[] = [];
+      const picked: { g: number; e: NoteEvent }[] = [];
       score.measures.forEach((m, mi) =>
         m.events.forEach((e) => {
-          if (e.kind === 'note' && ids.has(e.id)) picked.push({ g: meta.measures[mi].startTick + e.startTick, staff: e.staff, duration: e.duration, pitches: e.pitches, tuplet: e.tuplet });
+          if (e.kind === 'note' && ids.has(e.id)) picked.push({ g: meta.measures[mi].startTick + e.startTick, e });
         }),
       );
       if (picked.length === 0) return null;
       const minG = Math.min(...picked.map((p) => p.g));
-      const events: ClipNote[] = picked.map((p) => ({ offset: p.g - minG, staff: p.staff, duration: clone(p.duration), pitches: clone(p.pitches), ...(p.tuplet ? { tuplet: clone(p.tuplet) } : {}) }));
+      // keep the whole notation: articulations and ties travel with the copy
+      const events: ClipNote[] = picked.map(({ g, e }) => ({
+        offset: g - minG,
+        staff: e.staff,
+        duration: clone(e.duration),
+        pitches: clone(e.pitches),
+        ...(e.tuplet ? { tuplet: clone(e.tuplet) } : {}),
+        ...(e.tieToNext ? { tieToNext: true } : {}),
+        ...(e.staccato ? { staccato: true } : {}),
+        ...(e.arpeggio ? { arpeggio: true } : {}),
+      }));
       return { kind: 'notes', events };
     };
     const deleteSelection = () => {
