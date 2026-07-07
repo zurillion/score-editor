@@ -419,7 +419,7 @@ export function Toolbar(props: ToolbarProps) {
       </div>
 
       {/* fascia bassa (vicino allo spartito): palette di inserimento e strumenti */}
-      <div className="toolbar-row">
+      <div className="toolbar-row palette-band">
         <fieldset className="group">
           <legend>Note / Pause</legend>
           <div className="palette">

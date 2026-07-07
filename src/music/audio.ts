@@ -2,7 +2,8 @@ import { Pitch, ScoreState } from './types';
 import { eventTicks, pitchToFrequency, pitchToMidi } from './theory';
 import { resolveMeasure } from './accidentals';
 import { scoreMeta } from './meta';
-import { ARPEGGIO_STEP_SEC, STACCATO_FRACTION, TICKS_PER_QUARTER } from './constants';
+import { TICKS_PER_QUARTER } from './constants';
+import { getArpeggioStepSec, getStaccatoFraction } from './playbackPrefs';
 import { Sampler, nearestZone } from './instruments';
 
 /**
@@ -92,7 +93,7 @@ export interface ScheduledNote {
 /** Attack delay in seconds for a scheduled note inside a rolled chord (end stays put). */
 export function arpeggioOffsetSec(n: ScheduledNote, durSec: number): number {
   if (!n.arpIndex) return 0;
-  return Math.min(n.arpIndex * ARPEGGIO_STEP_SEC, durSec * 0.6); // cramped rolls compress instead of swallowing the note
+  return Math.min(n.arpIndex * getArpeggioStepSec(), durSec * 0.6); // cramped rolls compress instead of swallowing the note
 }
 
 /** One contiguous stretch of the score as it appears in playback order. */
@@ -244,7 +245,7 @@ export function buildSchedule(score: ScoreState): Schedule {
       }
       // staccato: sound only a fraction of the written span (attack unchanged)
       let durT = end - arr[i].startG;
-      if (arr[i].stac) durT = Math.max(24, Math.round(durT * STACCATO_FRACTION));
+      if (arr[i].stac) durT = Math.max(24, Math.round(durT * getStaccatoFraction()));
       scoreNotes.push({ startTick: arr[i].startG, durTicks: durT, freqs: [arr[i].freq], midis: [arr[i].midi], ...(arr[i].arp ? { arpIndex: arr[i].arp } : {}) });
     }
   }

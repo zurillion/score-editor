@@ -972,7 +972,7 @@ export function System(props: SystemProps) {
       if (ev.kind !== 'note' || !ev.staccato) continue;
       const ds = ev.pitches.map(pitchToDiatonic);
       const stemUp = beamProps.get(ev.id)?.stemUp ?? stemUpForChord(ds, ev.staff);
-      const y = stemUp ? diatonicToY(Math.min(...ds)) + 8.5 : diatonicToY(Math.max(...ds)) - 8.5;
+      const y = stemUp ? diatonicToY(Math.min(...ds)) + 12 : diatonicToY(Math.max(...ds)) - 12;
       els.push(<circle key={`stc-${ev.id}`} cx={measureTickToX(pm, ev.startTick)} cy={y} r={2.2} fill="#1a1a1a" pointerEvents="none" />);
     }
     return els;

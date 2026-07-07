@@ -49,11 +49,11 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   per eliminarlo.
 - **Staccato** — con lo strumento *Staccato* si clicca su una nota o un
   accordo per il puntino (sul lato opposto al gambo); nel playback suona
-  una frazione della durata scritta (50%, parametro interno).
+  una frazione della durata scritta (regolabile nelle Opzioni).
 - **Arpeggiato** — con lo strumento *Arpeggio* si trascina in verticale
   sulle note da arpeggiare: la linea ondulata compare a sinistra e nel
-  playback le note attaccano scaglionate dal grave all'acuto (50 ms per
-  nota, parametro interno), tenendo tutte fino alla fine. Un trascinamento
+  playback le note attaccano scaglionate dal grave all'acuto (velocità
+  regolabile nelle Opzioni), tenendo tutte fino alla fine. Un trascinamento
   che copre entrambi i pentagrammi crea un **arpeggio unico** trans-rigo;
   ripetere il gesto toglie l'arpeggio.
 - **Ritornelli** — con lo strumento *Ritornello*: clic nella metà sinistra di

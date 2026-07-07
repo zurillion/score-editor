@@ -5,6 +5,7 @@ import { durationTicks } from './music/theory';
 import { scoreMeta, measureIndexAtTick } from './music/meta';
 import { Player, playPreview } from './music/audio';
 import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, Sampler, ensureInstrument, getInstrument, getLoadedSampler, isSynth } from './music/instruments';
+import { DEFAULT_ARPEGGIO_MS, DEFAULT_STACCATO_PCT, setArpeggioStepMs, setStaccatoPct } from './music/playbackPrefs';
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
 import { initialHistory, historyReducer } from './state/scoreReducer';
 import { Tool, NOTE_TOOL } from './state/tool';
@@ -132,6 +133,40 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       alive = false;
     };
   }, [instrument]);
+
+  // playback feel: arpeggio speed and staccato length (persisted, pushed into the schedulers)
+  const [arpeggioMs, setArpeggioMs] = useState<number>(() => {
+    try {
+      const stored = Number(localStorage.getItem('opt.arpeggioMs'));
+      return Number.isFinite(stored) && stored >= 10 ? stored : DEFAULT_ARPEGGIO_MS;
+    } catch {
+      return DEFAULT_ARPEGGIO_MS;
+    }
+  });
+  useEffect(() => {
+    setArpeggioStepMs(arpeggioMs);
+    try {
+      localStorage.setItem('opt.arpeggioMs', String(arpeggioMs));
+    } catch {
+      /* ignore */
+    }
+  }, [arpeggioMs]);
+  const [staccatoPct, setStaccatoPctState] = useState<number>(() => {
+    try {
+      const stored = Number(localStorage.getItem('opt.staccatoPct'));
+      return Number.isFinite(stored) && stored >= 20 && stored <= 90 ? stored : DEFAULT_STACCATO_PCT;
+    } catch {
+      return DEFAULT_STACCATO_PCT;
+    }
+  });
+  useEffect(() => {
+    setStaccatoPct(staccatoPct);
+    try {
+      localStorage.setItem('opt.staccatoPct', String(staccatoPct));
+    } catch {
+      /* ignore */
+    }
+  }, [staccatoPct]);
 
   const clipboardRef = useRef<Clipboard | null>(null);
   const systemRangesRef = useRef<SystemRange[]>([]);
@@ -668,6 +703,10 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         setDiagonalBeams={setDiagonalBeams}
         loopSkipAnacrusis={loopSkipAnacrusis}
         setLoopSkipAnacrusis={setLoopSkipAnacrusis}
+        arpeggioMs={arpeggioMs}
+        setArpeggioMs={setArpeggioMs}
+        staccatoPct={staccatoPct}
+        setStaccatoPct={setStaccatoPctState}
       />
     </div>
   );

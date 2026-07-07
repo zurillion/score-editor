@@ -288,6 +288,10 @@ body {
   gap: 8px;
   align-items: flex-end;
 }
+/* the palette band aligns to the top (Note/Pause is the tall reference) */
+.palette-band {
+  align-items: flex-start;
+}
 /* the two-line Note/Pause palette leaves room for two stacked sub-rows at its right */
 .palette-right {
   display: flex;
@@ -635,6 +639,31 @@ input[type='number'] {
   margin-top: 3px;
   width: 16px;
   height: 16px;
+}
+/* rows whose control is a slider: text on the left, slider + value on the right */
+.option-slider {
+  cursor: default;
+  justify-content: space-between;
+  align-items: center;
+}
+.option-slider .slider-control {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.option-slider .slider-control input[type='range'] {
+  width: 140px;
+  height: auto;
+  margin: 0;
+}
+.option-slider .option-value {
+  display: inline;
+  min-width: 52px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 .option-row span {
   display: flex;
