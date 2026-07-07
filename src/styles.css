@@ -512,6 +512,11 @@ input[type='number'] {
 .instrument select {
   max-width: 148px;
 }
+/* every staff has a specific instrument in the mixer: the general choice
+   has no effect right now — dimmed but still selectable */
+.instrument.unused {
+  opacity: 0.45;
+}
 .inst-icon {
   display: inline-flex;
   width: 30px;

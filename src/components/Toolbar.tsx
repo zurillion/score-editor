@@ -7,7 +7,7 @@ import { MidiOutputInfo } from '../music/midi';
 import { INSTRUMENTS } from '../music/instruments';
 import { InstrumentIcon } from './InstrumentIcon';
 import { MixerPanel } from './MixerPanel';
-import { PiecePlayback } from '../music/playback';
+import { PiecePlayback, STAFF_IDS } from '../music/playback';
 import { useState } from 'react';
 import { PieceSummary } from '../api';
 import { ExportFormat, ExportMenuButton } from './ExportMenuButton';
@@ -216,6 +216,8 @@ export function Toolbar(props: ToolbarProps) {
   const tieClass = tool.kind === 'tie' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const staccatoClass = tool.kind === 'staccato' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const [mixerOpen, setMixerOpen] = useState(false);
+  // every staff has its own instrument in the mixer: the general one has no effect
+  const generalUnused = STAFF_IDS.every((s) => playback.staves[s]?.instrument);
 
   return (
     <div className="toolbar">
@@ -311,7 +313,14 @@ export function Toolbar(props: ToolbarProps) {
             <button className={`play ${isPlaying ? 'stop' : ''}`} onClick={isPlaying ? onStop : onPlay}>
               {isPlaying ? '■ Stop' : '▶ Play'}
             </button>
-            <label className="instrument" title="Strumento generale del playback (i righi senza strumento specifico usano questo; '—' = nessuna scelta)">
+            <label
+              className={`instrument ${generalUnused ? 'unused' : ''}`}
+              title={
+                generalUnused
+                  ? 'Strumento generale del playback — al momento senza effetto: ogni rigo ha uno strumento specifico nel mixer'
+                  : "Strumento generale del playback (i righi senza strumento specifico usano questo; '—' = nessuna scelta)"
+              }
+            >
               <InstrumentIcon id={playback.instrument} />
               <select
                 value={playback.instrument}
