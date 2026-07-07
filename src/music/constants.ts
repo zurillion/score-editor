@@ -12,7 +12,7 @@ export const HALF_SPACE = STAFF_SPACE / 2;
 export const STAFF_TOP = 64; // y of the top treble line (F5, diatonic 38)
 // Middle C is diatonic 28, i.e. 10 half-spaces below F5.
 export const Y_MIDDLE_C = STAFF_TOP + (38 - 28) * HALF_SPACE;
-export const SYSTEM_HEIGHT = 248; // total vertical space reserved per system
+export const SYSTEM_HEIGHT = 272; // total vertical space reserved per system (low ledger notes + chord names below)
 export const SYSTEM_GAP = 26; // vertical gap between systems in page mode
 
 // ---- Horizontal layout (pixels) ----

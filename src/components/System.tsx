@@ -21,6 +21,7 @@ import {
   KEYSIG_STEP,
   keySigWidth,
   REPEAT_START_PAD,
+  STAFF_BOTTOM_DIATONIC,
 } from '../music/layout';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
@@ -54,8 +55,9 @@ const TOP_Y = diatonicToY(38);
 const BOTTOM_Y = diatonicToY(18);
 // repeat-sign dots sit in the spaces around the middle line of each staff
 const REPEAT_DOT_DS = [TREBLE_MIDDLE + 1, TREBLE_MIDDLE - 1, BASS_MIDDLE + 1, BASS_MIDDLE - 1];
-// chord names go under the grand staff, clear of most ledger lines
-const CHORD_Y = 234;
+// default baseline of the chord names under the grand staff; each system
+// pushes it further down when it contains very low ledger notes
+const CHORD_Y_BASE = 234;
 const CHORD_GRID = Math.round(TICKS_PER_QUARTER / 2); // chords snap to eighths
 const SEL_FILL = 'rgba(37,99,235,0.13)';
 const SEL_STROKE = 'rgba(37,99,235,0.7)';
@@ -389,6 +391,14 @@ export function System(props: SystemProps) {
   const [repeatDragIndex, setRepeatDragIndex] = useState<number | null>(null); // show the count (even ×1) while dragging
   const lastRepeatInsertRef = useRef<{ key: string; t: number } | null>(null); // so a double-click on empty space doesn't insert+delete
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
+
+  // chord-name baseline for this system: below the lowest ledger note present
+  // (uniform across the line so the names sit on one row)
+  const lowestDiatonic = Math.min(
+    STAFF_BOTTOM_DIATONIC,
+    ...layout.measures.flatMap((pm) => pm.measure.events.flatMap((e) => (e.kind === 'note' ? e.pitches.map(pitchToDiatonic) : []))),
+  );
+  const chordY = Math.min(SYSTEM_HEIGHT - 8, Math.max(CHORD_Y_BASE, diatonicToY(lowestDiatonic) + 20));
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
   const modal = tool.kind === 'accidental' || tool.kind === 'eraser' || tool.kind === 'dot' || tool.kind === 'tuplet' || tool.kind === 'tie' || tool.kind === 'staccato';
@@ -801,8 +811,8 @@ export function System(props: SystemProps) {
     // text caret at the snapped eighth position
     overlay = (
       <g pointerEvents="none" stroke="#2563eb" opacity={0.8}>
-        <line x1={hover.x} x2={hover.x} y1={CHORD_Y - 12} y2={CHORD_Y + 3} strokeWidth={1.6} />
-        <line x1={hover.x - 4.5} x2={hover.x + 4.5} y1={CHORD_Y + 3} y2={CHORD_Y + 3} strokeWidth={1.3} />
+        <line x1={hover.x} x2={hover.x} y1={chordY - 12} y2={chordY + 3} strokeWidth={1.6} />
+        <line x1={hover.x - 4.5} x2={hover.x + 4.5} y1={chordY + 3} y2={chordY + 3} strokeWidth={1.3} />
       </g>
     );
   } else if (hover?.mode === 'target') {
@@ -1179,7 +1189,7 @@ export function System(props: SystemProps) {
               <text
                 key={`chs-${pm.index}-${c.tick}`}
                 x={measureTickToX(pm, c.tick)}
-                y={CHORD_Y}
+                y={chordY}
                 textAnchor="middle"
                 fontSize={14}
                 fontWeight={600}
@@ -1265,7 +1275,7 @@ export function System(props: SystemProps) {
 
       {/* inline editor for a chord name (chord tool) */}
       {chordEdit && (
-        <foreignObject x={chordEdit.x - 48} y={CHORD_Y - 16} width={96} height={26}>
+        <foreignObject x={chordEdit.x - 48} y={chordY - 16} width={96} height={26}>
           <input
             className="chord-input"
             autoFocus
