@@ -288,6 +288,19 @@ body {
   gap: 8px;
   align-items: flex-end;
 }
+/* the two-line Note/Pause palette leaves room for two stacked sub-rows at its right */
+.palette-right {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.palette-subrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
 
 .gear-btn {
   position: absolute;

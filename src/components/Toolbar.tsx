@@ -455,140 +455,147 @@ export function Toolbar(props: ToolbarProps) {
             </div>
           </div>
         </fieldset>
-        <fieldset className="group">
-          <legend>Nota</legend>
-          <div className="note-readout" title="Nota che verrebbe inserita (armatura e alterazioni della battuta incluse)">
-            {hoverNote ?? '—'}
+        {/* a destra della palette (alta due righe): tool sopra, strumenti sotto */}
+        <div className="palette-right">
+          <div className="palette-subrow">
+            <fieldset className="group">
+              <legend>Nota</legend>
+              <div className="note-readout" title="Nota che verrebbe inserita (armatura e alterazioni della battuta incluse)">
+                {hoverNote ?? '—'}
+              </div>
+            </fieldset>
+            <fieldset className="group">
+              <legend>Punti</legend>
+              <div className="btn-row">
+                {([1, 2] as const).map((n) => {
+                  const active = tool.kind === 'dot' && tool.dots === n;
+                  const cls = active ? (tool.sticky ? 'on sticky' : 'on') : '';
+                  return (
+                    <button
+                      key={n}
+                      className={cls}
+                      onClick={(e) => clickDot(n, e.detail)}
+                      title={`Punto${n === 2 ? ' doppio' : ''} — 1 click: una volta · doppio click: modalità fissa. Clicca sulla nota.`}
+                    >
+                      {'•'.repeat(n)}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+            <fieldset className="group">
+              <legend>Alterazione</legend>
+              <div className="btn-row">
+                {ACCIDENTALS.map(({ alter, title }) => {
+                  const active = tool.kind === 'accidental' && tool.alter === alter;
+                  const cls = active ? (tool.sticky ? 'on sticky' : 'on') : '';
+                  return (
+                    <button
+                      key={alter}
+                      className={`glyph-btn ${cls}`}
+                      onClick={(e) => clickAccidental(alter, e.detail)}
+                      title={`${title} — 1 click: una volta · doppio click: modalità fissa`}
+                    >
+                      <span className="bravura acc">{SMUFL.accidentals[String(alter)]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
           </div>
-        </fieldset>
-        <fieldset className="group">
-          <legend>Punti</legend>
-          <div className="btn-row">
-            {([1, 2] as const).map((n) => {
-              const active = tool.kind === 'dot' && tool.dots === n;
-              const cls = active ? (tool.sticky ? 'on sticky' : 'on') : '';
-              return (
+          <div className="palette-subrow">
+            <fieldset className="group">
+              <legend>Strumenti</legend>
+              <div className="btn-row">
                 <button
-                  key={n}
-                  className={cls}
-                  onClick={(e) => clickDot(n, e.detail)}
-                  title={`Punto${n === 2 ? ' doppio' : ''} — 1 click: una volta · doppio click: modalità fissa. Clicca sulla nota.`}
+                  className={eraserClass}
+                  onClick={(e) => clickEraser(e.detail)}
+                  title="Gomma — 1 click: una volta · doppio click: modalità fissa. Clicca sulla testa della nota."
                 >
-                  {'•'.repeat(n)}
+                  ⌫ Gomma
                 </button>
-              );
-            })}
-          </div>
-        </fieldset>
-        <fieldset className="group">
-          <legend>Alterazione</legend>
-          <div className="btn-row">
-            {ACCIDENTALS.map(({ alter, title }) => {
-              const active = tool.kind === 'accidental' && tool.alter === alter;
-              const cls = active ? (tool.sticky ? 'on sticky' : 'on') : '';
-              return (
                 <button
-                  key={alter}
-                  className={`glyph-btn ${cls}`}
-                  onClick={(e) => clickAccidental(alter, e.detail)}
-                  title={`${title} — 1 click: una volta · doppio click: modalità fissa`}
+                  className={tupletClass}
+                  onClick={(e) => clickTuplet(e.detail)}
+                  title="Terzina — clicca su una nota per trasformarla in una terzina (3 note nel tempo di 2). 1 click: una volta · doppio click: fissa."
                 >
-                  <span className="bravura acc">{SMUFL.accidentals[String(alter)]}</span>
+                  ³ Terzina
                 </button>
-              );
-            })}
+                <button
+                  className={tieClass}
+                  onClick={(e) => clickTie(e.detail)}
+                  title="Legatura di valore — clicca una nota per legarla alla successiva della stessa altezza (anche tra battute). 1 click: una volta · doppio click: fissa."
+                >
+                  ⌣ Legatura
+                </button>
+                <button
+                  className={chordClass}
+                  onClick={(e) => clickChord(e.detail)}
+                  title="Accordo — clicca sotto il rigo per scrivere il nome dell'accordo (testo libero, griglia di ottavi). Clic su un accordo esistente per modificarlo; testo vuoto lo elimina. 1 click: una volta · doppio click: fissa."
+                >
+                  C⁷ Accordo
+                </button>
+                <button
+                  className={arpClass}
+                  onClick={(e) => clickArpeggio(e.detail)}
+                  title="Arpeggiato — trascina in verticale sulle note da arpeggiare (anche su entrambi i pentagrammi: rullano come un accordo unico, dal grave all'acuto). Ripeti sulle stesse note per togliere. 1 click: una volta · doppio click: fissa."
+                >
+                  ≀ Arpeggio
+                </button>
+                <button
+                  className={staccatoClass}
+                  onClick={(e) => clickStaccato(e.detail)}
+                  title="Staccato — clicca su una nota o un accordo per aggiungere/togliere il puntino di staccato (suona una frazione della durata scritta). 1 click: una volta · doppio click: fissa."
+                >
+                  ˙ Staccato
+                </button>
+                <button
+                  className={`glyph-btn ${tool.kind === 'repeat' ? 'on' : ''}`}
+                  onClick={() => setTool(tool.kind === 'repeat' ? { kind: 'note' } : { kind: 'repeat' })}
+                  title={
+                    'Ritornello — clic nella metà sinistra di una battuta: segno di inizio |: · metà destra: segno di fine :| .\n' +
+                    'Trascina su/giù sul segno di inizio per il numero di esecuzioni (sotto 1 = ∞ : la sezione va in loop).\n' +
+                    'Doppio clic su un segno lo elimina.'
+                  }
+                >
+                  <span className="bravura repeat-glyph">{SMUFL.repeatLeft}</span>
+                  <span style={{ marginLeft: 6 }}>Ritornello</span>
+                </button>
+                <button
+                  className={`icon-btn ${tool.kind === 'select-measures' ? 'on' : ''}`}
+                  onClick={() => setTool({ kind: 'select-measures' })}
+                  title="Seleziona battute (trascina). ⌘C/X copia/taglia · Backspace elimina"
+                  aria-label="Seleziona battute"
+                >
+                  <MeasureIcon />
+                </button>
+                <button onClick={onInsertMeasures} title="Inserisci battute vuote al punto di playback" aria-label="Inserisci battute">
+                  +
+                </button>
+                <button
+                  className={`icon-btn ${tool.kind === 'select-notes' ? 'on' : ''}`}
+                  onClick={() => setTool({ kind: 'select-notes' })}
+                  title="Lazo: seleziona note (trascina un rettangolo). ⌘C/X · Backspace"
+                  aria-label="Lazo note"
+                >
+                  <LassoIcon />
+                </button>
+              </div>
+            </fieldset>
+            <fieldset className="group">
+              <legend>Audio</legend>
+              <div className="btn-row">
+                <button
+                  className={previewOnCreate ? 'on' : ''}
+                  onClick={() => setPreviewOnCreate(!previewOnCreate)}
+                  title="Suona la nota appena creata (durata fissa)"
+                >
+                  ♪ Suona nota
+                </button>
+              </div>
+            </fieldset>
           </div>
-        </fieldset>
-        <fieldset className="group">
-          <legend>Strumenti</legend>
-          <div className="btn-row">
-            <button
-              className={eraserClass}
-              onClick={(e) => clickEraser(e.detail)}
-              title="Gomma — 1 click: una volta · doppio click: modalità fissa. Clicca sulla testa della nota."
-            >
-              ⌫ Gomma
-            </button>
-            <button
-              className={tupletClass}
-              onClick={(e) => clickTuplet(e.detail)}
-              title="Terzina — clicca su una nota per trasformarla in una terzina (3 note nel tempo di 2). 1 click: una volta · doppio click: fissa."
-            >
-              ³ Terzina
-            </button>
-            <button
-              className={tieClass}
-              onClick={(e) => clickTie(e.detail)}
-              title="Legatura di valore — clicca una nota per legarla alla successiva della stessa altezza (anche tra battute). 1 click: una volta · doppio click: fissa."
-            >
-              ⌣ Legatura
-            </button>
-            <button
-              className={chordClass}
-              onClick={(e) => clickChord(e.detail)}
-              title="Accordo — clicca sotto il rigo per scrivere il nome dell'accordo (testo libero, griglia di ottavi). Clic su un accordo esistente per modificarlo; testo vuoto lo elimina. 1 click: una volta · doppio click: fissa."
-            >
-              C⁷ Accordo
-            </button>
-            <button
-              className={arpClass}
-              onClick={(e) => clickArpeggio(e.detail)}
-              title="Arpeggiato — trascina in verticale sulle note da arpeggiare (anche su entrambi i pentagrammi: rullano come un accordo unico, dal grave all'acuto). Ripeti sulle stesse note per togliere. 1 click: una volta · doppio click: fissa."
-            >
-              ≀ Arpeggio
-            </button>
-            <button
-              className={staccatoClass}
-              onClick={(e) => clickStaccato(e.detail)}
-              title="Staccato — clicca su una nota o un accordo per aggiungere/togliere il puntino di staccato (suona una frazione della durata scritta). 1 click: una volta · doppio click: fissa."
-            >
-              ˙ Staccato
-            </button>
-            <button
-              className={`glyph-btn ${tool.kind === 'repeat' ? 'on' : ''}`}
-              onClick={() => setTool(tool.kind === 'repeat' ? { kind: 'note' } : { kind: 'repeat' })}
-              title={
-                'Ritornello — clic nella metà sinistra di una battuta: segno di inizio |: · metà destra: segno di fine :| .\n' +
-                'Trascina su/giù sul segno di inizio per il numero di esecuzioni (sotto 1 = ∞ : la sezione va in loop).\n' +
-                'Doppio clic su un segno lo elimina.'
-              }
-            >
-              <span className="bravura repeat-glyph">{SMUFL.repeatLeft}</span>
-              <span style={{ marginLeft: 6 }}>Ritornello</span>
-            </button>
-            <button
-              className={`icon-btn ${tool.kind === 'select-measures' ? 'on' : ''}`}
-              onClick={() => setTool({ kind: 'select-measures' })}
-              title="Seleziona battute (trascina). ⌘C/X copia/taglia · Backspace elimina"
-              aria-label="Seleziona battute"
-            >
-              <MeasureIcon />
-            </button>
-            <button onClick={onInsertMeasures} title="Inserisci battute vuote al punto di playback" aria-label="Inserisci battute">
-              +
-            </button>
-            <button
-              className={`icon-btn ${tool.kind === 'select-notes' ? 'on' : ''}`}
-              onClick={() => setTool({ kind: 'select-notes' })}
-              title="Lazo: seleziona note (trascina un rettangolo). ⌘C/X · Backspace"
-              aria-label="Lazo note"
-            >
-              <LassoIcon />
-            </button>
-          </div>
-        </fieldset>
-        <fieldset className="group">
-          <legend>Audio</legend>
-          <div className="btn-row">
-            <button
-              className={previewOnCreate ? 'on' : ''}
-              onClick={() => setPreviewOnCreate(!previewOnCreate)}
-              title="Suona la nota appena creata (durata fissa)"
-            >
-              ♪ Suona nota
-            </button>
-          </div>
-        </fieldset>
+        </div>
       </div>
     </div>
   );
