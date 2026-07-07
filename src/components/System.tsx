@@ -601,7 +601,7 @@ export function System(props: SystemProps) {
       if (col) setArpDrag({ measureIndex: col.pm.index, tick: col.tick, x: col.x, startY: pt.y, curY: pt.y });
       return;
     }
-    if (tool.kind !== 'note') return;
+    if (tool.kind !== 'note' && tool.kind !== 'pointer') return;
     const pt = localPoint(e.clientX, e.clientY);
     if (!pt) return;
     const hit = pickNotehead(pt.x, pt.y, 0);
@@ -651,7 +651,7 @@ export function System(props: SystemProps) {
       return;
     }
     if (placing) setHoverState(computePlace(pt.x, pt.y));
-    else if (modal) setHoverState(computeTarget(pt.x, pt.y));
+    else if (modal || tool.kind === 'pointer') setHoverState(computeTarget(pt.x, pt.y));
     else if (tool.kind === 'repeat') setHoverState(computeRepeatHover(pt.x));
     else if (tool.kind === 'chord') {
       const t = chordTarget(pt.x);
@@ -730,6 +730,16 @@ export function System(props: SystemProps) {
       return;
     }
     if (tool.kind === 'select-measures' || tool.kind === 'select-notes') return;
+
+    if (tool.kind === 'pointer') {
+      // the arrow never creates: over a notehead only the drag acts, anywhere
+      // else the click repositions the playback/insertion cursor
+      if (!pickNotehead(pt.x, pt.y, 0)) {
+        const g = globalTickAt(pt.x);
+        if (g !== null) onSetCursor(g);
+      }
+      return;
+    }
 
     if (tool.kind === 'chord') {
       const t = chordTarget(pt.x);
@@ -817,7 +827,7 @@ export function System(props: SystemProps) {
     );
   } else if (hover?.mode === 'target') {
     const color =
-      tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : tool.kind === 'tuplet' ? '#7c3aed' : tool.kind === 'tie' ? '#0ea5e9' : tool.kind === 'staccato' ? '#d97706' : '#dc2626';
+      tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : tool.kind === 'tuplet' ? '#7c3aed' : tool.kind === 'tie' ? '#0ea5e9' : tool.kind === 'staccato' ? '#d97706' : tool.kind === 'pointer' ? '#475569' : '#dc2626';
     overlay = (
       <g pointerEvents="none">
         <circle cx={hover.hx} cy={hover.hy} r={NOTEHEAD_RX + 3} fill={`${color}22`} stroke={color} strokeWidth={1.4} />

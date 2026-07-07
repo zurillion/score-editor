@@ -600,6 +600,10 @@ input[type='number'] {
 .system[data-tool='accidental'] {
   cursor: pointer;
 }
+/* the arrow tool keeps the plain mouse arrow */
+.system[data-tool='pointer'] {
+  cursor: default;
+}
 .system[data-tool='repeat'] {
   cursor: copy;
 }

@@ -31,6 +31,9 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
 
   L'anteprima cambia colore per anticipare l'azione: grigio = inserisci,
   blu = accordo, rosso = cancella.
+- **Freccia** — lo strumento puntatore (icona della freccia del mouse) non
+  crea note: trascinando una nota la si alza/abbassa di intonazione, un clic
+  in un punto vuoto sposta l'indicatore di playback/inserimento.
 - **Due viste**
   - **Orizzontale**: la partitura è un unico rigo che scorre a sinistra/destra
     (anche automaticamente durante il playback).

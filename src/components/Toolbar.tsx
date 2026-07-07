@@ -120,6 +120,15 @@ function GearIcon() {
   );
 }
 
+/** The classic mouse-cursor arrow, for the pointer tool. */
+function PointerArrowIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style={{ verticalAlign: '-2px' }}>
+      <path d="M5 2.5 L5 18.5 L9.2 14.9 L11.9 21 L14.6 19.8 L11.9 13.8 L17.5 13.3 Z" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function Toolbar(props: ToolbarProps) {
   const {
     tool,
@@ -522,6 +531,13 @@ export function Toolbar(props: ToolbarProps) {
             <fieldset className="group">
               <legend>Strumenti</legend>
               <div className="btn-row">
+                <button
+                  className={tool.kind === 'pointer' ? 'on' : ''}
+                  onClick={() => setTool(tool.kind === 'pointer' ? { kind: 'note' } : { kind: 'pointer' })}
+                  title="Freccia — non crea note: trascina una nota per alzarla o abbassarla di intonazione; un clic in un punto vuoto sposta l'indicatore di playback/inserimento."
+                >
+                  <PointerArrowIcon /> Freccia
+                </button>
                 <button
                   className={eraserClass}
                   onClick={(e) => clickEraser(e.detail)}

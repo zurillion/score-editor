@@ -10,6 +10,7 @@ import { Alter } from '../music/types';
  * `select-measures` / `select-notes` select content for copy/cut/delete.
  */
 export type Tool =
+  | { kind: 'pointer' } // arrow: drags noteheads up/down in pitch, never creates; a click on empty space moves the playback/insertion cursor
   | { kind: 'note' }
   | { kind: 'rest' }
   | { kind: 'accidental'; alter: Alter; sticky: boolean }
