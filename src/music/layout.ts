@@ -1,5 +1,5 @@
 import { Measure, Staff, TimeSignature } from './types';
-import { measureTicks } from './theory';
+import { eventTicks, measureTicks } from './theory';
 import { MeasureMeta } from './meta';
 import { keyChangeNaturals } from './key';
 import { HALF_SPACE, Y_MIDDLE_C, HEADER_WIDTH, MEASURE_PAD, PX_PER_TICK } from './constants';
@@ -78,10 +78,25 @@ export function widthForTicks(ticks: number): number {
   return Math.max(96, ticks * PX_PER_TICK + 2 * MEASURE_PAD);
 }
 
+const MIN_EVENT_PX = 16; // a note value should never be narrower than this
+
+/**
+ * Horizontal stretch for a crowded measure: the shortest event present must
+ * get at least MIN_EVENT_PX, so a bar of 32nds (8px each at the base scale)
+ * widens progressively instead of cramming.
+ */
+export function densityScale(m: Measure): number {
+  let minTicks = Infinity;
+  for (const e of m.events) minTicks = Math.min(minTicks, eventTicks(e));
+  if (!Number.isFinite(minTicks) || minTicks <= 0) return 1;
+  const px = minTicks * PX_PER_TICK;
+  return px >= MIN_EVENT_PX ? 1 : Math.min(4, MIN_EVENT_PX / px);
+}
+
 /** Drawn width of a measure: a normal bar has a readable minimum; an anacrusis hugs its content. */
-export function measureWidth(meta: MeasureMeta): number {
-  if (meta.pickup) return Math.max(2 * MEASURE_PAD + 12, meta.spanTicks * PX_PER_TICK + 2 * MEASURE_PAD);
-  return widthForTicks(meta.spanTicks);
+export function measureWidth(meta: MeasureMeta, scale = 1): number {
+  if (meta.pickup) return Math.max(2 * MEASURE_PAD + 12, meta.spanTicks * scale * PX_PER_TICK + 2 * MEASURE_PAD);
+  return widthForTicks(meta.spanTicks * scale);
 }
 
 /** x of a local tick inside a placed measure (notes start past any left inset). */
@@ -172,7 +187,7 @@ function buildSystem(
     const firstInSystem = i === from;
     const leftInset = firstInSystem ? 0 : changeInsetWidth(mm); // line starts show the key in the header
     const pads = repeatPads(measures[i]);
-    const contentW = measureWidth(mm) + leftInset + pads.left + pads.right;
+    const contentW = measureWidth(mm, densityScale(measures[i])) + leftInset + pads.left + pads.right;
     const noteLeft = x + MEASURE_PAD + leftInset + pads.left;
     const noteSpan = contentW - 2 * MEASURE_PAD - leftInset - pads.left - pads.right;
     placed.push({
@@ -238,7 +253,7 @@ export function layoutSystems(
     while (j < measures.length) {
       const inset = j !== i && (metas[j].keyChanged || metas[j].tsChanged) ? changeInsetWidth(metas[j]) : 0;
       const pads = repeatPads(measures[j]);
-      const w = measureWidth(metas[j]) + inset + pads.left + pads.right;
+      const w = measureWidth(metas[j], densityScale(measures[j])) + inset + pads.left + pads.right;
       if (j > i && sum + w > usable) break;
       sum += w;
       j++;

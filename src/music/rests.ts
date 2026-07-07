@@ -19,14 +19,21 @@ const CANDIDATES: { value: DurationValue; dots: 0 | 1; ticks: number }[] = (() =
   return list.sort((a, b) => b.ticks - a.ticks);
 })();
 
-/** Greedily fill a gap [start, start+len) with the fewest standard rests. */
+/**
+ * Fill a gap [start, start+len) with standard rests, metrically aligned: each
+ * rest is the largest that fits AND starts on a multiple of its own length.
+ * After a short note this naturally builds short-to-long (32nd, 16th, 8th, …)
+ * up to the beat instead of dumping the longest rest first.
+ */
 function fillGap(staff: Staff, start: number, len: number): RestSeg[] {
   const out: RestSeg[] = [];
   let pos = start;
   let rem = len;
   let guard = 0;
   while (rem > 0 && guard++ < 64) {
-    const c = CANDIDATES.find((cand) => cand.ticks <= rem);
+    const c =
+      CANDIDATES.find((cand) => cand.ticks <= rem && pos % cand.ticks === 0) ??
+      CANDIDATES.find((cand) => cand.ticks <= rem); // off-grid positions (tuplets): just fit
     if (!c) break;
     out.push({ staff, startTick: pos, duration: { value: c.value, dots: c.dots } });
     pos += c.ticks;

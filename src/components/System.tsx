@@ -376,7 +376,7 @@ export function System(props: SystemProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [cursorDrag, setCursorDrag] = useState(false);
-  const noteDragRef = useRef<{ measureIndex: number; eventId: string; lastD: number } | null>(null);
+  const noteDragRef = useRef<{ measureIndex: number; eventId: string; lastD: number; startY: number } | null>(null);
   const movedRef = useRef(false);
   const suppressClickRef = useRef(false);
   const cursorDragRef = useRef(false); // a playhead-handle interaction is in progress
@@ -596,7 +596,7 @@ export function System(props: SystemProps) {
     if (!pt) return;
     const hit = pickNotehead(pt.x, pt.y, 0);
     if (hit) {
-      noteDragRef.current = { measureIndex: hit.measureIndex, eventId: hit.eventId, lastD: hit.diatonic };
+      noteDragRef.current = { measureIndex: hit.measureIndex, eventId: hit.eventId, lastD: hit.diatonic, startY: pt.y };
       movedRef.current = false;
       setHoverState(null);
     }
@@ -628,6 +628,9 @@ export function System(props: SystemProps) {
     }
     const nd = noteDragRef.current;
     if (nd) {
+      // a real drag starts after a few pixels: a wobbly click near a notehead
+      // must stay a click (inserting the next note), not nudge this one
+      if (!movedRef.current && Math.abs(pt.y - nd.startY) < 5) return;
       const d = clamp(yToDiatonic(pt.y), 5, 50);
       if (d !== nd.lastD) {
         onAction({ type: 'MOVE_NOTE', measureIndex: nd.measureIndex, eventId: nd.eventId, fromDiatonic: nd.lastD, toDiatonic: d });
