@@ -21,6 +21,33 @@ export function initialScore(measureCount = 4): ScoreState {
   };
 }
 
+/**
+ * Fresh, unique ids for every measure/event of a loaded score. Stored files can
+ * carry duplicate ids (e.g. a section duplicated, then edited after the in-memory
+ * id counter reset on reload): duplicates make id-based operations — selection,
+ * copy, tie/arpeggio grouping — act on the wrong event. Ids are internal (ties,
+ * chords and repeats are resolved by position, not id), so re-keying is safe.
+ */
+function reidentify(measures: Measure[]): Measure[] {
+  const tupletMap = new Map<string, string>();
+  return measures.map((m) => ({
+    ...m,
+    id: uid('m'),
+    events: m.events.map((e) => {
+      const ev: ScoreEvent = { ...e, id: uid(e.kind === 'note' ? 'n' : 'r') };
+      if (e.tuplet) {
+        let nt = tupletMap.get(e.tuplet.id);
+        if (!nt) {
+          nt = uid('tp');
+          tupletMap.set(e.tuplet.id, nt);
+        }
+        ev.tuplet = { ...e.tuplet, id: nt };
+      }
+      return ev;
+    }),
+  }));
+}
+
 /** Distinct staff ids among a measure's events (for per-staff ripples). */
 function eventStaves(events: ScoreEvent[]): Staff[] {
   const ids: Staff[] = [];
@@ -663,7 +690,8 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
 
     case 'LOAD':
       // normalize the staff list (older files have none: the classic grand staff)
-      return { ...action.score, staves: sanitizeStaves(action.score.staves) ?? defaultStaves() };
+      // and re-key every measure/event so a file's duplicate ids can't corrupt editing
+      return { ...action.score, staves: sanitizeStaves(action.score.staves) ?? defaultStaves(), measures: reidentify(action.score.measures) };
 
     default:
       return state;
