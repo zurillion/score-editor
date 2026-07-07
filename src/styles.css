@@ -391,6 +391,9 @@ button.on.sticky {
   font-family: 'Bravura';
   font-size: 26px;
   line-height: 1;
+  /* the tall glyph boxes overflow the button and would steal clicks from
+     the row below (rest buttons under the note buttons) */
+  pointer-events: none;
 }
 .glyph-btn .bravura.acc {
   font-size: 30px;

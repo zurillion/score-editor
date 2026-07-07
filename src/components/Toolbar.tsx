@@ -298,21 +298,6 @@ export function Toolbar(props: ToolbarProps) {
             ))}
           </select>
         </fieldset>
-        <fieldset className="group">
-          <legend>Misure</legend>
-          <div className="btn-row">
-            <button onClick={onAddMeasure} title="Aggiungi una battuta">+ Batt.</button>
-            <button onClick={onRemoveMeasure} title="Rimuovi l'ultima battuta">− Batt.</button>
-            <button onClick={onClear} title="Svuota tutte le battute">Pulisci</button>
-            <button
-              className={hasPickup ? 'on' : ''}
-              onClick={onToggleAnacrusis}
-              title="Anacrusi (battuta in levare): battuta iniziale incompleta che si adatta alle note"
-            >
-              ⅃ Anacrusi
-            </button>
-          </div>
-        </fieldset>
         <fieldset className="group transport">
           <legend>Playback{instrumentLoading ? ' · carico strumento…' : ''}</legend>
           <div className="btn-row">
@@ -500,6 +485,21 @@ export function Toolbar(props: ToolbarProps) {
                     </button>
                   );
                 })}
+              </div>
+            </fieldset>
+            <fieldset className="group">
+              <legend>Misure</legend>
+              <div className="btn-row">
+                <button onClick={onAddMeasure} title="Aggiungi una battuta">+ Batt.</button>
+                <button onClick={onRemoveMeasure} title="Rimuovi l'ultima battuta">− Batt.</button>
+                <button onClick={onClear} title="Svuota tutte le battute">Pulisci</button>
+                <button
+                  className={hasPickup ? 'on' : ''}
+                  onClick={onToggleAnacrusis}
+                  title="Anacrusi (battuta in levare): battuta iniziale incompleta che si adatta alle note"
+                >
+                  ⅃ Anacrusi
+                </button>
               </div>
             </fieldset>
           </div>

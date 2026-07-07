@@ -418,18 +418,37 @@ export function System(props: SystemProps) {
     const pm = measureAt(x);
     if (!pm) return null;
 
+    const d = clamp(yToDiatonic(y), 5, 50);
+    const staff = staffForDiatonic(d);
+    const grid = durationTicks(duration);
+    const pxPerTick = pm.noteSpan / Math.max(1, pm.spanTicks);
+    // catch zone of an existing event: never wider than half a grid step, or
+    // short durations couldn't reach the slot right next to a placed note
+    const catchR = Math.max(4, Math.min(11, grid * pxPerTick * 0.45));
+
     let tick: number | null = null;
     for (const e of pm.measure.events) {
       const ex = measureTickToX(pm, e.startTick);
-      if (Math.abs(ex - x) <= 11) {
+      if (Math.abs(ex - x) <= catchR) {
         tick = e.startTick;
         break;
       }
     }
     if (tick === null) {
-      const grid = durationTicks(duration);
+      // candidate slots: the duration grid, plus the end of every same-staff
+      // event — so any note can start right after an explicit rest (or note)
+      // that sits off the current grid
+      const maxStart = Math.max(0, pm.capacityTicks - grid);
       const raw = measureXToTickRaw(pm, x);
-      tick = clamp(Math.round(raw / grid) * grid, 0, Math.max(0, pm.capacityTicks - grid));
+      const candidates = new Set<number>([clamp(Math.round(raw / grid) * grid, 0, maxStart)]);
+      for (const e of pm.measure.events) {
+        if (e.staff !== staff) continue;
+        const end = e.startTick + eventTicks(e);
+        if (end <= maxStart) candidates.add(end);
+      }
+      tick = [...candidates].reduce((best, c) =>
+        Math.abs(measureTickToX(pm, c) - x) < Math.abs(measureTickToX(pm, best) - x) ? c : best,
+      );
     }
     if (pm.pickup) {
       // pack the anacrusis from the start: appending never leaves a leading gap,
@@ -437,9 +456,6 @@ export function System(props: SystemProps) {
       const contentEnd = pm.measure.events.reduce((mx, e) => Math.max(mx, e.startTick + eventTicks(e)), 0);
       tick = Math.min(tick, contentEnd);
     }
-
-    const d = clamp(yToDiatonic(y), 5, 50);
-    const staff = staffForDiatonic(d);
     const base = diatonicToPitch(d, 0);
     const alter = effectiveAlterForNew(pm.measure.events, pm.keySig, staff, base.step, base.octave, tick);
     const action =
