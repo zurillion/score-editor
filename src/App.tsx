@@ -140,6 +140,24 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     };
   }, [neededInstruments]);
 
+  // push mixer changes into a running player right away: samplers, gains and
+  // transposes are read at note-scheduling time, so volume/instrument/transpose
+  // (and mute/solo) act on the playback within the lookahead window
+  useEffect(() => {
+    const defs = scoreStaves(score);
+    if (playerRef.current) {
+      playerRef.current.staves = Object.fromEntries(
+        defs.map(({ id: s }) => {
+          const iid = effectiveInstrumentId(playback, s);
+          return [s, { sampler: isSynth(iid) ? null : getLoadedSampler(iid), gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }];
+        }),
+      );
+    }
+    if (midiPlayerRef.current) {
+      midiPlayerRef.current.staves = Object.fromEntries(defs.map(({ id: s }) => [s, { gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }]));
+    }
+  }, [playback, staffIdsKey, instrumentLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // expose the current piece to the admin page ("add current to the list")
   useEffect(() => {
     if (snapshotRef) snapshotRef.current = { name: pieceName, bpm, score, playback, sourceId };

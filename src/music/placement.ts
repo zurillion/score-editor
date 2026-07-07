@@ -39,7 +39,11 @@ export function classifyRest(
 ): PlaceAction {
   const staffEvents = events.filter((e) => e.staff === staff);
   const exact = staffEvents.find((e) => e.startTick === tick);
-  if (exact) return exact.kind === 'rest' ? 'delete' : 'blocked';
+  if (exact) {
+    if (exact.kind === 'rest') return 'delete';
+    // a note (or chord) of the same written value can be silenced: the rest replaces it
+    return !exact.tuplet && durationTicks(exact.duration) === durationTicks(duration) ? 'delete' : 'blocked';
+  }
   const dur = durationTicks(duration);
   if (tick + dur > total) return 'blocked';
   return overlaps(staffEvents, tick, dur) ? 'blocked' : 'create';

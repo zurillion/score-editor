@@ -5,6 +5,7 @@ import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, ensureInstrument, getLoadedSampler,
 import { PiecePlayback, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffTranspose } from '../music/playback';
 import { scoreStaves } from '../music/staves';
 import { InstrumentIcon } from './InstrumentIcon';
+import { MixerPanel } from './MixerPanel';
 import { Score } from './Score';
 
 /**
@@ -35,6 +36,7 @@ export function PlayPage({ id }: { id: string }) {
     }
   });
   const [instrumentLoading, setInstrumentLoading] = useState(false);
+  const [mixerOpen, setMixerOpen] = useState(false);
   useEffect(() => {
     if (isSynth(instrument)) return;
     let alive = true;
@@ -69,6 +71,25 @@ export function PlayPage({ id }: { id: string }) {
   useEffect(() => {
     if (playerRef.current?.playing) playerRef.current.setBpm(bpm);
   }, [bpm]);
+
+  // push mixer changes (volume, M/S, transpose, instrument) into a running player
+  const [samplersReady, setSamplersReady] = useState(0);
+  useEffect(() => {
+    if (!piece) return;
+    const pb: PiecePlayback = { ...piecePlayback, instrument };
+    const ids = scoreStaves(piece.score).map((s) => s.id);
+    // fetch any sampled instrument the routing now needs; re-sync once loaded
+    for (const iid of new Set(ids.map((s) => effectiveInstrumentId(pb, s)))) {
+      if (!isSynth(iid) && !getLoadedSampler(iid)) void ensureInstrument(iid).then(() => setSamplersReady((n) => n + 1)).catch(() => {});
+    }
+    if (!playerRef.current) return;
+    playerRef.current.staves = Object.fromEntries(
+      ids.map((s) => {
+        const iid = effectiveInstrumentId(pb, s);
+        return [s, { sampler: isSynth(iid) ? null : getLoadedSampler(iid), gain: staffGain(pb, s), transpose: staffTranspose(pb, s) }];
+      }),
+    );
+  }, [piece, piecePlayback, instrument, samplersReady]);
 
   const handleStop = useCallback(() => {
     playReqRef.current++;
@@ -187,6 +208,16 @@ export function PlayPage({ id }: { id: string }) {
                 ))}
               </select>
             </label>
+            {piece && (
+              <MixerPanel
+                open={mixerOpen}
+                onToggle={() => setMixerOpen(!mixerOpen)}
+                playback={{ ...piecePlayback, instrument }}
+                onChange={(pb) => setPiecePlayback(pb)}
+                staves={scoreStaves(piece.score)}
+                manage={false}
+              />
+            )}
             <button className={loop ? 'on' : ''} onClick={() => handleSetLoop(!loop)} title="Ripeti il brano in loop">
               ↻ Loop
             </button>

@@ -12,6 +12,8 @@ export interface StaffPlayback {
   instrument: string; // '' = use the general instrument
   volume: number; // 0..100
   transpose: number; // semitones (added to the general transpose)
+  mute?: boolean; // M: the staff is silent
+  solo?: boolean; // S: when any staff is soloed, only soloed staves sound
 }
 
 export interface PiecePlayback {
@@ -31,8 +33,16 @@ export function effectiveInstrumentId(pb: PiecePlayback, staff: Staff): string {
   return pb.staves[staff]?.instrument || pb.instrument || DEFAULT_INSTRUMENT_ID;
 }
 
+/** True when at least one staff is soloed (then only soloed staves sound). */
+export function anySolo(pb: PiecePlayback): boolean {
+  return Object.values(pb.staves).some((st) => st?.solo);
+}
+
 export function staffGain(pb: PiecePlayback, staff: Staff): number {
-  const v = pb.staves[staff]?.volume;
+  const st = pb.staves[staff];
+  if (st?.mute) return 0;
+  if (anySolo(pb) && !st?.solo) return 0;
+  const v = st?.volume;
   return (typeof v === 'number' ? Math.min(100, Math.max(0, v)) : 100) / 100;
 }
 
@@ -53,10 +63,13 @@ export function sanitizePlayback(raw: unknown): PiecePlayback | null {
   if (r.staves && typeof r.staves === 'object') {
     for (const [id, st] of Object.entries(r.staves)) {
       if (!st || typeof st !== 'object') continue;
+      const entry = st as { mute?: unknown; solo?: unknown; instrument?: unknown; volume?: unknown; transpose?: unknown };
       pb.staves[id] = {
-        instrument: validInstrument(st.instrument) ? st.instrument : '',
-        volume: typeof st.volume === 'number' && Number.isFinite(st.volume) ? Math.min(100, Math.max(0, Math.round(st.volume))) : 100,
-        transpose: clampTranspose(st.transpose),
+        instrument: validInstrument(entry.instrument) ? entry.instrument : '',
+        volume: typeof entry.volume === 'number' && Number.isFinite(entry.volume) ? Math.min(100, Math.max(0, Math.round(entry.volume))) : 100,
+        transpose: clampTranspose(entry.transpose),
+        ...(entry.mute === true ? { mute: true } : {}),
+        ...(entry.solo === true ? { solo: true } : {}),
       };
     }
   }
@@ -68,6 +81,6 @@ export function isNeutralPlayback(pb: PiecePlayback): boolean {
   return (
     !pb.instrument &&
     !pb.transpose &&
-    Object.values(pb.staves).every((st) => !st || (!st.instrument && st.volume === 100 && !st.transpose))
+    Object.values(pb.staves).every((st) => !st || (!st.instrument && st.volume === 100 && !st.transpose && !st.mute && !st.solo))
   );
 }

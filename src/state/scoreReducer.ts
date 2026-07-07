@@ -145,6 +145,11 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       if (verdict === 'delete') {
         const target = m.events.find((e) => e.startTick === action.tick && e.staff === action.staff);
         if (!target) return state;
+        if (target.kind === 'note') {
+          // a note of the same value is silenced: the rest takes its place
+          const rest: RestEvent = { id: uid('r'), kind: 'rest', staff: action.staff, startTick: action.tick, duration: action.duration };
+          return withMeasureEvents(state, action.measureIndex, m.events.map((e) => (e.id === target.id ? rest : e)));
+        }
         // removing a tuplet rest clears the whole tuplet group (no fractional gap left behind)
         const drop = target.tuplet ? expandTupletIds(m.events, new Set([target.id])) : new Set([target.id]);
         return withMeasureEvents(state, action.measureIndex, m.events.filter((e) => !drop.has(e.id)));

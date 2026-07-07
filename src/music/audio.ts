@@ -376,8 +376,9 @@ export class Player {
     master.connect(ctx.destination);
     this.master = master;
 
-    const transposes = Object.fromEntries(Object.entries(this.staves).map(([s, c]) => [s, c.transpose]));
-    const sched = buildSchedule(score, transposes);
+    // transposes are applied per note at scheduling time (see scheduleNote), so
+    // mixer changes act on the running playback within the lookahead window
+    const sched = buildSchedule(score);
     this.notes = sched.notes;
     this.totalTicks = sched.totalTicks;
     this.pickupTicks = sched.pickupTicks;
@@ -432,7 +433,8 @@ export class Player {
     if (!ctx || !dest) return;
     const cfg = this.staves[staff] ?? { sampler: this.sampler, gain: 1, transpose: 0 };
     if (cfg.gain <= 0) return; // muted staff
-    const src = startVoice(ctx, dest, cfg.sampler, start, dur, freq, midi, cfg.gain);
+    const t = cfg.transpose || 0;
+    const src = startVoice(ctx, dest, cfg.sampler, start, dur, freq * Math.pow(2, t / 12), midi + t, cfg.gain);
     this.sources.add(src);
     src.onended = () => this.sources.delete(src); // prune so a long loop doesn't accumulate
   }

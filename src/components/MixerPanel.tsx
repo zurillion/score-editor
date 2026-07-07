@@ -20,8 +20,10 @@ function MixerIcon() {
 
 /**
  * Per-staff mixer & staff manager: instrument (specific wins over the general
- * one), volume, transpose and visibility per staff, per-staff clef/key for the
- * extra staves, plus buttons to add/remove staves or whole grand staves.
+ * one), volume, transpose, mute/solo and visibility per staff, per-staff
+ * clef/key for the extra staves, plus buttons to add/remove staves or whole
+ * grand staves. With manage=false (the listen-only page) only the audio
+ * controls are shown: instrument, volume, transpose, M/S.
  */
 export function MixerPanel({
   open,
@@ -29,14 +31,16 @@ export function MixerPanel({
   playback,
   onChange,
   staves,
-  onScoreAction,
+  onScoreAction = () => {},
+  manage = true,
 }: {
   open: boolean;
   onToggle: () => void;
   playback: PiecePlayback;
   onChange: (pb: PiecePlayback) => void;
   staves: StaffDef[];
-  onScoreAction: (a: ScoreAction) => void;
+  onScoreAction?: (a: ScoreAction) => void;
+  manage?: boolean;
 }) {
   const staffOf = (id: string): StaffPlayback => playback.staves[id] ?? defaultStaffPlayback();
   const patchStaff = (id: string, patch: Partial<StaffPlayback>) =>
@@ -46,7 +50,7 @@ export function MixerPanel({
     playback.transpose !== 0 ||
     staves.some((s) => {
       const st = staffOf(s.id);
-      return st.instrument || st.volume !== 100 || st.transpose !== 0;
+      return st.instrument || st.volume !== 100 || st.transpose !== 0 || st.mute || st.solo;
     });
 
   const visibleCount = staves.filter((s) => !s.hidden).length;
@@ -65,6 +69,7 @@ export function MixerPanel({
         <>
           <div className="menu-overlay" onClick={onToggle} />
           <div className="mixer-panel">
+            {manage && (
             <div className="mixer-add">
               <span>Sopra:</span>
               <button onClick={() => onScoreAction({ type: 'ADD_STAFF', where: 'above', clef: 'treble' })} title="Aggiunge un pentagramma sopra">+ Rigo</button>
@@ -73,19 +78,44 @@ export function MixerPanel({
               <button onClick={() => onScoreAction({ type: 'ADD_STAFF', where: 'below', clef: 'bass' })} title="Aggiunge un pentagramma sotto">+ Rigo</button>
               <button onClick={() => onScoreAction({ type: 'ADD_STAFF', where: 'below', clef: 'treble', grand: true })} title="Aggiunge un endecalineo (due righi con graffa) sotto">+ Endecalineo</button>
             </div>
+            )}
             {staves.map((def) => {
               const st = staffOf(def.id);
               return (
                 <div className={`mixer-row ${def.hidden ? 'dim' : ''}`} key={def.id}>
-                  <label className="mixer-show" title="Mostra o nasconde il pentagramma nello spartito (nascosto continua a suonare)">
-                    <input
-                      type="checkbox"
-                      checked={!def.hidden}
-                      disabled={!def.hidden && visibleCount <= 1}
-                      onChange={(e) => onScoreAction({ type: 'UPDATE_STAFF', id: def.id, patch: { hidden: !e.target.checked } })}
-                    />
-                    <strong>{staffLabel(staves, def)}</strong>
-                  </label>
+                  {manage ? (
+                    <label className="mixer-show" title="Mostra o nasconde il pentagramma nello spartito (nascosto continua a suonare)">
+                      <input
+                        type="checkbox"
+                        checked={!def.hidden}
+                        disabled={!def.hidden && visibleCount <= 1}
+                        onChange={(e) => onScoreAction({ type: 'UPDATE_STAFF', id: def.id, patch: { hidden: !e.target.checked } })}
+                      />
+                      <strong>{staffLabel(staves, def)}</strong>
+                    </label>
+                  ) : (
+                    <span className="mixer-show">
+                      <strong>{staffLabel(staves, def)}</strong>
+                    </span>
+                  )}
+                  <span className="mixer-ms">
+                    <button
+                      className={st.mute ? 'ms-on mute' : ''}
+                      onClick={() => patchStaff(def.id, { mute: !st.mute })}
+                      title="Mute — ammutolisce il rigo"
+                      aria-label={`Mute ${staffLabel(staves, def)}`}
+                    >
+                      M
+                    </button>
+                    <button
+                      className={st.solo ? 'ms-on solo' : ''}
+                      onClick={() => patchStaff(def.id, { solo: !st.solo })}
+                      title="Solo — suona solo questo rigo (più S premuti: suonano tutti gli S)"
+                      aria-label={`Solo ${staffLabel(staves, def)}`}
+                    >
+                      S
+                    </button>
+                  </span>
                   <label>
                     Strumento
                     <select value={st.instrument} onChange={(e) => patchStaff(def.id, { instrument: e.target.value })}>
@@ -111,7 +141,7 @@ export function MixerPanel({
                       <span className="mixer-value">st</span>
                     </span>
                   </label>
-                  {!def.group && (
+                  {manage && !def.group && (
                     <label title="Chiave del pentagramma">
                       Chiave
                       <select value={def.clef} onChange={(e) => onScoreAction({ type: 'UPDATE_STAFF', id: def.id, patch: { clef: e.target.value === 'bass' ? 'bass' : 'treble' } })}>
@@ -120,6 +150,7 @@ export function MixerPanel({
                       </select>
                     </label>
                   )}
+                  {manage && (
                   <label title="Armatura di chiave del rigo: '= brano' segue la tonalità del brano (e i suoi cambi)">
                     Tonalità
                     <select
@@ -134,6 +165,8 @@ export function MixerPanel({
                       ))}
                     </select>
                   </label>
+                  )}
+                  {manage && (
                   <button
                     className="mixer-remove"
                     disabled={staves.length <= 1}
@@ -147,6 +180,7 @@ export function MixerPanel({
                   >
                     ✕
                   </button>
+                  )}
                 </div>
               );
             })}

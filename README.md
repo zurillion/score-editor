@@ -27,7 +27,8 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   4. **Click** dove c'è già una nota (altra altezza) → **accordo** (note
      contemporanee, stessa durata).
   5. **Click** su una nota già presente → la **cancella**.
-  6. Stesso comportamento per le pause.
+  6. Stesso comportamento per le pause; con lo strumento pausa un click su
+     una **nota di pari valore** la sostituisce con la pausa.
 
   L'anteprima cambia colore per anticipare l'azione: grigio = inserisci,
   blu = accordo, rosso = cancella.
@@ -47,11 +48,15 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   storico dell'app resta disponibile come **"8 bit sound"**.
 - **Mixer per rigo** — lo strumento generale può anche essere «—» (nessuna
   scelta) e l'icona del mixer accanto apre un pannellino con, per ogni rigo,
-  **strumento** (ha priorità su quello generale), **volume** e
+  **strumento** (ha priorità su quello generale), **volume**, **mute/solo**
+  (M ammutolisce il rigo; con uno o più S premuti suonano solo quelli) e
   **trasposizione** in semitoni (es. +12 per un basso notato un'ottava sopra),
-  più una **trasposizione generale** che si somma a quelle di rigo. Tutto
+  più una **trasposizione generale** che si somma a quelle di rigo. I
+  controlli agiscono **in tempo reale** anche durante il playback. Tutto
   viene salvato nel JSON del brano; al caricamento uno strumento generale
-  «—» mantiene quello già impostato.
+  «—» mantiene quello già impostato. Il mixer (solo la parte audio) è
+  disponibile anche nella pagina di ascolto condivisa, per ribilanciare i
+  volumi.
 - **Pentagrammi aggiuntivi** — dal pannellino del mixer si aggiungono
   **righi singoli** (con chiave di violino o basso a scelta) o **interi
   endecalinei** sopra e sotto quelli esistenti (es. una voce sopra il piano,
