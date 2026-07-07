@@ -605,8 +605,14 @@ export function Toolbar(props: ToolbarProps) {
                 >
                   <MeasureIcon />
                 </button>
-                <button onClick={onInsertMeasures} title="Inserisci battute vuote al punto di playback" aria-label="Inserisci battute">
-                  +
+                <button
+                  className="icon-btn"
+                  onClick={onInsertMeasures}
+                  title="Inserisci battute vuote al punto di playback (chiede quante)"
+                  aria-label="Inserisci battute"
+                >
+                  <span style={{ fontWeight: 700, marginRight: 1 }}>+</span>
+                  <MeasureIcon />
                 </button>
                 <button
                   className={`icon-btn ${tool.kind === 'select-notes' ? 'on' : ''}`}
