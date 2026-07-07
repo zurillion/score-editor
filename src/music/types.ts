@@ -19,6 +19,7 @@ export interface StaffDef {
   hidden?: boolean; // not drawn (it still plays; volume 0 in the mixer mutes it)
   group?: string; // staves sharing a group form a grand staff (brace + shared vertical axis)
   name?: string; // label shown in the mixer
+  drumKit?: 'synth' | 'acoustic'; // percussion staff: which kit to sound (default synth)
 }
 
 /**

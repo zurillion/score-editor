@@ -3,6 +3,7 @@ import { diatonicToPitch, durationTicks, eventTicks, measureTicks, pitchToDiaton
 import { effectiveTimeSignatureAt, scoreMeta } from '../music/meta';
 import { classifyNote, classifyRest, samePitch } from '../music/placement';
 import { defaultStaves, newGroupId, newStaffId, sanitizeStaves, scoreStaves } from '../music/staves';
+import { drumVoice } from '../music/drums';
 import { ClipNote } from './selection';
 
 let idCounter = 0;
@@ -69,6 +70,7 @@ export type ScoreAction =
   | { type: 'DELETE_NOTES'; ids: string[] }
   | { type: 'TRANSPOSE_NOTES'; ids: string[]; delta: number }
   | { type: 'MOVE_NOTE'; measureIndex: number; eventId: string; fromDiatonic: number; toDiatonic: number }
+  | { type: 'SET_NOTE_DRUM'; measureIndex: number; eventId: string; fromDrum: string; toDrum: string } // drag a drum notehead to another voice
   | { type: 'PASTE_NOTES'; baseTick: number; events: ClipNote[] }
   | { type: 'PASTE_MEASURES'; index: number; measures: Measure[] }
   | { type: 'SET_TIME_SIGNATURE_AT'; measureIndex: number; timeSignature: TimeSignature }
@@ -79,7 +81,7 @@ export type ScoreAction =
   | { type: 'SET_REPEAT_TIMES'; index: number; times: number } // coalesced (set by the count drag)
   | { type: 'ADD_STAFF'; where: 'above' | 'below'; clef: Clef; grand?: boolean } // a new staff (or grand pair) at the top/bottom
   | { type: 'REMOVE_STAFF'; id: Staff } // drops the staff and every event on it
-  | { type: 'UPDATE_STAFF'; id: Staff; patch: Partial<Pick<StaffDef, 'clef' | 'key' | 'hidden' | 'name'>> }
+  | { type: 'UPDATE_STAFF'; id: Staff; patch: Partial<Pick<StaffDef, 'clef' | 'key' | 'hidden' | 'name' | 'drumKit'>> }
   | { type: 'REORDER_STAVES'; order: Staff[] } // permutation of the staff ids (grand pairs stay adjacent)
   | { type: 'ADD_MEASURE' }
   | { type: 'REMOVE_LAST_MEASURE' }
@@ -406,6 +408,24 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       return withMeasureEvents(state, action.measureIndex, events);
     }
 
+    case 'SET_NOTE_DRUM': {
+      const m = state.measures[action.measureIndex];
+      if (!m || action.fromDrum === action.toDrum) return state;
+      const target = m.events.find((e) => e.id === action.eventId);
+      if (!target || target.kind !== 'note') return state;
+      // don't retarget onto a voice already in the chord
+      if (target.pitches.some((p) => p.drum === action.toDrum)) return state;
+      const voice = drumVoice(action.toDrum);
+      if (!voice) return state;
+      let changed = false;
+      const pitches = sortPitches(
+        target.pitches.map((p) => (p.drum === action.fromDrum ? ((changed = true), { ...diatonicToPitch(voice.diatonic, 0), drum: voice.id }) : p)),
+      );
+      if (!changed) return state;
+      const events = m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));
+      return withMeasureEvents(state, action.measureIndex, events);
+    }
+
     case 'PASTE_NOTES': {
       if (action.events.length === 0) return state;
       // map a global tick to its measure, extending past the end with the
@@ -651,6 +671,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const cur = staves[idx];
       const patched: StaffDef = { ...cur, ...action.patch };
       if (patched.hidden === false || patched.hidden === undefined) delete patched.hidden;
+      if (patched.drumKit !== 'acoustic') delete patched.drumKit; // 'synth' is the default
       if (JSON.stringify(patched) === JSON.stringify(cur)) return state;
       const next = staves.slice();
       next[idx] = patched;
@@ -718,6 +739,7 @@ const UNDO_LIMIT = 100;
 /** Actions whose rapid repetition should collapse into one undo step. */
 function coalesceKey(action: ScoreAction): string | null {
   if (action.type === 'MOVE_NOTE') return `move:${action.eventId}`;
+  if (action.type === 'SET_NOTE_DRUM') return `drum:${action.eventId}`;
   if (action.type === 'SET_REPEAT_TIMES') return `rpt:${action.index}`;
   return null;
 }

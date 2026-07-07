@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { StoredPiece, getPiece } from '../api';
 import { Player } from '../music/audio';
 import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, ensureInstrument, getLoadedSampler, isSynth } from '../music/instruments';
+import { ensureAcousticKit, getLoadedAcousticKit } from '../music/drumkit';
 import { PiecePlayback, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffTranspose } from '../music/playback';
 import { scoreStaves } from '../music/staves';
 import { InstrumentIcon } from './InstrumentIcon';
@@ -77,16 +78,21 @@ export function PlayPage({ id }: { id: string }) {
   useEffect(() => {
     if (!piece) return;
     const pb: PiecePlayback = { ...piecePlayback, instrument };
-    const ids = scoreStaves(piece.score).map((s) => s.id);
+    const defs = scoreStaves(piece.score);
     // fetch any sampled instrument the routing now needs; re-sync once loaded
-    for (const iid of new Set(ids.map((s) => effectiveInstrumentId(pb, s)))) {
+    for (const iid of new Set(defs.filter((d) => d.clef !== 'percussion').map((d) => effectiveInstrumentId(pb, d.id)))) {
       if (!isSynth(iid) && !getLoadedSampler(iid)) void ensureInstrument(iid).then(() => setSamplersReady((n) => n + 1)).catch(() => {});
+    }
+    if (defs.some((d) => d.clef === 'percussion' && d.drumKit === 'acoustic') && !getLoadedAcousticKit()) {
+      void ensureAcousticKit().then(() => setSamplersReady((n) => n + 1)).catch(() => {});
     }
     if (!playerRef.current) return;
     playerRef.current.staves = Object.fromEntries(
-      ids.map((s) => {
+      defs.map((def) => {
+        const s = def.id;
         const iid = effectiveInstrumentId(pb, s);
-        return [s, { sampler: isSynth(iid) ? null : getLoadedSampler(iid), gain: staffGain(pb, s), transpose: staffTranspose(pb, s) }];
+        const drumBuffers = def.clef === 'percussion' && def.drumKit === 'acoustic' ? getLoadedAcousticKit() : null;
+        return [s, { sampler: isSynth(iid) ? null : getLoadedSampler(iid), gain: staffGain(pb, s), transpose: staffTranspose(pb, s), drumBuffers }];
       }),
     );
   }, [piece, piecePlayback, instrument, samplersReady]);
@@ -104,9 +110,10 @@ export function PlayPage({ id }: { id: string }) {
   const handlePlay = useCallback(async () => {
     if (!piece) return;
     const pb: PiecePlayback = { ...piecePlayback, instrument };
-    const staffIds = scoreStaves(piece.score).map((s) => s.id);
-    const need = [...new Set(staffIds.map((s) => effectiveInstrumentId(pb, s)).filter((id) => !isSynth(id)))];
-    if (need.length > 0) {
+    const defs = scoreStaves(piece.score);
+    const acoustic = defs.some((d) => d.clef === 'percussion' && d.drumKit === 'acoustic');
+    const need = [...new Set(defs.filter((d) => d.clef !== 'percussion').map((d) => effectiveInstrumentId(pb, d.id)).filter((id) => !isSynth(id)))];
+    if (need.length > 0 || acoustic) {
       const req = ++playReqRef.current;
       setInstrumentLoading(true);
       try {
@@ -117,14 +124,17 @@ export function PlayPage({ id }: { id: string }) {
       } finally {
         setInstrumentLoading(false);
       }
+      if (acoustic) await ensureAcousticKit().catch(() => {}); // non-fatal: falls back to the synth kit
       if (req !== playReqRef.current) return; // stop pressed while loading
     }
     const player = playerRef.current ?? new Player();
     playerRef.current = player;
     player.staves = Object.fromEntries(
-      staffIds.map((s) => {
+      defs.map((def) => {
+        const s = def.id;
         const iid = effectiveInstrumentId(pb, s);
-        return [s, { sampler: isSynth(iid) ? null : getLoadedSampler(iid), gain: staffGain(pb, s), transpose: staffTranspose(pb, s) }];
+        const drumBuffers = def.clef === 'percussion' && def.drumKit === 'acoustic' ? getLoadedAcousticKit() : null;
+        return [s, { sampler: isSynth(iid) ? null : getLoadedSampler(iid), gain: staffGain(pb, s), transpose: staffTranspose(pb, s), drumBuffers }];
       }),
     );
     player.loop = loop;

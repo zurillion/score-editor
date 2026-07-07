@@ -214,7 +214,7 @@ function noteNameToMidi(name: string): number {
 // AudioBuffers are context-independent, so we decode once with a shared
 // context and reuse the buffers in the per-playback contexts of the Player.
 let decodeCtx: AudioContext | null = null;
-function getDecodeCtx(): AudioContext {
+export function getDecodeCtx(): AudioContext {
   if (!decodeCtx) {
     const AudioCtx: typeof AudioContext =
       window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;

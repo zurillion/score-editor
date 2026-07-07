@@ -6,7 +6,7 @@ import { TICKS_PER_QUARTER } from './constants';
 import { getArpeggioStepSec, getStaccatoFraction } from './playbackPrefs';
 import { Sampler, nearestZone } from './instruments';
 import { drumVoice } from './drums';
-import { triggerDrum } from './drumkit';
+import { triggerDrum, DrumBuffers } from './drumkit';
 
 /**
  * Start one note at `start` for `dur` seconds on `dest`: an AudioBufferSource
@@ -111,6 +111,7 @@ export interface StaffAudioConfig {
   sampler: Sampler | null; // null = the built-in synth
   gain: number; // 0..1 mixer level
   transpose: number; // semitones (already summed general + staff)
+  drumBuffers?: DrumBuffers | null; // percussion staff: acoustic samples, else the synth kit
 }
 
 /** Attack delay in seconds for a scheduled note inside a rolled chord (end stays put). */
@@ -447,7 +448,7 @@ export class Player {
     };
     if (drum) {
       // percussion: a one-shot kit hit, no pitch shift / transpose
-      for (const src of triggerDrum(ctx, dest, drum, start, cfg.gain)) track(src);
+      for (const src of triggerDrum(ctx, dest, drum, start, cfg.gain, cfg.drumBuffers)) track(src);
       return;
     }
     const t = cfg.transpose || 0;

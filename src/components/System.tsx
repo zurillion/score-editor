@@ -19,7 +19,7 @@ import {
   REPEAT_START_PAD,
 } from '../music/layout';
 import { StavesLayout, RowSlot, rowAtY, rowClampD, rowLedgerLines, rowStaffForDiatonic, CLEFS } from '../music/staves';
-import { drumVoice } from '../music/drums';
+import { drumVoice, drumVoiceNearest } from '../music/drums';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
 import { beamGroups, beamCount } from '../music/beams';
@@ -408,7 +408,7 @@ export function System(props: SystemProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [cursorDrag, setCursorDrag] = useState(false);
-  const noteDragRef = useRef<{ measureIndex: number; eventId: string; staff: Staff; lastD: number; startY: number } | null>(null);
+  const noteDragRef = useRef<{ measureIndex: number; eventId: string; staff: Staff; lastD: number; drum?: string; startY: number } | null>(null);
   const movedRef = useRef(false);
   const suppressClickRef = useRef(false);
   const cursorDragRef = useRef(false); // a playhead-handle interaction is in progress
@@ -533,7 +533,7 @@ export function System(props: SystemProps) {
 
   // nearest notehead to (x,y) across all rows; leftPad widens the catch zone to the left (for accidentals)
   function pickNotehead(x: number, y: number, leftPad: number) {
-    let best: { measureIndex: number; eventId: string; staff: Staff; diatonic: number; hx: number; hy: number; dist: number } | null = null;
+    let best: { measureIndex: number; eventId: string; staff: Staff; diatonic: number; drum?: string; hx: number; hy: number; dist: number } | null = null;
     for (const pm of layout.measures) {
       for (const ev of pm.measure.events) {
         if (ev.kind !== 'note' || !rowByStaff.has(ev.staff)) continue;
@@ -550,7 +550,7 @@ export function System(props: SystemProps) {
           const inX = dx <= NOTEHEAD_RX + 4 && dx >= -(NOTEHEAD_RX + 4 + leftPad);
           if (inX && Math.abs(dyy) <= NOTEHEAD_RY + 4) {
             const dist = Math.hypot(dx, dyy);
-            if (!best || dist < best.dist) best = { measureIndex: pm.index, eventId: ev.id, staff: ev.staff, diatonic: d, hx, hy: ey, dist };
+            if (!best || dist < best.dist) best = { measureIndex: pm.index, eventId: ev.id, staff: ev.staff, diatonic: d, drum: ev.pitches[pi].drum, hx, hy: ey, dist };
           }
         }
       }
@@ -675,7 +675,7 @@ export function System(props: SystemProps) {
     if (!pt) return;
     const hit = pickNotehead(pt.x, pt.y, 0);
     if (hit) {
-      noteDragRef.current = { measureIndex: hit.measureIndex, eventId: hit.eventId, staff: hit.staff, lastD: hit.diatonic, startY: pt.y };
+      noteDragRef.current = { measureIndex: hit.measureIndex, eventId: hit.eventId, staff: hit.staff, lastD: hit.diatonic, drum: hit.drum, startY: pt.y };
       movedRef.current = false;
       setHoverState(null);
     }
@@ -714,6 +714,19 @@ export function System(props: SystemProps) {
       if (!row) return;
       const [dLo, dHi] = rowClampD(row);
       const d = clamp(yToDiatonic(pt.y - row.dy), dLo, dHi);
+      if (isPercStaff(nd.staff)) {
+        // a drum note never becomes a pitch: dragging retargets it to the
+        // nearest drum voice instead
+        const voice = drumVoiceNearest(d);
+        if (voice.id !== nd.drum && nd.drum) {
+          onAction({ type: 'SET_NOTE_DRUM', measureIndex: nd.measureIndex, eventId: nd.eventId, fromDrum: nd.drum, toDrum: voice.id });
+          nd.drum = voice.id;
+          nd.lastD = voice.diatonic;
+          movedRef.current = true;
+          if (previewOnCreate) onPreviewNote([{ ...diatonicToPitch(voice.diatonic, 0), drum: voice.id }], nd.staff);
+        }
+        return;
+      }
       if (d !== nd.lastD) {
         onAction({ type: 'MOVE_NOTE', measureIndex: nd.measureIndex, eventId: nd.eventId, fromDiatonic: nd.lastD, toDiatonic: d });
         nd.lastD = d;

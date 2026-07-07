@@ -1,9 +1,84 @@
-// A small synthesized drum kit for Web Audio playback.
+// Two drum kits for Web Audio playback, selectable per staff:
+//   'synth'    — oscillators + filtered noise, fully offline (no downloads);
+//   'acoustic' — sampled one-shots of a real acoustic kit, fetched lazily.
 //
-// Each voice is built from oscillators and filtered noise so it works entirely
-// offline — no samples to fetch. `triggerDrum` schedules one hit at `start`.
-// (For higher fidelity the same call site can later be pointed at a sampled
-// one-shot kit; the voice ids match src/music/drums.ts.)
+// `triggerDrum` schedules one hit; pass the loaded acoustic buffers to play the
+// sampled kit (voices without a sample fall back to the synth). The voice ids
+// match src/music/drums.ts.
+
+import { getDecodeCtx } from './instruments';
+
+// ---- Acoustic sampled kit (lazy) ------------------------------------------
+// One-shot samples from the Tone.js hosted acoustic kit (CC, same origin used
+// for the piano). AudioBuffers are context-independent, so we decode once and
+// reuse them across the per-playback contexts. Voices without a dedicated
+// sample map to the closest available one; the rest fall back to the synth.
+export type DrumBuffers = Map<string, AudioBuffer>;
+
+const ACOUSTIC_BASE = 'https://tonejs.github.io/audio/drum-samples/acoustic-kit/';
+const ACOUSTIC_FILES: Record<string, string> = { kick: 'kick.mp3', snare: 'snare.mp3', hh: 'hh.mp3', hho: 'hho.mp3', tom1: 'tom1.mp3', tom2: 'tom2.mp3', tom3: 'tom3.mp3' };
+// drum voice id -> sample file key above
+const ACOUSTIC_VOICE: Record<string, string> = {
+  kick: 'kick',
+  snare: 'snare',
+  rim: 'snare', // no dedicated rim sample in this kit
+  hihat: 'hh',
+  'hihat-pedal': 'hh',
+  'hihat-open': 'hho',
+  'tom-hi': 'tom1',
+  'tom-mid': 'tom2',
+  'tom-low': 'tom3',
+  // crash / ride have no acoustic sample here: they fall back to the synth
+};
+
+let acousticBuffers: DrumBuffers | null = null;
+let acousticPending: Promise<DrumBuffers> | null = null;
+
+export function getLoadedAcousticKit(): DrumBuffers | null {
+  return acousticBuffers;
+}
+
+/** Lazily fetch + decode the acoustic kit; concurrent calls share one promise. */
+export function ensureAcousticKit(): Promise<DrumBuffers> {
+  if (acousticBuffers) return Promise.resolve(acousticBuffers);
+  if (acousticPending) return acousticPending;
+  acousticPending = Promise.all(
+    Object.entries(ACOUSTIC_FILES).map(async ([key, file]) => {
+      const res = await fetch(ACOUSTIC_BASE + file);
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${file}`);
+      return [key, await getDecodeCtx().decodeAudioData(await res.arrayBuffer())] as const;
+    }),
+  )
+    .then((entries) => {
+      const byFile = new Map(entries);
+      const map: DrumBuffers = new Map();
+      for (const [voiceId, fileKey] of Object.entries(ACOUSTIC_VOICE)) {
+        const buf = byFile.get(fileKey);
+        if (buf) map.set(voiceId, buf);
+      }
+      acousticBuffers = map;
+      acousticPending = null;
+      return map;
+    })
+    .catch((err) => {
+      acousticPending = null;
+      throw err;
+    });
+  return acousticPending;
+}
+
+function playBuffer(ctx: BaseAudioContext, dest: AudioNode, buffer: AudioBuffer, start: number, level: number): AudioScheduledSourceNode {
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  const g = ctx.createGain();
+  g.gain.value = Math.max(0, level);
+  src.connect(g).connect(dest);
+  src.start(start);
+  src.stop(start + buffer.duration + 0.02);
+  return src;
+}
+
+// ---- Synthesized kit -------------------------------------------------------
 
 // A shared white-noise buffer per audio context (noise is the basis of snare,
 // hi-hat and cymbals).
@@ -63,11 +138,14 @@ function noise(ctx: BaseAudioContext, dest: AudioNode, start: number, type: Biqu
 
 /**
  * Schedule one drum hit of `voiceId` at `start` (seconds, ctx time) on `dest`,
- * scaled by `level` (0..1 mixer gain). Returns the started source nodes so the
- * caller can track/stop them.
+ * scaled by `level` (0..1 mixer gain). With `kit` (acoustic buffers) a sampled
+ * one-shot plays when the voice has one; otherwise the synth is used. Returns
+ * the started source nodes so the caller can track/stop them.
  */
-export function triggerDrum(ctx: BaseAudioContext, dest: AudioNode, voiceId: string, start: number, level = 1): AudioScheduledSourceNode[] {
+export function triggerDrum(ctx: BaseAudioContext, dest: AudioNode, voiceId: string, start: number, level = 1, kit?: DrumBuffers | null): AudioScheduledSourceNode[] {
   const L = Math.max(0, level);
+  const sampled = kit?.get(voiceId);
+  if (sampled) return [playBuffer(ctx, dest, sampled, start, 0.9 * L)];
   const out: AudioScheduledSourceNode[] = [];
   const push = (n: AudioScheduledSourceNode | null) => n && out.push(n);
   switch (voiceId) {

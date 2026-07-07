@@ -4,6 +4,7 @@ import { LayoutMode } from './music/layout';
 import { scoreMeta, measureIndexAtTick } from './music/meta';
 import { Player, playPreview } from './music/audio';
 import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, ensureInstrument, getLoadedSampler, isSynth } from './music/instruments';
+import { ensureAcousticKit, getLoadedAcousticKit } from './music/drumkit';
 import { PiecePlayback, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffMidiChannel, staffTranspose } from './music/playback';
 import { scoreStaves } from './music/staves';
 import { DEFAULT_DRUM_ID } from './music/drums';
@@ -122,9 +123,23 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   const [instrumentLoading, setInstrumentLoading] = useState(false);
   const staffIds = scoreStaves(score).map((s) => s.id);
   const staffIdsKey = staffIds.join('|');
-  // percussion staves play the built-in drum kit, so they need no sampled instrument
+  // percussion staves play a drum kit, so they need no sampled instrument
   const pitchedStaffIds = scoreStaves(score).filter((s) => s.clef !== 'percussion').map((s) => s.id);
   const pitchedKey = pitchedStaffIds.join('|');
+  const drumKitKey = scoreStaves(score).map((s) => (s.clef === 'percussion' ? s.drumKit ?? 'synth' : '')).join('|');
+  // acoustic drum samples, loaded lazily when a percussion staff selects them
+  const acousticNeeded = scoreStaves(score).some((s) => s.clef === 'percussion' && s.drumKit === 'acoustic');
+  const [acousticReady, setAcousticReady] = useState(0);
+  useEffect(() => {
+    if (!acousticNeeded) return;
+    let alive = true;
+    ensureAcousticKit()
+      .then(() => alive && setAcousticReady((n) => n + 1))
+      .catch(() => {}); // unreachable samples fall back to the synth kit
+    return () => {
+      alive = false;
+    };
+  }, [acousticNeeded]);
   /** Distinct sampled instruments the current routing needs. */
   const neededInstruments = useCallback(
     () => [...new Set(pitchedStaffIds.map((s) => effectiveInstrumentId(playback, s)).filter((id) => !isSynth(id)))],
@@ -152,9 +167,11 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     const defs = scoreStaves(score);
     if (playerRef.current) {
       playerRef.current.staves = Object.fromEntries(
-        defs.map(({ id: s }) => {
+        defs.map((def) => {
+          const s = def.id;
           const iid = effectiveInstrumentId(playback, s);
-          return [s, { sampler: isSynth(iid) ? null : getLoadedSampler(iid), gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }];
+          const drumBuffers = def.clef === 'percussion' && def.drumKit === 'acoustic' ? getLoadedAcousticKit() : null;
+          return [s, { sampler: isSynth(iid) ? null : getLoadedSampler(iid), gain: staffGain(playback, s), transpose: staffTranspose(playback, s), drumBuffers }];
         }),
       );
     }
@@ -166,7 +183,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         }),
       );
     }
-  }, [playback, staffIdsKey, instrumentLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [playback, staffIdsKey, drumKitKey, instrumentLoading, acousticReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // expose the current piece to the admin page ("add current to the list")
   useEffect(() => {
@@ -330,7 +347,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     }
     // load every sampled instrument the per-staff routing needs
     const need = neededInstruments();
-    if (need.length > 0) {
+    if (need.length > 0 || acousticNeeded) {
       const req = ++playReqRef.current;
       setInstrumentLoading(true);
       try {
@@ -341,14 +358,17 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       } finally {
         setInstrumentLoading(false);
       }
+      if (acousticNeeded) await ensureAcousticKit().catch(() => {}); // non-fatal: falls back to the synth kit
       if (req !== playReqRef.current) return; // Stop pressed while loading
     }
     const player = playerRef.current ?? new Player();
     playerRef.current = player;
     player.staves = Object.fromEntries(
-      scoreStaves(score).map(({ id: s }) => {
+      scoreStaves(score).map((def) => {
+        const s = def.id;
         const id = effectiveInstrumentId(playback, s);
-        return [s, { sampler: isSynth(id) ? null : getLoadedSampler(id), gain: staffGain(playback, s), transpose: staffTranspose(playback, s) }];
+        const drumBuffers = def.clef === 'percussion' && def.drumKit === 'acoustic' ? getLoadedAcousticKit() : null;
+        return [s, { sampler: isSynth(id) ? null : getLoadedSampler(id), gain: staffGain(playback, s), transpose: staffTranspose(playback, s), drumBuffers }];
       }),
     );
     player.loop = loopRef.current; // looping is handled inside the Player (seamless)

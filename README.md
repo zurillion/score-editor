@@ -78,10 +78,14 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   crash, ride, tom alto/medio/basso); cliccando sul rigo si inserisce la voce
   alla sua posizione standard, con le **teste corrette** (✕ per hi-hat e
   piatti, ⊗ per il rim shot). Più voci sullo stesso movimento (grancassa +
-  rullante + hi-hat) si impilano su un gambo unico. Il playback usa un **kit
-  di batteria sintetizzato** (Web Audio, nessun campione da scaricare); in
-  **MIDI** le voci vanno sul **canale 10** con le note General-MIDI standard.
-  Volume, mute/solo e trasposizione del rigo funzionano come per gli altri.
+  rullante + hi-hat) si impilano su un gambo unico. **Trascinando** una nota
+  di batteria non diventa una nota intonata: si sposta sulla **voce di
+  batteria** più vicina. Nel mixer si sceglie il **kit** del rigo:
+  **Sintetico** (Web Audio, offline, nessun download) o **Acustico**
+  (campioni scaricati al primo uso; se non raggiungibili ripiega sul
+  sintetico). In **MIDI** le voci vanno sul **canale 10** con le note
+  General-MIDI standard. Volume, mute/solo e trasposizione del rigo
+  funzionano come per gli altri.
 - **Accordi** — con lo strumento *Accordo* (1 click: una volta · doppio:
   fisso) si scrive il nome dell'accordo sotto i pentagrammi, agganciato a
   una griglia di ottavi nel punto cliccato. Testo libero (nessun

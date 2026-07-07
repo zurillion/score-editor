@@ -60,6 +60,7 @@ export function sanitizeStaves(raw: unknown): StaffDef[] | null {
       ...(r.hidden ? { hidden: true } : {}),
       ...(typeof r.group === 'string' && r.group ? { group: r.group } : {}),
       ...(typeof r.name === 'string' && r.name ? { name: r.name } : {}),
+      ...(r.drumKit === 'acoustic' ? { drumKit: 'acoustic' as const } : {}),
     });
   }
   return out;

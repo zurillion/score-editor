@@ -118,9 +118,16 @@ export function MixerPanel({
           </button>
         </span>
         {def.clef === 'percussion' ? (
-          <label className="drum-tag" title="Rigo di batteria: suona un kit di percussioni">
-            Strumento
-            <strong>Batteria</strong>
+          <label title="Kit di batteria: sintetico (offline) o acustico campionato (si scarica al primo uso)">
+            Batteria
+            <select
+              value={def.drumKit === 'acoustic' ? 'acoustic' : 'synth'}
+              onChange={(e) => onScoreAction({ type: 'UPDATE_STAFF', id: def.id, patch: { drumKit: e.target.value === 'acoustic' ? 'acoustic' : 'synth' } })}
+              disabled={!manage}
+            >
+              <option value="synth">Sintetico</option>
+              <option value="acoustic">Acustico (campioni)</option>
+            </select>
           </label>
         ) : (
           <label>
