@@ -42,3 +42,7 @@ export const GLYPH_FONT_SIZE = 4 * STAFF_SPACE;
 // Delay between successive notes of a rolled (arpeggiated) chord, bottom-up.
 // Internal parameter for now; a UI control can expose it later.
 export const ARPEGGIO_STEP_SEC = 0.05;
+
+// Fraction of the written duration actually sounded by a staccato note.
+// Internal parameter for now; a UI control can expose it later.
+export const STACCATO_FRACTION = 0.5;

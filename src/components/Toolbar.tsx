@@ -200,382 +200,396 @@ export function Toolbar(props: ToolbarProps) {
     else if (tool.kind === 'arpeggio') setTool({ kind: 'note' });
     else setTool({ kind: 'arpeggio', sticky: false });
   }
+  function clickStaccato(detail: number) {
+    if (detail >= 2) setTool({ kind: 'staccato', sticky: true });
+    else if (tool.kind === 'staccato') setTool({ kind: 'note' });
+    else setTool({ kind: 'staccato', sticky: false });
+  }
 
   const eraserClass = tool.kind === 'eraser' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const chordClass = tool.kind === 'chord' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const arpClass = tool.kind === 'arpeggio' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const tupletClass = tool.kind === 'tuplet' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const tieClass = tool.kind === 'tie' ? (tool.sticky ? 'on sticky' : 'on') : '';
+  const staccatoClass = tool.kind === 'staccato' ? (tool.sticky ? 'on sticky' : 'on') : '';
 
   return (
     <div className="toolbar">
       <button className="gear-btn" onClick={onOpenOptions} title="Opzioni" aria-label="Opzioni">
         <GearIcon />
       </button>
-      <fieldset className="group">
-        <legend>Note / Pause</legend>
-        <div className="palette">
-          <div className="btn-row">
-            {DURATIONS.map((v) => (
-              <button
-                key={`n${v}`}
-                className={`glyph-btn ${tool.kind === 'note' && duration.value === v ? 'on' : ''}`}
-                onClick={() => {
-                  setTool({ kind: 'note' });
-                  setDuration({ ...duration, value: v });
-                }}
-                title="Nota"
-              >
-                <span className="bravura note">{SMUFL.paletteNotes[v]}</span>
-              </button>
-            ))}
-          </div>
-          <div className="btn-row">
-            {DURATIONS.map((v) => (
-              <button
-                key={`r${v}`}
-                className={`glyph-btn ${tool.kind === 'rest' && duration.value === v ? 'on' : ''}`}
-                onClick={() => {
-                  setTool({ kind: 'rest' });
-                  setDuration({ ...duration, value: v });
-                }}
-                title="Pausa"
-              >
-                <span className="bravura rest">{SMUFL.rests[v]}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Nota</legend>
-        <div className="note-readout" title="Nota che verrebbe inserita (armatura e alterazioni della battuta incluse)">
-          {hoverNote ?? '—'}
-        </div>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Punti</legend>
-        <div className="btn-row">
-          {([1, 2] as const).map((n) => {
-            const active = tool.kind === 'dot' && tool.dots === n;
-            const cls = active ? (tool.sticky ? 'on sticky' : 'on') : '';
-            return (
-              <button
-                key={n}
-                className={cls}
-                onClick={(e) => clickDot(n, e.detail)}
-                title={`Punto${n === 2 ? ' doppio' : ''} — 1 click: una volta · doppio click: modalità fissa. Clicca sulla nota.`}
-              >
-                {'•'.repeat(n)}
-              </button>
-            );
-          })}
-        </div>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Alterazione</legend>
-        <div className="btn-row">
-          {ACCIDENTALS.map(({ alter, title }) => {
-            const active = tool.kind === 'accidental' && tool.alter === alter;
-            const cls = active ? (tool.sticky ? 'on sticky' : 'on') : '';
-            return (
-              <button
-                key={alter}
-                className={`glyph-btn ${cls}`}
-                onClick={(e) => clickAccidental(alter, e.detail)}
-                title={`${title} — 1 click: una volta · doppio click: modalità fissa`}
-              >
-                <span className="bravura acc">{SMUFL.accidentals[String(alter)]}</span>
-              </button>
-            );
-          })}
-        </div>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Strumenti</legend>
-        <div className="btn-row">
-          <button
-            className={eraserClass}
-            onClick={(e) => clickEraser(e.detail)}
-            title="Gomma — 1 click: una volta · doppio click: modalità fissa. Clicca sulla testa della nota."
+      {/* fascia alta: playback, brano e impostazioni */}
+      <div className="toolbar-row">
+        <fieldset className="group">
+          <legend>Tempo · {measureLabel}</legend>
+          <select
+            value={`${timeSignature.numerator}/${timeSignature.denominator}`}
+            onChange={(e) => {
+              const [n, d] = e.target.value.split('/').map(Number);
+              setTimeSignature({ numerator: n, denominator: d });
+              e.currentTarget.blur(); // give focus back so arrow keys still move the playhead
+            }}
+            title={`Tempo da ${measureLabel} in poi`}
           >
-            ⌫ Gomma
-          </button>
-          <button
-            className={tupletClass}
-            onClick={(e) => clickTuplet(e.detail)}
-            title="Terzina — clicca su una nota per trasformarla in una terzina (3 note nel tempo di 2). 1 click: una volta · doppio click: fissa."
-          >
-            ³ Terzina
-          </button>
-          <button
-            className={tieClass}
-            onClick={(e) => clickTie(e.detail)}
-            title="Legatura di valore — clicca una nota per legarla alla successiva della stessa altezza (anche tra battute). 1 click: una volta · doppio click: fissa."
-          >
-            ⌣ Legatura
-          </button>
-          <button
-            className={chordClass}
-            onClick={(e) => clickChord(e.detail)}
-            title="Accordo — clicca sotto il rigo per scrivere il nome dell'accordo (testo libero, griglia di ottavi). Clic su un accordo esistente per modificarlo; testo vuoto lo elimina. 1 click: una volta · doppio click: fissa."
-          >
-            C⁷ Accordo
-          </button>
-          <button
-            className={arpClass}
-            onClick={(e) => clickArpeggio(e.detail)}
-            title="Arpeggiato — trascina in verticale sulle note da arpeggiare (anche su entrambi i pentagrammi: rullano come un accordo unico, dal grave all'acuto). Ripeti sulle stesse note per togliere. 1 click: una volta · doppio click: fissa."
-          >
-            ≀ Arpeggio
-          </button>
-          <button
-            className={`glyph-btn ${tool.kind === 'repeat' ? 'on' : ''}`}
-            onClick={() => setTool(tool.kind === 'repeat' ? { kind: 'note' } : { kind: 'repeat' })}
-            title={
-              'Ritornello — clic nella metà sinistra di una battuta: segno di inizio |: · metà destra: segno di fine :| .\n' +
-              'Trascina su/giù sul segno di inizio per il numero di esecuzioni (sotto 1 = ∞ : la sezione va in loop).\n' +
-              'Doppio clic su un segno lo elimina.'
-            }
-          >
-            <span className="bravura repeat-glyph">{SMUFL.repeatLeft}</span>
-            <span style={{ marginLeft: 6 }}>Ritornello</span>
-          </button>
-          <button
-            className={`icon-btn ${tool.kind === 'select-measures' ? 'on' : ''}`}
-            onClick={() => setTool({ kind: 'select-measures' })}
-            title="Seleziona battute (trascina). ⌘C/X copia/taglia · Backspace elimina"
-            aria-label="Seleziona battute"
-          >
-            <MeasureIcon />
-          </button>
-          <button onClick={onInsertMeasures} title="Inserisci battute vuote al punto di playback" aria-label="Inserisci battute">
-            +
-          </button>
-          <button
-            className={`icon-btn ${tool.kind === 'select-notes' ? 'on' : ''}`}
-            onClick={() => setTool({ kind: 'select-notes' })}
-            title="Lazo: seleziona note (trascina un rettangolo). ⌘C/X · Backspace"
-            aria-label="Lazo note"
-          >
-            <LassoIcon />
-          </button>
-        </div>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Audio</legend>
-        <div className="btn-row">
-          <button
-            className={previewOnCreate ? 'on' : ''}
-            onClick={() => setPreviewOnCreate(!previewOnCreate)}
-            title="Suona la nota appena creata (durata fissa)"
-          >
-            ♪ Suona nota
-          </button>
-        </div>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Tempo · {measureLabel}</legend>
-        <select
-          value={`${timeSignature.numerator}/${timeSignature.denominator}`}
-          onChange={(e) => {
-            const [n, d] = e.target.value.split('/').map(Number);
-            setTimeSignature({ numerator: n, denominator: d });
-            e.currentTarget.blur(); // give focus back so arrow keys still move the playhead
-          }}
-          title={`Tempo da ${measureLabel} in poi`}
-        >
-          {TIME_PRESETS.map((ts) => {
-            const key = `${ts.numerator}/${ts.denominator}`;
-            return (
-              <option key={key} value={key}>
-                {key}
-              </option>
-            );
-          })}
-        </select>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Armatura · {measureLabel}</legend>
-        <select
-          value={keySignature}
-          onChange={(e) => {
-            setKeySignature(Number(e.target.value));
-            e.currentTarget.blur();
-          }}
-          title={`Tonalità da ${measureLabel} in poi`}
-        >
-          {KEY_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Vista</legend>
-        <div className="btn-row">
-          <button className={mode === 'horizontal' ? 'on' : ''} onClick={() => setMode('horizontal')}>
-            Orizzontale
-          </button>
-          <button className={mode === 'page' ? 'on' : ''} onClick={() => setMode('page')}>
-            Pagina
-          </button>
-        </div>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>File</legend>
-        <div className="btn-row">
-          <ExportMenuButton label="⤓ Salva" title="Salva il brano come file .json." onExport={onSaveFile} />
-          <button onClick={onLoadFile} title="Carica un brano da un file .json o MusicXML (.musicxml / .xml)">⤒ Carica</button>
-        </div>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Libreria</legend>
-        <select
-          value=""
-          onChange={(e) => {
-            if (e.target.value) onLoadPiece(e.target.value);
-            e.target.value = '';
-            e.currentTarget.blur();
-          }}
-          title="Carica un brano pronto da suonare"
-        >
-          <option value="">— scegli un brano —</option>
-          {menuPieces.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.title}
-            </option>
-          ))}
-        </select>
-      </fieldset>
-
-      <fieldset className="group">
-        <legend>Misure</legend>
-        <div className="btn-row">
-          <button onClick={onAddMeasure} title="Aggiungi una battuta">+ Battuta</button>
-          <button onClick={onRemoveMeasure} title="Rimuovi l'ultima battuta">− Battuta</button>
-          <button onClick={onClear} title="Svuota tutte le battute">Pulisci</button>
-          <button
-            className={hasPickup ? 'on' : ''}
-            onClick={onToggleAnacrusis}
-            title="Anacrusi (battuta in levare): battuta iniziale incompleta che si adatta alle note"
-          >
-            ⅃ Anacrusi
-          </button>
-        </div>
-      </fieldset>
-
-      <fieldset className="group transport">
-        <legend>Playback{instrumentLoading ? ' · carico strumento…' : ''}</legend>
-        <div className="btn-row">
-          <button onClick={onToStart} title="Torna all'inizio del brano" aria-label="Torna all'inizio">
-            ⏮
-          </button>
-          <button className={`play ${isPlaying ? 'stop' : ''}`} onClick={isPlaying ? onStop : onPlay}>
-            {isPlaying ? '■ Stop' : '▶ Play'}
-          </button>
-          <label className="instrument" title="Strumento usato dal playback (i campioni si scaricano al primo uso)">
-            <InstrumentIcon id={instrument} />
-            <select
-              value={instrument}
-              onChange={(e) => {
-                setInstrument(e.target.value);
-                e.currentTarget.blur();
-              }}
-              disabled={isPlaying}
-              aria-label="Strumento"
-            >
-              {INSTRUMENTS.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
+            {TIME_PRESETS.map((ts) => {
+              const key = `${ts.numerator}/${ts.denominator}`;
+              return (
+                <option key={key} value={key}>
+                  {key}
                 </option>
-              ))}
-            </select>
-          </label>
-          <button className={loop ? 'on' : ''} onClick={() => setLoop(!loop)} title="Ripeti il brano in loop">
-            ↻ Loop
-          </button>
-          <label className="bpm">
-            BPM
+              );
+            })}
+          </select>
+        </fieldset>
+        <fieldset className="group">
+          <legend>Armatura · {measureLabel}</legend>
+          <select
+            className="key-select"
+            value={keySignature}
+            onChange={(e) => {
+              setKeySignature(Number(e.target.value));
+              e.currentTarget.blur();
+            }}
+            title={`Tonalità da ${measureLabel} in poi`}
+          >
+            {/* "(naturale)" compresso in "(♮)" per tenere la fascia su una riga */}
+            {KEY_OPTIONS.map((o) => ({ ...o, label: o.label.replace('naturale', '♮') })).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </fieldset>
+        <fieldset className="group">
+          <legend>Vista</legend>
+          <div className="btn-row">
+            <button className={mode === 'horizontal' ? 'on' : ''} onClick={() => setMode('horizontal')}>
+              Orizzontale
+            </button>
+            <button className={mode === 'page' ? 'on' : ''} onClick={() => setMode('page')}>
+              Pagina
+            </button>
+          </div>
+        </fieldset>
+        <fieldset className="group">
+          <legend>File</legend>
+          <div className="btn-row">
+            <ExportMenuButton label="⤓ Salva" title="Salva il brano come file .json." onExport={onSaveFile} />
+            <button onClick={onLoadFile} title="Carica un brano da un file .json o MusicXML (.musicxml / .xml)">⤒ Carica</button>
+          </div>
+        </fieldset>
+        <fieldset className="group">
+          <legend>Libreria</legend>
+          <select
+            className="library-select"
+            value=""
+            onChange={(e) => {
+              if (e.target.value) onLoadPiece(e.target.value);
+              e.target.value = '';
+              e.currentTarget.blur();
+            }}
+            title="Carica un brano pronto da suonare"
+          >
+            <option value="">— scegli un brano —</option>
+            {menuPieces.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </fieldset>
+        <fieldset className="group">
+          <legend>Misure</legend>
+          <div className="btn-row">
+            <button onClick={onAddMeasure} title="Aggiungi una battuta">+ Batt.</button>
+            <button onClick={onRemoveMeasure} title="Rimuovi l'ultima battuta">− Batt.</button>
+            <button onClick={onClear} title="Svuota tutte le battute">Pulisci</button>
+            <button
+              className={hasPickup ? 'on' : ''}
+              onClick={onToggleAnacrusis}
+              title="Anacrusi (battuta in levare): battuta iniziale incompleta che si adatta alle note"
+            >
+              ⅃ Anacrusi
+            </button>
+          </div>
+        </fieldset>
+        <fieldset className="group transport">
+          <legend>Playback{instrumentLoading ? ' · carico strumento…' : ''}</legend>
+          <div className="btn-row">
+            <button onClick={onToStart} title="Torna all'inizio del brano" aria-label="Torna all'inizio">
+              ⏮
+            </button>
+            <button className={`play ${isPlaying ? 'stop' : ''}`} onClick={isPlaying ? onStop : onPlay}>
+              {isPlaying ? '■ Stop' : '▶ Play'}
+            </button>
+            <label className="instrument" title="Strumento usato dal playback (i campioni si scaricano al primo uso)">
+              <InstrumentIcon id={instrument} />
+              <select
+                value={instrument}
+                onChange={(e) => {
+                  setInstrument(e.target.value);
+                  e.currentTarget.blur();
+                }}
+                disabled={isPlaying}
+                aria-label="Strumento"
+              >
+                {INSTRUMENTS.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className={loop ? 'on' : ''} onClick={() => setLoop(!loop)} title="Ripeti il brano in loop">
+              ↻ Loop
+            </button>
+            <label className="bpm">
+              BPM
+              <input
+                type="number"
+                min={30}
+                max={300}
+                value={bpm}
+                onChange={(e) => setBpm(Math.max(30, Math.min(300, Number(e.target.value) || 0)))}
+              />
+            </label>
             <input
-              type="number"
+              type="range"
               min={30}
               max={300}
               value={bpm}
-              onChange={(e) => setBpm(Math.max(30, Math.min(300, Number(e.target.value) || 0)))}
+              onChange={(e) => setBpm(Number(e.target.value))}
+              onMouseUp={(e) => e.currentTarget.blur()}
+              aria-label="BPM"
             />
-          </label>
-          <input
-            type="range"
-            min={30}
-            max={300}
-            value={bpm}
-            onChange={(e) => setBpm(Number(e.target.value))}
-            onMouseUp={(e) => e.currentTarget.blur()}
-            aria-label="BPM"
-          />
-        </div>
-      </fieldset>
+          </div>
+        </fieldset>
+        <fieldset className="group">
+          <legend>MIDI</legend>
+          <div className="btn-row">
+            <button
+              className={midiOn ? 'on' : ''}
+              onClick={onToggleMidi}
+              title="Pilota un dispositivo/synth MIDI esterno via Web MIDI (Chrome/Edge)"
+            >
+              🎹 MIDI {midiOn ? 'on' : 'off'}
+            </button>
+            {midiOn && (
+            <label className="midi-out">
+              Uscita
+              <select
+                value={midiOutId}
+                onChange={(e) => {
+                  setMidiOutId(e.target.value);
+                  e.currentTarget.blur();
+                }}
+                disabled={!midiOn || midiOutputs.length === 0}
+                title="Uscita MIDI"
+              >
+                {midiOutputs.length === 0 && <option value="">—</option>}
+                {midiOutputs.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            )}
+            {midiOn && (
+            <label className="midi-ch">
+              Canale
+              <select
+                value={midiChannel}
+                onChange={(e) => {
+                  setMidiChannel(Number(e.target.value));
+                  e.currentTarget.blur();
+                }}
+                title="Canale MIDI (1-16)"
+              >
+                {Array.from({ length: 16 }, (_, i) => i + 1).map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            )}
+          </div>
+        </fieldset>
+      </div>
 
-      <fieldset className="group">
-        <legend>MIDI</legend>
-        <div className="btn-row">
-          <button
-            className={midiOn ? 'on' : ''}
-            onClick={onToggleMidi}
-            title="Pilota un dispositivo/synth MIDI esterno via Web MIDI (Chrome/Edge)"
-          >
-            🎹 MIDI {midiOn ? 'on' : 'off'}
-          </button>
-          <label className="midi-out">
-            Uscita
-            <select
-              value={midiOutId}
-              onChange={(e) => {
-                setMidiOutId(e.target.value);
-                e.currentTarget.blur();
-              }}
-              disabled={!midiOn || midiOutputs.length === 0}
-              title="Uscita MIDI"
-            >
-              {midiOutputs.length === 0 && <option value="">—</option>}
-              {midiOutputs.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
+      {/* fascia bassa (vicino allo spartito): palette di inserimento e strumenti */}
+      <div className="toolbar-row">
+        <fieldset className="group">
+          <legend>Note / Pause</legend>
+          <div className="palette">
+            <div className="btn-row">
+              {DURATIONS.map((v) => (
+                <button
+                  key={`n${v}`}
+                  className={`glyph-btn ${tool.kind === 'note' && duration.value === v ? 'on' : ''}`}
+                  onClick={() => {
+                    setTool({ kind: 'note' });
+                    setDuration({ ...duration, value: v });
+                  }}
+                  title="Nota"
+                >
+                  <span className="bravura note">{SMUFL.paletteNotes[v]}</span>
+                </button>
               ))}
-            </select>
-          </label>
-          <label className="midi-ch">
-            Canale
-            <select
-              value={midiChannel}
-              onChange={(e) => {
-                setMidiChannel(Number(e.target.value));
-                e.currentTarget.blur();
-              }}
-              title="Canale MIDI (1-16)"
-            >
-              {Array.from({ length: 16 }, (_, i) => i + 1).map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+            </div>
+            <div className="btn-row">
+              {DURATIONS.map((v) => (
+                <button
+                  key={`r${v}`}
+                  className={`glyph-btn ${tool.kind === 'rest' && duration.value === v ? 'on' : ''}`}
+                  onClick={() => {
+                    setTool({ kind: 'rest' });
+                    setDuration({ ...duration, value: v });
+                  }}
+                  title="Pausa"
+                >
+                  <span className="bravura rest">{SMUFL.rests[v]}</span>
+                </button>
               ))}
-            </select>
-          </label>
-        </div>
-      </fieldset>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset className="group">
+          <legend>Nota</legend>
+          <div className="note-readout" title="Nota che verrebbe inserita (armatura e alterazioni della battuta incluse)">
+            {hoverNote ?? '—'}
+          </div>
+        </fieldset>
+        <fieldset className="group">
+          <legend>Punti</legend>
+          <div className="btn-row">
+            {([1, 2] as const).map((n) => {
+              const active = tool.kind === 'dot' && tool.dots === n;
+              const cls = active ? (tool.sticky ? 'on sticky' : 'on') : '';
+              return (
+                <button
+                  key={n}
+                  className={cls}
+                  onClick={(e) => clickDot(n, e.detail)}
+                  title={`Punto${n === 2 ? ' doppio' : ''} — 1 click: una volta · doppio click: modalità fissa. Clicca sulla nota.`}
+                >
+                  {'•'.repeat(n)}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+        <fieldset className="group">
+          <legend>Alterazione</legend>
+          <div className="btn-row">
+            {ACCIDENTALS.map(({ alter, title }) => {
+              const active = tool.kind === 'accidental' && tool.alter === alter;
+              const cls = active ? (tool.sticky ? 'on sticky' : 'on') : '';
+              return (
+                <button
+                  key={alter}
+                  className={`glyph-btn ${cls}`}
+                  onClick={(e) => clickAccidental(alter, e.detail)}
+                  title={`${title} — 1 click: una volta · doppio click: modalità fissa`}
+                >
+                  <span className="bravura acc">{SMUFL.accidentals[String(alter)]}</span>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+        <fieldset className="group">
+          <legend>Strumenti</legend>
+          <div className="btn-row">
+            <button
+              className={eraserClass}
+              onClick={(e) => clickEraser(e.detail)}
+              title="Gomma — 1 click: una volta · doppio click: modalità fissa. Clicca sulla testa della nota."
+            >
+              ⌫ Gomma
+            </button>
+            <button
+              className={tupletClass}
+              onClick={(e) => clickTuplet(e.detail)}
+              title="Terzina — clicca su una nota per trasformarla in una terzina (3 note nel tempo di 2). 1 click: una volta · doppio click: fissa."
+            >
+              ³ Terzina
+            </button>
+            <button
+              className={tieClass}
+              onClick={(e) => clickTie(e.detail)}
+              title="Legatura di valore — clicca una nota per legarla alla successiva della stessa altezza (anche tra battute). 1 click: una volta · doppio click: fissa."
+            >
+              ⌣ Legatura
+            </button>
+            <button
+              className={chordClass}
+              onClick={(e) => clickChord(e.detail)}
+              title="Accordo — clicca sotto il rigo per scrivere il nome dell'accordo (testo libero, griglia di ottavi). Clic su un accordo esistente per modificarlo; testo vuoto lo elimina. 1 click: una volta · doppio click: fissa."
+            >
+              C⁷ Accordo
+            </button>
+            <button
+              className={arpClass}
+              onClick={(e) => clickArpeggio(e.detail)}
+              title="Arpeggiato — trascina in verticale sulle note da arpeggiare (anche su entrambi i pentagrammi: rullano come un accordo unico, dal grave all'acuto). Ripeti sulle stesse note per togliere. 1 click: una volta · doppio click: fissa."
+            >
+              ≀ Arpeggio
+            </button>
+            <button
+              className={staccatoClass}
+              onClick={(e) => clickStaccato(e.detail)}
+              title="Staccato — clicca su una nota o un accordo per aggiungere/togliere il puntino di staccato (suona una frazione della durata scritta). 1 click: una volta · doppio click: fissa."
+            >
+              ˙ Staccato
+            </button>
+            <button
+              className={`glyph-btn ${tool.kind === 'repeat' ? 'on' : ''}`}
+              onClick={() => setTool(tool.kind === 'repeat' ? { kind: 'note' } : { kind: 'repeat' })}
+              title={
+                'Ritornello — clic nella metà sinistra di una battuta: segno di inizio |: · metà destra: segno di fine :| .\n' +
+                'Trascina su/giù sul segno di inizio per il numero di esecuzioni (sotto 1 = ∞ : la sezione va in loop).\n' +
+                'Doppio clic su un segno lo elimina.'
+              }
+            >
+              <span className="bravura repeat-glyph">{SMUFL.repeatLeft}</span>
+              <span style={{ marginLeft: 6 }}>Ritornello</span>
+            </button>
+            <button
+              className={`icon-btn ${tool.kind === 'select-measures' ? 'on' : ''}`}
+              onClick={() => setTool({ kind: 'select-measures' })}
+              title="Seleziona battute (trascina). ⌘C/X copia/taglia · Backspace elimina"
+              aria-label="Seleziona battute"
+            >
+              <MeasureIcon />
+            </button>
+            <button onClick={onInsertMeasures} title="Inserisci battute vuote al punto di playback" aria-label="Inserisci battute">
+              +
+            </button>
+            <button
+              className={`icon-btn ${tool.kind === 'select-notes' ? 'on' : ''}`}
+              onClick={() => setTool({ kind: 'select-notes' })}
+              title="Lazo: seleziona note (trascina un rettangolo). ⌘C/X · Backspace"
+              aria-label="Lazo note"
+            >
+              <LassoIcon />
+            </button>
+          </div>
+        </fieldset>
+        <fieldset className="group">
+          <legend>Audio</legend>
+          <div className="btn-row">
+            <button
+              className={previewOnCreate ? 'on' : ''}
+              onClick={() => setPreviewOnCreate(!previewOnCreate)}
+              title="Suona la nota appena creata (durata fissa)"
+            >
+              ♪ Suona nota
+            </button>
+          </div>
+        </fieldset>
+      </div>
     </div>
   );
 }

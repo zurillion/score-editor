@@ -2,7 +2,7 @@ import { Pitch, ScoreState } from './types';
 import { eventTicks, pitchToFrequency, pitchToMidi } from './theory';
 import { resolveMeasure } from './accidentals';
 import { scoreMeta } from './meta';
-import { ARPEGGIO_STEP_SEC, TICKS_PER_QUARTER } from './constants';
+import { ARPEGGIO_STEP_SEC, STACCATO_FRACTION, TICKS_PER_QUARTER } from './constants';
 import { Sampler, nearestZone } from './instruments';
 
 /**
@@ -179,7 +179,7 @@ export function buildSchedule(score: ScoreState): Schedule {
   const meta = scoreMeta(score);
   // Flatten to one entry per (pitch) occurrence in global time, so a tie of value
   // can merge a pitch across consecutive notes (within a bar or across bars).
-  interface Entry { key: string; startG: number; endG: number; freq: number; midi: number; tie: boolean; absorbed: boolean; arp?: number }
+  interface Entry { key: string; startG: number; endG: number; freq: number; midi: number; tie: boolean; absorbed: boolean; arp?: number; stac?: boolean }
   const entries: Entry[] = [];
   for (const mm of meta.measures) {
     const m = score.measures[mm.index];
@@ -219,6 +219,7 @@ export function buildSchedule(score: ScoreState): Schedule {
           tie: !!ev.tieToNext,
           absorbed: false,
           ...(arp ? { arp } : {}), // index 0 attacks on the beat: no field needed
+          ...(ev.staccato ? { stac: true } : {}),
         });
       }
     }
@@ -241,7 +242,10 @@ export function buildSchedule(score: ScoreState): Schedule {
         end = arr[j + 1].endG;
         j++;
       }
-      scoreNotes.push({ startTick: arr[i].startG, durTicks: end - arr[i].startG, freqs: [arr[i].freq], midis: [arr[i].midi], ...(arr[i].arp ? { arpIndex: arr[i].arp } : {}) });
+      // staccato: sound only a fraction of the written span (attack unchanged)
+      let durT = end - arr[i].startG;
+      if (arr[i].stac) durT = Math.max(24, Math.round(durT * STACCATO_FRACTION));
+      scoreNotes.push({ startTick: arr[i].startG, durTicks: durT, freqs: [arr[i].freq], midis: [arr[i].midi], ...(arr[i].arp ? { arpIndex: arr[i].arp } : {}) });
     }
   }
   const pickupTicks = meta.measures[0]?.pickup ? meta.measures[0].total : 0;

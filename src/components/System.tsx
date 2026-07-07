@@ -391,7 +391,7 @@ export function System(props: SystemProps) {
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
-  const modal = tool.kind === 'accidental' || tool.kind === 'eraser' || tool.kind === 'dot' || tool.kind === 'tuplet' || tool.kind === 'tie';
+  const modal = tool.kind === 'accidental' || tool.kind === 'eraser' || tool.kind === 'dot' || tool.kind === 'tuplet' || tool.kind === 'tie' || tool.kind === 'staccato';
 
   function localPoint(clientX: number, clientY: number): { x: number; y: number } | null {
     const svg = svgRef.current;
@@ -753,6 +753,8 @@ export function System(props: SystemProps) {
       onAction({ type: 'MAKE_TUPLET', measureIndex: hit.measureIndex, eventId: hit.eventId });
     } else if (tool.kind === 'tie') {
       onAction({ type: 'TOGGLE_TIE', measureIndex: hit.measureIndex, eventId: hit.eventId });
+    } else if (tool.kind === 'staccato') {
+      onAction({ type: 'TOGGLE_STACCATO', measureIndex: hit.measureIndex, eventId: hit.eventId });
     }
     onAfterApply();
   }
@@ -785,7 +787,8 @@ export function System(props: SystemProps) {
       </g>
     );
   } else if (hover?.mode === 'target') {
-    const color = tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : tool.kind === 'tuplet' ? '#7c3aed' : tool.kind === 'tie' ? '#0ea5e9' : '#dc2626';
+    const color =
+      tool.kind === 'accidental' ? '#2563eb' : tool.kind === 'dot' ? '#0891b2' : tool.kind === 'tuplet' ? '#7c3aed' : tool.kind === 'tie' ? '#0ea5e9' : tool.kind === 'staccato' ? '#d97706' : '#dc2626';
     overlay = (
       <g pointerEvents="none">
         <circle cx={hover.hx} cy={hover.hy} r={NOTEHEAD_RX + 3} fill={`${color}22`} stroke={color} strokeWidth={1.4} />
@@ -958,6 +961,19 @@ export function System(props: SystemProps) {
       }
       const x = measureTickToX(pm, tick) - left - (hasAcc ? 20 : 9);
       els.push(<path key={`arp-${pm.index}-${tick}`} d={wavyPath(x, yTop, yBot)} stroke="#1a1a1a" strokeWidth={1.7} fill="none" strokeLinecap="round" pointerEvents="none" />);
+    }
+    return els;
+  }
+
+  // staccato dots: on the notehead side, opposite the stem (which a beam may force)
+  function renderStaccatos(pm: PlacedMeasure, beamProps: Map<string, { stemUp: boolean; tipY: number }>): JSX.Element[] {
+    const els: JSX.Element[] = [];
+    for (const ev of pm.measure.events) {
+      if (ev.kind !== 'note' || !ev.staccato) continue;
+      const ds = ev.pitches.map(pitchToDiatonic);
+      const stemUp = beamProps.get(ev.id)?.stemUp ?? stemUpForChord(ds, ev.staff);
+      const y = stemUp ? diatonicToY(Math.min(...ds)) + 8.5 : diatonicToY(Math.max(...ds)) - 8.5;
+      els.push(<circle key={`stc-${ev.id}`} cx={measureTickToX(pm, ev.startTick)} cy={y} r={2.2} fill="#1a1a1a" pointerEvents="none" />);
     }
     return els;
   }
@@ -1138,6 +1154,7 @@ export function System(props: SystemProps) {
           {pm.measure.repeatEnd && repeatSignEls(pm, 'end', '#1a1a1a', 1, 'rpt')}
           {repeatHitZones(pm)}
           {renderArpeggios(pm)}
+          {renderStaccatos(pm, beamProps)}
           {pm.measure.chords?.map((c) =>
             chordEdit && chordEdit.measureIndex === pm.index && chordEdit.tick === c.tick ? null : (
               <text

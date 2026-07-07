@@ -273,13 +273,19 @@ body {
   cursor: default;
 }
 
-/* ---- Toolbar ---- */
+/* ---- Toolbar: two bands — settings/transport on top, editing palette
+   at the bottom, next to the score ---- */
 .toolbar {
   position: relative;
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 48px 10px 16px;
+}
+.toolbar-row {
+  display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 8px 48px 12px 16px;
+  gap: 8px;
   align-items: flex-end;
 }
 
@@ -307,7 +313,7 @@ body {
 .group {
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 4px 8px 8px;
+  padding: 4px 6px 7px;
   margin: 0;
   background: var(--panel);
 }
@@ -331,10 +337,10 @@ button {
   background: #fff;
   color: var(--ink);
   border-radius: 6px;
-  padding: 6px 10px;
+  padding: 6px 8px;
   cursor: pointer;
   line-height: 1;
-  min-width: 34px;
+  min-width: 32px;
 }
 button:hover {
   border-color: #b9bfca;
@@ -393,11 +399,11 @@ input[type='number'] {
   font: inherit;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 6px 6px;
   background: #fff;
 }
 input[type='number'] {
-  width: 64px;
+  width: 56px;
 }
 
 .transport .play {
@@ -414,6 +420,18 @@ input[type='number'] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.transport input[type='range'] {
+  width: 76px;
+}
+.library-select {
+  max-width: 176px;
+}
+.key-select {
+  max-width: 168px; /* la tendina aperta mostra comunque le voci per intero */
+}
+.instrument select {
+  max-width: 148px;
 }
 .inst-icon {
   display: inline-flex;

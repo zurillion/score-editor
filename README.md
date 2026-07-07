@@ -47,6 +47,9 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   una griglia di ottavi nel punto cliccato. Testo libero (nessun
   controllo); clic su un accordo esistente per modificarlo, testo vuoto
   per eliminarlo.
+- **Staccato** — con lo strumento *Staccato* si clicca su una nota o un
+  accordo per il puntino (sul lato opposto al gambo); nel playback suona
+  una frazione della durata scritta (50%, parametro interno).
 - **Arpeggiato** — con lo strumento *Arpeggio* si trascina in verticale
   sulle note da arpeggiare: la linea ondulata compare a sinistra e nel
   playback le note attaccano scaglionate dal grave all'acuto (50 ms per

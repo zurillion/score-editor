@@ -41,6 +41,7 @@ export interface NoteEvent {
   tieToNext?: boolean; // tie of value: sustain into the next note of the same pitch
   arpeggio?: boolean; // rolled chord: pitches attack bottom-up, all sustaining to the end.
   // Flagged events at the same tick (even across staves) roll together as one chord.
+  staccato?: boolean; // dot on the notehead side: sounds a fraction of the written duration
 }
 
 export interface RestEvent {

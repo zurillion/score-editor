@@ -27,6 +27,7 @@ export type ScoreAction =
   | { type: 'MAKE_TUPLET'; measureIndex: number; eventId: string }
   | { type: 'TOGGLE_TIE'; measureIndex: number; eventId: string }
   | { type: 'SET_ARPEGGIO'; measureIndex: number; eventIds: string[]; on: boolean }
+  | { type: 'TOGGLE_STACCATO'; measureIndex: number; eventId: string }
   | { type: 'ERASE'; measureIndex: number; eventId: string; diatonic: number | null }
   | { type: 'DELETE_MEASURES'; indices: number[] }
   | { type: 'DELETE_NOTES'; ids: string[] }
@@ -216,6 +217,16 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const target = m.events.find((e) => e.id === action.eventId);
       if (!target || target.kind !== 'note') return state;
       const events = m.events.map((e) => (e.id === target.id ? { ...target, tieToNext: !target.tieToNext } : e));
+      return withMeasureEvents(state, action.measureIndex, events);
+    }
+
+    case 'TOGGLE_STACCATO': {
+      const m = state.measures[action.measureIndex];
+      if (!m) return state;
+      const target = m.events.find((e) => e.id === action.eventId);
+      if (!target || target.kind !== 'note') return state;
+      const { staccato: _drop, ...bare } = target;
+      const events = m.events.map((e) => (e.id === target.id ? (target.staccato ? bare : { ...target, staccato: true }) : e));
       return withMeasureEvents(state, action.measureIndex, events);
     }
 

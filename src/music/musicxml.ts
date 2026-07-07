@@ -119,7 +119,8 @@ export function exportMusicXML(name: string, bpm: number, score: ScoreState): st
           const stops = tieStop.has(`${mi}|${ev.startTick}|${staff}|${d}`);
           const tieEls = (stops ? '<tie type="stop"/>' : '') + (starts ? '<tie type="start"/>' : '');
           const tied = (stops ? '<tied type="stop"/>' : '') + (starts ? '<tied type="start"/>' : '');
-          const notations = tied + (ev.arpeggio ? '<arpeggiate/>' : '') + (pi === 0 ? tupletNotation : '');
+          const notations =
+            tied + (ev.arpeggio ? '<arpeggiate/>' : '') + (pi === 0 ? (ev.staccato ? '<articulations><staccato/></articulations>' : '') + tupletNotation : '');
           push(
             '      <note>' +
               (pi > 0 ? '<chord/>' : '') +
@@ -353,6 +354,7 @@ export function importMusicXML(xml: string): ImportedPiece {
             note.tieToNext = true;
           }
           if (arpeggiate) note.arpeggio = true;
+          if (el.getElementsByTagName('staccato').length > 0) note.staccato = true;
           pos += ticks;
           rawNotes.push({ ev: note, ratio, accidentals: [hasAccidental] });
           measure.events.push(note);

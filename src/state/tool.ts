@@ -20,6 +20,7 @@ export type Tool =
   | { kind: 'repeat' } // click a measure half to add |: / :| ; drag a sign vertically to set the play count; double-click removes
   | { kind: 'chord'; sticky: boolean } // click under the staff to type a chord name (eighth grid; empty text deletes)
   | { kind: 'arpeggio'; sticky: boolean } // drag vertically over chord notes (both staves allowed) to toggle the roll
+  | { kind: 'staccato'; sticky: boolean } // click a note/chord to toggle the staccato dot
   | { kind: 'select-measures' }
   | { kind: 'select-notes' };
 
