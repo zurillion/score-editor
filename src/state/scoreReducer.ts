@@ -1,5 +1,5 @@
 import { Alter, ChordSymbol, Clef, Duration, DurationValue, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, Staff, StaffDef, ScoreState, TimeSignature, Tuplet } from '../music/types';
-import { diatonicToPitch, eventTicks, measureTicks, pitchEquals, pitchToDiatonic } from '../music/theory';
+import { diatonicToPitch, durationTicks, eventTicks, measureTicks, pitchEquals, pitchToDiatonic } from '../music/theory';
 import { effectiveTimeSignatureAt, scoreMeta } from '../music/meta';
 import { classifyNote, classifyRest } from '../music/placement';
 import { defaultStaves, newGroupId, newStaffId, sanitizeStaves, scoreStaves } from '../music/staves';
@@ -94,6 +94,14 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const verdict = classifyNote(m.events, action.tick, action.pitch, action.duration, total, staff);
       if (verdict === 'blocked') return state;
 
+      const newTicks = durationTicks(action.duration);
+      // a placed/grown note eats the (non-tuplet) rest span it now covers; the
+      // leftover of a partially eaten rest re-derives automatically as rests
+      const eatRests = (events: ScoreEvent[], keepId: string): ScoreEvent[] =>
+        events.filter(
+          (e) => e.id === keepId || e.staff !== staff || e.kind !== 'rest' || e.tuplet || action.tick >= e.startTick + eventTicks(e) || e.startTick >= action.tick + newTicks,
+        );
+
       if (verdict === 'create') {
         // clicking a tuplet rest turns it back into a note (keeping the tuplet + slot)
         const restSlot = m.events.find((e) => e.startTick === action.tick && e.staff === staff && e.kind === 'rest' && e.tuplet);
@@ -109,7 +117,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
           duration: action.duration,
           pitches: [action.pitch],
         };
-        return withMeasureEvents(state, action.measureIndex, [...m.events, note]);
+        return withMeasureEvents(state, action.measureIndex, [...eatRests(m.events, ''), note]);
       }
 
       // resize / chord / delete operate on the event of this staff that starts exactly here
@@ -118,12 +126,13 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
 
       if (verdict === 'resize') {
         // a rest becomes a note of the chosen value; a note keeps its pitches but
-        // changes value. Any span freed to the right auto-fills with rests.
-        if (target.kind === 'rest') {
-          const note: NoteEvent = { id: uid('n'), kind: 'note', staff, startTick: action.tick, duration: action.duration, pitches: [action.pitch] };
-          return withMeasureEvents(state, action.measureIndex, m.events.map((e) => (e.id === target.id ? note : e)));
-        }
-        return withMeasureEvents(state, action.measureIndex, m.events.map((e) => (e.id === target.id ? { ...target, duration: action.duration } : e)));
+        // changes value. Growing eats the rests to the right; shrinking frees space
+        // that re-derives as rests.
+        const next =
+          target.kind === 'rest'
+            ? m.events.map((e) => (e.id === target.id ? ({ id: uid('n'), kind: 'note', staff, startTick: action.tick, duration: action.duration, pitches: [action.pitch] } as NoteEvent) : e))
+            : m.events.map((e) => (e.id === target.id ? { ...target, duration: action.duration } : e));
+        return withMeasureEvents(state, action.measureIndex, eatRests(next, target.id));
       }
 
       if (target.kind !== 'note') return state;

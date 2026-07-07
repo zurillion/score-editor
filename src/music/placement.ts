@@ -10,9 +10,13 @@ export function overlaps(events: ScoreEvent[], start: number, dur: number, ignor
   );
 }
 
-/** A new span [tick, tick+dur) fits: within the bar and clear of other same-staff events. */
+/**
+ * A new span [tick, tick+dur) fits: within the bar and clear of other same-staff
+ * *notes*. Rests don't block — a growing/placed note eats the rest span it covers.
+ */
 function fits(staffEvents: ScoreEvent[], tick: number, dur: number, total: number, ignoreId: string): boolean {
-  return tick + dur <= total && !overlaps(staffEvents, tick, dur, ignoreId);
+  if (tick + dur > total) return false;
+  return !staffEvents.some((e) => e.id !== ignoreId && e.kind === 'note' && tick < e.startTick + eventTicks(e) && e.startTick < tick + dur);
 }
 
 /** What would clicking with the note tool do at this slot/pitch on the given staff? */
@@ -39,8 +43,8 @@ export function classifyNote(
     if (exact.tuplet || newDur === eventTicks(exact)) return 'delete';
     return fits(staffEvents, tick, newDur, total, exact.id) ? 'resize' : 'blocked';
   }
-  if (tick + newDur > total) return 'blocked';
-  return overlaps(staffEvents, tick, newDur) ? 'blocked' : 'create';
+  // empty slot (possibly inside a rest, which gets eaten): a note blocks, a rest doesn't
+  return fits(staffEvents, tick, newDur, total, '') ? 'create' : 'blocked';
 }
 
 /** What would clicking with the rest tool do at this slot on the given staff? */
