@@ -5,6 +5,8 @@ import { scoreMeta } from './meta';
 import { TICKS_PER_QUARTER } from './constants';
 import { getArpeggioStepSec, getStaccatoFraction } from './playbackPrefs';
 import { Sampler, nearestZone } from './instruments';
+import { drumVoice } from './drums';
+import { triggerDrum } from './drumkit';
 
 /**
  * Start one note at `start` for `dur` seconds on `dest`: an AudioBufferSource
@@ -88,7 +90,10 @@ export function playPreview(
   master.gain.value = 0.8;
   master.connect(ctx.destination);
 
-  for (const p of pitches) startVoice(ctx, master, sampler, t0, durSec, pitchToFrequency(p) * Math.pow(2, t / 12), pitchToMidi(p) + t, level);
+  for (const p of pitches) {
+    if (p.drum) triggerDrum(ctx, master, p.drum, t0, level); // percussion preview: the kit, no pitch
+    else startVoice(ctx, master, sampler, t0, durSec, pitchToFrequency(p) * Math.pow(2, t / 12), pitchToMidi(p) + t, level);
+  }
 }
 
 export interface ScheduledNote {
@@ -97,6 +102,7 @@ export interface ScheduledNote {
   freqs: number[];
   midis: number[];
   staff: string; // which staff sounds it (per-staff instrument/volume)
+  drum?: string; // drum voice id (percussion note): play the kit, not a pitch
   arpIndex?: number; // position (bottom-up) inside a rolled chord: the attack is delayed by arpIndex steps
 }
 
@@ -197,7 +203,7 @@ export function buildSchedule(score: ScoreState, transposes: Partial<Record<stri
   const meta = scoreMeta(score);
   // Flatten to one entry per (pitch) occurrence in global time, so a tie of value
   // can merge a pitch across consecutive notes (within a bar or across bars).
-  interface Entry { key: string; staff: string; startG: number; endG: number; freq: number; midi: number; tie: boolean; absorbed: boolean; arp?: number; stac?: boolean }
+  interface Entry { key: string; staff: string; startG: number; endG: number; freq: number; midi: number; drum?: string; tie: boolean; absorbed: boolean; arp?: number; stac?: boolean }
   const entries: Entry[] = [];
   for (const mm of meta.measures) {
     const m = score.measures[mm.index];
@@ -230,14 +236,16 @@ export function buildSchedule(score: ScoreState, transposes: Partial<Record<stri
       for (const p of ev.pitches) {
         const eff = effOf(ev.id, p);
         const arp = arpIdx.get(`${ev.id}|${p.step}${p.octave}`);
+        const voice = drumVoice(p.drum); // percussion note: sound the kit, ignore pitch/transpose
         entries.push({
-          key: `${ev.staff}|${p.step}${p.octave}`,
+          key: voice ? `${ev.staff}|drum:${voice.id}` : `${ev.staff}|${p.step}${p.octave}`,
           staff: ev.staff,
           startG,
           endG,
-          freq: pitchToFrequency(eff) * Math.pow(2, t / 12),
-          midi: pitchToMidi(eff) + t,
-          tie: !!ev.tieToNext,
+          freq: voice ? 0 : pitchToFrequency(eff) * Math.pow(2, t / 12),
+          midi: voice ? voice.gm : pitchToMidi(eff) + t,
+          ...(voice ? { drum: voice.id } : {}),
+          tie: !voice && !!ev.tieToNext,
           absorbed: false,
           ...(arp ? { arp } : {}), // index 0 attacks on the beat: no field needed
           ...(ev.staccato ? { stac: true } : {}),
@@ -266,7 +274,7 @@ export function buildSchedule(score: ScoreState, transposes: Partial<Record<stri
       // staccato: sound only a fraction of the written span (attack unchanged)
       let durT = end - arr[i].startG;
       if (arr[i].stac) durT = Math.max(24, Math.round(durT * getStaccatoFraction()));
-      scoreNotes.push({ startTick: arr[i].startG, durTicks: durT, freqs: [arr[i].freq], midis: [arr[i].midi], staff: arr[i].staff, ...(arr[i].arp ? { arpIndex: arr[i].arp } : {}) });
+      scoreNotes.push({ startTick: arr[i].startG, durTicks: durT, freqs: [arr[i].freq], midis: [arr[i].midi], staff: arr[i].staff, ...(arr[i].drum ? { drum: arr[i].drum } : {}), ...(arr[i].arp ? { arpIndex: arr[i].arp } : {}) });
     }
   }
   const pickupTicks = meta.measures[0]?.pickup ? meta.measures[0].total : 0;
@@ -414,7 +422,7 @@ export class Player {
             const start = Math.max(now, now + (g - this.posTicks) * this.secPerTick);
             const durSec = n.durTicks * this.secPerTick;
             const off = arpeggioOffsetSec(n, durSec); // rolled chord: staggered attack, common end
-            for (let i = 0; i < n.freqs.length; i++) this.scheduleNote(start + off, durSec - off, n.freqs[i], n.midis[i], n.staff);
+            for (let i = 0; i < n.freqs.length; i++) this.scheduleNote(start + off, durSec - off, n.freqs[i], n.midis[i], n.staff, n.drum);
           }
         }
         this.scheduledTick = target;
@@ -427,16 +435,23 @@ export class Player {
     this.raf = requestAnimationFrame(frame);
   }
 
-  private scheduleNote(start: number, dur: number, freq: number, midi: number, staff: string): void {
+  private scheduleNote(start: number, dur: number, freq: number, midi: number, staff: string, drum?: string): void {
     const ctx = this.ctx;
     const dest = this.master;
     if (!ctx || !dest) return;
     const cfg = this.staves[staff] ?? { sampler: this.sampler, gain: 1, transpose: 0 };
     if (cfg.gain <= 0) return; // muted staff
+    const track = (src: AudioScheduledSourceNode) => {
+      this.sources.add(src);
+      src.onended = () => this.sources.delete(src); // prune so a long loop doesn't accumulate
+    };
+    if (drum) {
+      // percussion: a one-shot kit hit, no pitch shift / transpose
+      for (const src of triggerDrum(ctx, dest, drum, start, cfg.gain)) track(src);
+      return;
+    }
     const t = cfg.transpose || 0;
-    const src = startVoice(ctx, dest, cfg.sampler, start, dur, freq * Math.pow(2, t / 12), midi + t, cfg.gain);
-    this.sources.add(src);
-    src.onended = () => this.sources.delete(src); // prune so a long loop doesn't accumulate
+    track(startVoice(ctx, dest, cfg.sampler, start, dur, freq * Math.pow(2, t / 12), midi + t, cfg.gain));
   }
 
   stop(): void {

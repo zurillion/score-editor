@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState } from 'react';
-import { Alter, Duration, NoteEvent, Pitch, ScoreEvent, Staff, TimeSignature } from '../music/types';
+import { Alter, Clef, Duration, NoteEvent, Pitch, ScoreEvent, Staff, TimeSignature } from '../music/types';
 import { diatonicToPitch, durationTicks, eventTicks, pitchNameIt, pitchToDiatonic } from '../music/theory';
 import {
   SystemLayout,
@@ -19,6 +19,7 @@ import {
   REPEAT_START_PAD,
 } from '../music/layout';
 import { StavesLayout, RowSlot, rowAtY, rowClampD, rowLedgerLines, rowStaffForDiatonic, CLEFS } from '../music/staves';
+import { drumVoice } from '../music/drums';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
 import { beamGroups, beamCount } from '../music/beams';
@@ -301,6 +302,7 @@ interface PlaceHover {
   diatonic: number;
   alter: Alter; // effective alteration (key signature + accidentals so far in the measure)
   staff: Staff;
+  drum?: string; // drum voice id when placing on a percussion staff
   action: PlaceAction;
 }
 interface TargetHover {
@@ -341,6 +343,7 @@ interface SystemProps {
   onPreviewNote: (pitches: Pitch[], staff?: Staff) => void;
   onSetCursor: (tick: number) => void;
   onHoverNote: (name: string | null) => void;
+  drumVoiceId: string; // active drum voice for placement on a percussion staff
   ties: TieConn[];
 }
 
@@ -364,13 +367,14 @@ export function System(props: SystemProps) {
     onPreviewNote,
     onSetCursor,
     onHoverNote,
+    drumVoiceId,
     ties,
   } = props;
 
   // ---- per-staff lookup tables over the visible rows ----
   const rowByStaff = new Map<Staff, RowSlot>();
   const keyOverride = new Map<Staff, number | null>();
-  const clefByStaff = new Map<Staff, 'treble' | 'bass'>();
+  const clefByStaff = new Map<Staff, Clef>();
   for (const row of sl.rows) {
     for (const s of row.staves) {
       rowByStaff.set(s.def.id, row);
@@ -380,9 +384,10 @@ export function System(props: SystemProps) {
   }
   const visibleStaffIds = sl.rows.flatMap((r) => r.staves.map((s) => s.def.id));
   const middleOf = (staff: Staff): number => CLEFS[clefByStaff.get(staff) ?? 'treble'].middle;
+  const isPercStaff = (staff: Staff): boolean => clefByStaff.get(staff) === 'percussion';
   const dyOf = (staff: Staff): number => rowByStaff.get(staff)?.dy ?? 0;
-  /** Key signature a staff reads in a measure: its own override, else the measure's. */
-  const staffKey = (staff: Staff, measureKey: number): number => keyOverride.get(staff) ?? measureKey;
+  /** Key signature a staff reads in a measure: its own override, else the measure's (percussion has none). */
+  const staffKey = (staff: Staff, measureKey: number): number => (isPercStaff(staff) ? 0 : keyOverride.get(staff) ?? measureKey);
   const rowCtx = (row: RowSlot): RowCtx => ({
     staffIds: row.staves.map((s) => s.def.id),
     middleOf,
@@ -459,8 +464,12 @@ export function System(props: SystemProps) {
 
     const row = rowAtY(sl, y);
     const [dLo, dHi] = rowClampD(row);
-    const d = clamp(yToDiatonic(y - row.dy), dLo, dHi);
+    let d = clamp(yToDiatonic(y - row.dy), dLo, dHi);
     const staff = rowStaffForDiatonic(row, d);
+    // on a percussion staff the note tool places the active drum voice at its
+    // fixed staff position (the click only picks the tick)
+    const perc = isPercStaff(staff) && tool.kind === 'note' ? drumVoice(drumVoiceId) : null;
+    if (perc) d = perc.diatonic;
     const grid = durationTicks(duration);
     const pxPerTick = pm.noteSpan / Math.max(1, pm.spanTicks);
     // catch zone of an existing event: never wider than half a grid step, or
@@ -497,13 +506,13 @@ export function System(props: SystemProps) {
       const contentEnd = pm.measure.events.reduce((mx, e) => Math.max(mx, e.startTick + eventTicks(e)), 0);
       tick = Math.min(tick, contentEnd);
     }
-    const base = diatonicToPitch(d, 0);
-    const alter = effectiveAlterForNew(pm.measure.events, staffKey(staff, pm.keySig), staff, base.step, base.octave, tick);
+    const base: Pitch = perc ? { ...diatonicToPitch(d, 0), drum: perc.id } : diatonicToPitch(d, 0);
+    const alter = perc ? 0 : effectiveAlterForNew(pm.measure.events, staffKey(staff, pm.keySig), staff, base.step, base.octave, tick);
     const action =
       tool.kind === 'rest'
         ? classifyRest(pm.measure.events, tick, duration, pm.capacityTicks, staff)
         : classifyNote(pm.measure.events, tick, base, duration, pm.capacityTicks, staff);
-    return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, alter, staff, action };
+    return { mode: 'place', measureIndex: pm.index, tick, diatonic: d, alter, staff, ...(perc ? { drum: perc.id } : {}), action };
   }
 
   // report the hovered ghost-note's name (key signature + measure accidentals) to the parent
@@ -512,7 +521,9 @@ export function System(props: SystemProps) {
     setHover(h);
     const name =
       h?.mode === 'place' && tool.kind === 'note' && (h.action === 'create' || h.action === 'chord' || h.action === 'resize')
-        ? pitchNameIt({ ...diatonicToPitch(h.diatonic, 0), alter: h.alter })
+        ? h.drum
+          ? drumVoice(h.drum)?.label ?? null
+          : pitchNameIt({ ...diatonicToPitch(h.diatonic, 0), alter: h.alter })
         : null;
     if (name !== lastHoverName.current) {
       lastHoverName.current = name;
@@ -826,9 +837,9 @@ export function System(props: SystemProps) {
       if (tool.kind === 'rest') {
         onAction({ type: 'CLICK_REST', measureIndex: target.measureIndex, tick: target.tick, duration, staff: target.staff });
       } else {
-        // store a non-explicit note: it follows the key signature and any
-        // accidental already in effect in the measure
-        const pitch = diatonicToPitch(target.diatonic, 0);
+        // a drum note carries its voice; a pitched note follows the key
+        // signature and any accidental already in effect in the measure
+        const pitch: Pitch = target.drum ? { ...diatonicToPitch(target.diatonic, 0), drum: target.drum } : diatonicToPitch(target.diatonic, 0);
         onAction({ type: 'CLICK_NOTE', measureIndex: target.measureIndex, tick: target.tick, pitch, duration, staff: target.staff });
         if (previewOnCreate && (target.action === 'create' || target.action === 'chord' || target.action === 'resize'))
           onPreviewNote([{ ...pitch, alter: target.alter }], target.staff); // sound it with its effective alteration
@@ -874,7 +885,7 @@ export function System(props: SystemProps) {
             <RestView duration={duration} x={gx} color={color} middle={middleOf(hover.staff)} opacity={op} />
           ) : (
             <NoteView
-              pitches={[{ ...diatonicToPitch(hover.diatonic, 0), alter: hover.alter }]}
+              pitches={[{ ...diatonicToPitch(hover.diatonic, 0), alter: hover.alter, ...(hover.drum ? { drum: hover.drum } : {}) }]}
               duration={duration}
               middle={middleOf(hover.staff)}
               ledgerOf={(d) => rowLedgerLines(row, d)}
@@ -1111,14 +1122,14 @@ export function System(props: SystemProps) {
     const baseX = pm.leftX + 4 + (pm.measure.repeatStart ? REPEAT_START_PAD : 0);
     const naturalsCount = pm.keyChanged ? keyChangeNaturals(pm.prevKeySig, pm.keySig, 0).length : 0;
     const newCount = Math.abs(pm.keySig);
-    const showKey = pm.keyChanged && row.staves.some((s) => s.key === null);
+    const showKey = pm.keyChanged && row.staves.some((s) => s.key === null && s.def.clef !== 'percussion');
     const timeX = baseX + (showKey ? (naturalsCount + newCount) * KEYSIG_STEP + 12 : 16); // keep the digits clear of the barline
     return (
       <g pointerEvents="none">
         <line x1={pm.leftX - 3} x2={pm.leftX - 3} y1={diatonicToY(row.topD)} y2={diatonicToY(row.botD)} stroke="#222" strokeWidth={BAR_LINE_WIDTH} />
         {pm.keyChanged &&
           row.staves
-            .filter((s) => s.key === null)
+            .filter((s) => s.key === null && s.def.clef !== 'percussion')
             .flatMap((s) => [
               ...keyChangeNaturals(pm.prevKeySig, pm.keySig, s.clef.keysigOffset).map((n, i) => (
                 <text key={`nat${s.def.id}-${i}`} x={baseX + i * KEYSIG_STEP} y={diatonicToY(n.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
@@ -1212,9 +1223,9 @@ export function System(props: SystemProps) {
         {row.staves.map((s) => (
           <Fragment key={s.def.id}>
             <text x={CLEF_X} y={diatonicToY(s.clef.glyphD)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
-              {s.def.clef === 'bass' ? SMUFL.fClef : SMUFL.gClef}
+              {s.def.clef === 'bass' ? SMUFL.fClef : s.def.clef === 'percussion' ? SMUFL.percussionClef : SMUFL.gClef}
             </text>
-            {keySignatureAccidentals(staffKey(s.def.id, headerKeySig), s.clef.keysigOffset).map((acc, i) => (
+            {s.def.clef !== 'percussion' && keySignatureAccidentals(staffKey(s.def.id, headerKeySig), s.clef.keysigOffset).map((acc, i) => (
               <text key={`ks-${i}`} x={KEYSIG_X + i * KEYSIG_STEP} y={diatonicToY(acc.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">
                 {SMUFL.accidentals[String(acc.alter)]}
               </text>
@@ -1290,7 +1301,7 @@ export function System(props: SystemProps) {
                 return (
                   <g pointerEvents="none">
                     {row.staves
-                      .filter((s) => s.key === null)
+                      .filter((s) => s.key === null && s.def.clef !== 'percussion')
                       .flatMap((s) => [
                         ...keyChangeNaturals(fromKey, toKey, s.clef.keysigOffset).map((n, i) => (
                           <text key={`tnat${s.def.id}-${i}`} x={x0 + i * KEYSIG_STEP} y={diatonicToY(n.diatonic)} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill="#222">

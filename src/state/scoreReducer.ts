@@ -1,7 +1,7 @@
 import { Alter, ChordSymbol, Clef, Duration, DurationValue, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, Staff, StaffDef, ScoreState, TimeSignature, Tuplet } from '../music/types';
-import { diatonicToPitch, durationTicks, eventTicks, measureTicks, pitchEquals, pitchToDiatonic } from '../music/theory';
+import { diatonicToPitch, durationTicks, eventTicks, measureTicks, pitchToDiatonic } from '../music/theory';
 import { effectiveTimeSignatureAt, scoreMeta } from '../music/meta';
-import { classifyNote, classifyRest } from '../music/placement';
+import { classifyNote, classifyRest, samePitch } from '../music/placement';
 import { defaultStaves, newGroupId, newStaffId, sanitizeStaves, scoreStaves } from '../music/staves';
 import { ClipNote } from './selection';
 
@@ -165,7 +165,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       if (target.kind !== 'note') return state;
 
       if (verdict === 'delete') {
-        const pitches = target.pitches.filter((p) => !pitchEquals(p, action.pitch));
+        const pitches = target.pitches.filter((p) => !samePitch(p, action.pitch));
         let events: ScoreEvent[];
         if (pitches.length > 0) {
           events = m.events.map((e) => (e.id === target.id ? { ...target, pitches } : e));

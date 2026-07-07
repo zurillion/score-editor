@@ -9,7 +9,7 @@ export type Alter = -2 | -1 | 0 | 1 | 2;
  */
 export type Staff = string;
 
-export type Clef = 'treble' | 'bass';
+export type Clef = 'treble' | 'bass' | 'percussion';
 
 /** One staff of the score: its clef, an optional key override and grouping. */
 export interface StaffDef {
@@ -21,12 +21,17 @@ export interface StaffDef {
   name?: string; // label shown in the mixer
 }
 
-/** A pitch in scientific notation (C4 = middle C). `alter` is the accidental. */
+/**
+ * A pitch in scientific notation (C4 = middle C). `alter` is the accidental.
+ * On a percussion staff `drum` names the drum voice (kick, snare, hi-hat, …);
+ * the step/octave then only fix the notehead's staff position (see drums.ts).
+ */
 export interface Pitch {
   step: StepName;
   octave: number;
   alter: Alter; // bb / b / natural / # / x
   explicit?: boolean; // true if the user wrote an accidental on this note
+  drum?: string; // drum voice id (percussion staff); overrides pitch for sound + notehead
 }
 
 export type DurationValue = 1 | 2 | 4 | 8 | 16 | 32; // whole .. 32nd

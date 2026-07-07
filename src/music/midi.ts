@@ -117,11 +117,13 @@ export class MidiPlayer {
             const cfg = this.staves[n.staff];
             const gain = cfg?.gain ?? 1;
             if (gain <= 0) continue; // muted staff
-            const t = cfg?.transpose ?? 0;
-            const ch = (cfg?.channel ?? this.channel) & 0x0f; // per-staff channel, general as fallback
+            // drums: General-MIDI percussion on channel 10 (no transpose); the
+            // staff's own channel overrides if the user set one
+            const t = n.drum ? 0 : cfg?.transpose ?? 0;
+            const ch = (n.drum ? cfg?.channel ?? 9 : cfg?.channel ?? this.channel) & 0x0f;
             const velocity = Math.max(1, Math.min(127, Math.round(96 * gain)));
             for (const m0 of n.midis) {
-              const m = m0 + t;
+              const m = m0 + t; // for a drum, m0 is already the GM note
               if (m < 0 || m > 127) continue; // out of MIDI range after transposition
               this.output.send([0x90 | ch, m, velocity], onMs);
               this.output.send([0x80 | ch, m, 0], offMs);
@@ -150,8 +152,8 @@ export class MidiPlayer {
       } catch {
         /* ignore */
       }
-      // silence the general channel plus every per-staff channel in use
-      const channels = new Set<number>([this.channel & 0x0f]);
+      // silence the general channel, channel 10 (drums) and every per-staff channel in use
+      const channels = new Set<number>([this.channel & 0x0f, 9]);
       for (const cfg of Object.values(this.staves)) if (typeof cfg.channel === 'number') channels.add(cfg.channel & 0x0f);
       for (const ch of channels) {
         this.output.send([0xb0 | ch, 120, 0]); // all sound off

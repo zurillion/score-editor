@@ -5,6 +5,7 @@ import { Tool } from '../state/tool';
 import { KEY_OPTIONS } from '../music/key';
 import { MidiOutputInfo } from '../music/midi';
 import { INSTRUMENTS } from '../music/instruments';
+import { DRUM_VOICES } from '../music/drums';
 import { InstrumentIcon } from './InstrumentIcon';
 import { MixerPanel } from './MixerPanel';
 import { PiecePlayback } from '../music/playback';
@@ -91,6 +92,8 @@ interface ToolbarProps {
   onPlaybackChange: (pb: PiecePlayback) => void;
   staves: StaffDef[]; // the score's staves (drives the mixer rows)
   onScoreAction: (a: ScoreAction) => void; // staff management from the mixer
+  drumVoiceId: string; // active drum voice (percussion input)
+  onDrumVoiceChange: (id: string) => void;
   instrumentLoading: boolean;
   midiOn: boolean;
   onToggleMidi: () => void;
@@ -158,6 +161,8 @@ export function Toolbar(props: ToolbarProps) {
     onPlaybackChange,
     staves,
     onScoreAction,
+    drumVoiceId,
+    onDrumVoiceChange,
     instrumentLoading,
     midiOn,
     onToggleMidi,
@@ -478,6 +483,24 @@ export function Toolbar(props: ToolbarProps) {
                 {hoverNote ?? '—'}
               </div>
             </fieldset>
+            {staves.some((s) => s.clef === 'percussion') && (
+              <fieldset className="group">
+                <legend>Batteria</legend>
+                <select
+                  className="drum-select"
+                  value={drumVoiceId}
+                  onChange={(e) => onDrumVoiceChange(e.target.value)}
+                  title="Voce di batteria che verrà inserita cliccando sul rigo di percussione"
+                  aria-label="Voce di batteria"
+                >
+                  {DRUM_VOICES.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.label}
+                    </option>
+                  ))}
+                </select>
+              </fieldset>
+            )}
             <fieldset className="group">
               <legend>Punti</legend>
               <div className="btn-row">

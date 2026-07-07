@@ -6,6 +6,7 @@ import { Player, playPreview } from './music/audio';
 import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, ensureInstrument, getLoadedSampler, isSynth } from './music/instruments';
 import { PiecePlayback, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffMidiChannel, staffTranspose } from './music/playback';
 import { scoreStaves } from './music/staves';
+import { DEFAULT_DRUM_ID } from './music/drums';
 import { Staff } from './music/types';
 import { durationTicks } from './music/theory';
 import { DEFAULT_ARPEGGIO_MS, DEFAULT_STACCATO_PCT, setArpeggioStepMs, setStaccatoPct } from './music/playbackPrefs';
@@ -43,6 +44,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
 
   const [tool, setTool] = useState<Tool>(NOTE_TOOL);
   const [duration, setDuration] = useState<Duration>({ value: 4, dots: 0 });
+  const [drumVoiceId, setDrumVoiceId] = useState<string>(DEFAULT_DRUM_ID); // active drum voice for percussion input
   const [previewOnCreate, setPreviewOnCreate] = useState(true);
   const [mode, setMode] = useState<LayoutMode>('page');
   const [bpm, setBpm] = useState(96);
@@ -120,10 +122,13 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   const [instrumentLoading, setInstrumentLoading] = useState(false);
   const staffIds = scoreStaves(score).map((s) => s.id);
   const staffIdsKey = staffIds.join('|');
+  // percussion staves play the built-in drum kit, so they need no sampled instrument
+  const pitchedStaffIds = scoreStaves(score).filter((s) => s.clef !== 'percussion').map((s) => s.id);
+  const pitchedKey = pitchedStaffIds.join('|');
   /** Distinct sampled instruments the current routing needs. */
   const neededInstruments = useCallback(
-    () => [...new Set(staffIds.map((s) => effectiveInstrumentId(playback, s)).filter((id) => !isSynth(id)))],
-    [playback, staffIdsKey], // eslint-disable-line react-hooks/exhaustive-deps
+    () => [...new Set(pitchedStaffIds.map((s) => effectiveInstrumentId(playback, s)).filter((id) => !isSynth(id)))],
+    [playback, pitchedKey], // eslint-disable-line react-hooks/exhaustive-deps
   );
   // fetch the sample sets as soon as the routing changes, so Play starts instantly
   useEffect(() => {
@@ -702,6 +707,8 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         onPlaybackChange={setPlayback}
         staves={scoreStaves(score)}
         onScoreAction={dispatch}
+        drumVoiceId={drumVoiceId}
+        onDrumVoiceChange={setDrumVoiceId}
         instrumentLoading={instrumentLoading}
         midiOn={midiOn}
         onToggleMidi={handleToggleMidi}
@@ -757,6 +764,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         onSetCursor={onSetCursor}
         onHoverNote={setHoverNote}
         onLayout={onLayout}
+        drumVoiceId={drumVoiceId}
       />
 
       <footer className="hint">

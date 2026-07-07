@@ -1,6 +1,12 @@
 import { Duration, Pitch, ScoreEvent, Staff } from './types';
 import { durationTicks, eventTicks, pitchEquals } from './theory';
 
+/** Same notehead? Drum voices are compared by voice id, pitches by step+octave. */
+export function samePitch(a: Pitch, b: Pitch): boolean {
+  if (a.drum || b.drum) return a.drum === b.drum;
+  return pitchEquals(a, b);
+}
+
 // 'resize' also covers turning a rest into a note of the chosen value.
 export type PlaceAction = 'create' | 'chord' | 'delete' | 'resize' | 'blocked';
 
@@ -37,8 +43,8 @@ export function classifyNote(
       // a manual rest becomes a note of the chosen value if it fits to the right
       return fits(staffEvents, tick, newDur, total, exact.id) ? 'resize' : 'blocked';
     }
-    const samePitch = exact.pitches.some((p) => pitchEquals(p, pitch));
-    if (!samePitch) return 'chord'; // a new pitch here joins the chord (keeps the value)
+    const isSame = exact.pitches.some((p) => samePitch(p, pitch));
+    if (!isSame) return 'chord'; // a new pitch/voice here joins the chord (keeps the value)
     // same pitch: same value removes it; a different value changes the note's value
     if (exact.tuplet || newDur === eventTicks(exact)) return 'delete';
     return fits(staffEvents, tick, newDur, total, exact.id) ? 'resize' : 'blocked';

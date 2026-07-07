@@ -394,6 +394,12 @@ body {
   font-size: 12px;
   color: #b91c1c;
 }
+.mixer-row .drum-tag strong {
+  color: var(--accent);
+}
+.drum-select {
+  max-width: 150px;
+}
 .mixer-row + .mixer-row {
   border-top: 1px solid var(--line);
   padding-top: 8px;

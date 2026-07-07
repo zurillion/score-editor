@@ -72,6 +72,16 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   endecalineo sono legati e si spostano insieme). La configurazione dei
   righi è salvata nel JSON e viaggia in MusicXML (una parte per
   rigo/endecalineo).
+- **Batteria** — dal mixer «+ Batteria» aggiunge un **rigo di percussione**
+  (chiave neutra, niente armatura). Un menu *Batteria* nella palette sceglie
+  la **voce** (grancassa, rullante, **rim shot**, hi-hat chiuso/aperto/pedale,
+  crash, ride, tom alto/medio/basso); cliccando sul rigo si inserisce la voce
+  alla sua posizione standard, con le **teste corrette** (✕ per hi-hat e
+  piatti, ⊗ per il rim shot). Più voci sullo stesso movimento (grancassa +
+  rullante + hi-hat) si impilano su un gambo unico. Il playback usa un **kit
+  di batteria sintetizzato** (Web Audio, nessun campione da scaricare); in
+  **MIDI** le voci vanno sul **canale 10** con le note General-MIDI standard.
+  Volume, mute/solo e trasposizione del rigo funzionano come per gli altri.
 - **Accordi** — con lo strumento *Accordo* (1 click: una volta · doppio:
   fisso) si scrive il nome dell'accordo sotto i pentagrammi, agganciato a
   una griglia di ottavi nel punto cliccato. Testo libero (nessun
@@ -159,6 +169,8 @@ src/
     smufl.ts       code point SMuFL (Bravura) usati
     audio.ts       scheduler e player Web Audio + playhead
     instruments.ts catalogo strumenti campionati e lazy loading dei sample
+    drums.ts       voci di batteria (posizioni, teste, note General-MIDI)
+    drumkit.ts     kit di batteria sintetizzato (Web Audio, offline)
     playback.ts    strumenti/volumi/trasposizioni per rigo (salvati nel brano)
     staves.ts      elenco righi del brano e layout verticale multi-rigo
   state/

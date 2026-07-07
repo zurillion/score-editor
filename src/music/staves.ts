@@ -21,10 +21,14 @@ export interface ClefInfo {
 export const CLEFS: Record<Clef, ClefInfo> = {
   treble: { lines: [38, 36, 34, 32, 30], middle: 34, glyphD: 32, keysigOffset: 0, timeD: [36, 32] },
   bass: { lines: [26, 24, 22, 20, 18], middle: 22, glyphD: 24, keysigOffset: -14, timeD: [24, 20] },
+  // percussion: same 5-line geometry as treble; the neutral clef anchors on the
+  // middle line and there is never a key signature (see isPercussion).
+  percussion: { lines: [38, 36, 34, 32, 30], middle: 34, glyphD: 34, keysigOffset: 0, timeD: [36, 32] },
 };
 
 export const clefOf = (staves: StaffDef[], id: Staff): Clef => staves.find((s) => s.id === id)?.clef ?? (id === 'bass' ? 'bass' : 'treble');
 export const middleOf = (staves: StaffDef[], id: Staff): number => CLEFS[clefOf(staves, id)].middle;
+export const isPercussion = (clef: Clef): boolean => clef === 'percussion';
 
 /** The classic grand staff (used when a score carries no staff list). */
 export function defaultStaves(): StaffDef[] {
@@ -51,7 +55,7 @@ export function sanitizeStaves(raw: unknown): StaffDef[] | null {
     used.add(id);
     out.push({
       id,
-      clef: r.clef === 'bass' ? 'bass' : 'treble',
+      clef: r.clef === 'bass' ? 'bass' : r.clef === 'percussion' ? 'percussion' : 'treble',
       key: typeof r.key === 'number' && Number.isFinite(r.key) ? Math.max(-7, Math.min(7, Math.round(r.key))) : null,
       ...(r.hidden ? { hidden: true } : {}),
       ...(typeof r.group === 'string' && r.group ? { group: r.group } : {}),
@@ -86,6 +90,7 @@ export function staffLabel(staves: StaffDef[], def: StaffDef): string {
     const pos = mates.findIndex((s) => s.id === def.id);
     return `Endecalineo · ${pos === 0 ? 'violino' : 'basso'} (${def.id})`;
   }
+  if (def.clef === 'percussion') return `Batteria (${def.id})`;
   return `Pentagramma ${idx + 1} (${def.clef === 'bass' ? 'basso' : 'violino'})`;
 }
 

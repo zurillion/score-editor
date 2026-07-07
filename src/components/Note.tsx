@@ -3,6 +3,7 @@ import { Duration, Pitch } from '../music/types';
 import { pitchToDiatonic } from '../music/theory';
 import { diatonicToY, STEM_INSET, noteheadHalfWidth, stemUpForChord, secondOffsets } from '../music/layout';
 import { keyAlterForStep } from '../music/key';
+import { drumVoice } from '../music/drums';
 import { Resolved } from '../music/accidentals';
 import { Alter } from '../music/types';
 import { SMUFL } from '../music/smufl';
@@ -93,6 +94,19 @@ export function NoteView({ pitches, duration, middle, ledgerOf, keySignature = 0
       {notes.map((n, i) => {
         const cx = cxOf(i);
         const y = diatonicToY(n.d);
+        const voice = drumVoice(n.p.drum);
+        if (voice) {
+          // percussion notehead: x / circle-x for cymbals & rim, normal otherwise
+          const glyph = voice.head === 'normal' ? headGlyph : SMUFL.drumHeads[voice.head];
+          return (
+            <Fragment key={i}>
+              <text x={cx - headHW} y={y} fontFamily="Bravura" fontSize={GLYPH_FONT_SIZE} fill={color}>
+                {glyph}
+              </text>
+              {voice.open && <circle cx={cx} cy={y - STAFF_SPACE - 2} r={2.7} fill="none" stroke={color} strokeWidth={1.1} />}
+            </Fragment>
+          );
+        }
         return (
           <Fragment key={i}>
             {/* open noteheads stay hollow: the staff line shows through, as in print */}

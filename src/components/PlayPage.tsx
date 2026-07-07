@@ -259,6 +259,7 @@ export function PlayPage({ id }: { id: string }) {
           onSetCursor={(t) => setCursorTick(Math.max(0, t))}
           onHoverNote={noop}
           onLayout={noop}
+          drumVoiceId="snare"
         />
       )}
 

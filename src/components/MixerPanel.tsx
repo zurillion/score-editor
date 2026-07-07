@@ -117,17 +117,24 @@ export function MixerPanel({
             S
           </button>
         </span>
-        <label>
-          Strumento
-          <select value={st.instrument} onChange={(e) => patchStaff(def.id, { instrument: e.target.value })}>
-            <option value="">— (generale)</option>
-            {INSTRUMENTS.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {def.clef === 'percussion' ? (
+          <label className="drum-tag" title="Rigo di batteria: suona un kit di percussioni">
+            Strumento
+            <strong>Batteria</strong>
+          </label>
+        ) : (
+          <label>
+            Strumento
+            <select value={st.instrument} onChange={(e) => patchStaff(def.id, { instrument: e.target.value })}>
+              <option value="">— (generale)</option>
+              {INSTRUMENTS.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           Volume
           <span className="mixer-slider">
@@ -161,7 +168,7 @@ export function MixerPanel({
             </select>
           </label>
         )}
-        {manage && !def.group && (
+        {manage && !def.group && def.clef !== 'percussion' && (
           <label title="Chiave del pentagramma">
             Chiave
             <select value={def.clef} onChange={(e) => onScoreAction({ type: 'UPDATE_STAFF', id: def.id, patch: { clef: e.target.value === 'bass' ? 'bass' : 'treble' } })}>
@@ -170,7 +177,7 @@ export function MixerPanel({
             </select>
           </label>
         )}
-        {manage && (
+        {manage && def.clef !== 'percussion' && (
           <label title="Armatura di chiave del rigo: '= brano' segue la tonalità del brano (e i suoi cambi)">
             Tonalità
             <select
@@ -227,6 +234,7 @@ export function MixerPanel({
                 <span className="mixer-add-sep">Sotto:</span>
                 <button onClick={() => onScoreAction({ type: 'ADD_STAFF', where: 'below', clef: 'bass' })} title="Aggiunge un pentagramma sotto">+ Rigo</button>
                 <button onClick={() => onScoreAction({ type: 'ADD_STAFF', where: 'below', clef: 'treble', grand: true })} title="Aggiunge un endecalineo (due righi con graffa) sotto">+ Endecalineo</button>
+                <button onClick={() => onScoreAction({ type: 'ADD_STAFF', where: 'below', clef: 'percussion' })} title="Aggiunge un rigo di batteria (percussione) sotto">+ Batteria</button>
               </div>
             )}
             {units.map((unit, ui) => (

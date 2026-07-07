@@ -41,6 +41,7 @@ export function MiniScore({ score, measures = 3, width = 300 }: { score: ScoreSt
           onPreviewNote={noop}
           onSetCursor={noop}
           onHoverNote={noop}
+          drumVoiceId="snare"
           ties={resolveTies(truncated, meta)}
         />
       </div>

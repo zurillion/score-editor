@@ -68,7 +68,11 @@ export function exportMusicXML(name: string, bpm: number, score: ScoreState): st
     push(`  <part id="P${k + 1}">`);
     const fixedKey = row[0].key; // a transposing part keeps its own constant key
     const clefXml = (clef: Clef, number: string) =>
-      clef === 'bass' ? `<clef${number}><sign>F</sign><line>4</line></clef>` : `<clef${number}><sign>G</sign><line>2</line></clef>`;
+      clef === 'bass'
+        ? `<clef${number}><sign>F</sign><line>4</line></clef>`
+        : clef === 'percussion'
+          ? `<clef${number}><sign>percussion</sign></clef>`
+          : `<clef${number}><sign>G</sign><line>2</line></clef>`;
 
     score.measures.forEach((m, mi) => {
       const mm = meta.measures[mi];
@@ -258,6 +262,7 @@ export function importMusicXML(xml: string): ImportedPiece {
       for (const clefEl of Array.from(attrs0.getElementsByTagName('clef'))) {
         const idx = Math.max(1, Math.min(2, Number(clefEl.getAttribute('number') ?? '1'))) - 1;
         if (text(clefEl, 'sign') === 'F') clefs[idx] = 'bass';
+        else if (text(clefEl, 'sign') === 'percussion') clefs[idx] = 'percussion';
         else if (text(clefEl, 'sign') === 'G') clefs[idx] = 'treble';
       }
     }

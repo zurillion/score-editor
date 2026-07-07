@@ -36,6 +36,7 @@ interface ScoreProps {
   onSetCursor: (tick: number) => void;
   onHoverNote: (name: string | null) => void;
   onLayout: (ranges: SystemRange[]) => void;
+  drumVoiceId: string; // active drum voice for placement on a percussion staff
 }
 
 interface Rect {
@@ -67,6 +68,7 @@ export function Score({
   onSetCursor,
   onHoverNote,
   onLayout,
+  drumVoiceId,
 }: ScoreProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -269,6 +271,7 @@ export function Score({
             onPreviewNote={onPreviewNote}
             onSetCursor={onSetCursor}
             onHoverNote={onHoverNote}
+            drumVoiceId={drumVoiceId}
             ties={ties}
           />
         ))}

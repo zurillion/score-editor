@@ -8,6 +8,7 @@ const g = (code: number): string => String.fromCharCode(code);
 export const SMUFL = {
   gClef: g(0xe050),
   fClef: g(0xe062),
+  percussionClef: g(0xe069), // unpitchedPercussionClef1 (the ‖ neutral clef)
 
   repeatLeft: g(0xe040), // |:  (toolbar icon)
   repeatRight: g(0xe041), // :|
@@ -42,6 +43,13 @@ export const SMUFL = {
     2: g(0xe0a3), // half (open)
     4: g(0xe0a4), // black
   } as Record<number, string>,
+
+  // Percussion noteheads.
+  drumHeads: {
+    x: g(0xe0a9), // noteheadXBlack — cymbals / hi-hat
+    'x-half': g(0xe0a7), // noteheadXOrnate-ish open X (half/whole)
+    'circle-x': g(0xe0b3), // noteheadCircleX — rim shot / cross-stick
+  } as Record<string, string>,
 
   // Combined note glyphs (stem up) for the palette buttons.
   paletteNotes: {
