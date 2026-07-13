@@ -9,27 +9,55 @@
 import { getDecodeCtx } from './instruments';
 
 // ---- Acoustic sampled kit (lazy) ------------------------------------------
-// One-shot samples from the Tone.js hosted acoustic kit (CC, same origin used
-// for the piano). AudioBuffers are context-independent, so we decode once and
-// reuse them across the per-playback contexts. Voices without a dedicated
-// sample map to the closest available one; the rest fall back to the synth.
+// One-shot samples of a real acoustic kit, bundled with the app under
+// public/drums/ (one .mp3 per drum voice id). Serving them from the app's own
+// origin means no cross-host/CORS dependency, so the acoustic kit works in
+// every deployment (and offline) instead of silently falling back to the synth.
+// AudioBuffers are context-independent, so we decode once with a shared context
+// and reuse them across the per-playback contexts of the Player.
 export type DrumBuffers = Map<string, AudioBuffer>;
 
-const ACOUSTIC_BASE = 'https://tonejs.github.io/audio/drum-samples/acoustic-kit/';
-const ACOUSTIC_FILES: Record<string, string> = { kick: 'kick.mp3', snare: 'snare.mp3', hh: 'hh.mp3', hho: 'hho.mp3', tom1: 'tom1.mp3', tom2: 'tom2.mp3', tom3: 'tom3.mp3' };
-// drum voice id -> sample file key above
-const ACOUSTIC_VOICE: Record<string, string> = {
-  kick: 'kick',
-  snare: 'snare',
-  rim: 'snare', // no dedicated rim sample in this kit
-  hihat: 'hh',
-  'hihat-pedal': 'hh',
-  'hihat-open': 'hho',
-  'tom-hi': 'tom1',
-  'tom-mid': 'tom2',
-  'tom-low': 'tom3',
-  // crash / ride have no acoustic sample here: they fall back to the synth
+// Drum voice ids (see src/music/drums.ts) that ship with a bundled acoustic
+// sample; each maps to public/drums/<id>.mp3.
+const ACOUSTIC_VOICES = ['kick', 'snare', 'rim', 'hihat', 'hihat-open', 'hihat-pedal', 'ride', 'crash', 'tom-hi', 'tom-mid', 'tom-low'];
+const ACOUSTIC_BASE = `${import.meta.env.BASE_URL}drums/`;
+
+// The raw one-shots are recorded low and at inconsistent levels (peaks vary ~5x
+// between voices), so we peak-normalize each on load to a per-voice target. This
+// both makes the kit as present as the synth kit and gives it a natural balance
+// (kick/snare up front, hats/cymbals underneath) instead of a near-silent hat.
+const ACOUSTIC_LEVEL: Record<string, number> = {
+  kick: 0.9,
+  snare: 0.9,
+  rim: 0.7,
+  hihat: 0.6,
+  'hihat-open': 0.65,
+  'hihat-pedal': 0.5,
+  ride: 0.7,
+  crash: 0.8,
+  'tom-hi': 0.85,
+  'tom-mid': 0.85,
+  'tom-low': 0.85,
 };
+
+/** Scale a buffer in place so its loudest sample hits `target` (bounded boost). */
+function normalizeBuffer(buf: AudioBuffer, target: number, maxGain = 25): void {
+  let peak = 0;
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) {
+      const a = Math.abs(d[i]);
+      if (a > peak) peak = a;
+    }
+  }
+  if (peak <= 0) return;
+  const g = Math.min(target / peak, maxGain);
+  if (Math.abs(g - 1) < 0.01) return;
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) d[i] *= g;
+  }
+}
 
 let acousticBuffers: DrumBuffers | null = null;
 let acousticPending: Promise<DrumBuffers> | null = null;
@@ -38,26 +66,30 @@ export function getLoadedAcousticKit(): DrumBuffers | null {
   return acousticBuffers;
 }
 
-/** Lazily fetch + decode the acoustic kit; concurrent calls share one promise. */
+/**
+ * Lazily fetch + decode the bundled acoustic kit; concurrent calls share one
+ * promise. `allSettled` means a single missing/undecodable sample only drops
+ * that one voice (which then uses the synth) rather than failing the whole kit;
+ * a total failure is not cached so a later attempt can retry.
+ */
 export function ensureAcousticKit(): Promise<DrumBuffers> {
   if (acousticBuffers) return Promise.resolve(acousticBuffers);
   if (acousticPending) return acousticPending;
-  acousticPending = Promise.all(
-    Object.entries(ACOUSTIC_FILES).map(async ([key, file]) => {
-      const res = await fetch(ACOUSTIC_BASE + file);
-      if (!res.ok) throw new Error(`HTTP ${res.status} for ${file}`);
-      return [key, await getDecodeCtx().decodeAudioData(await res.arrayBuffer())] as const;
+  acousticPending = Promise.allSettled(
+    ACOUSTIC_VOICES.map(async (voice) => {
+      const res = await fetch(`${ACOUSTIC_BASE}${voice}.mp3`);
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${voice}.mp3`);
+      const buffer = await getDecodeCtx().decodeAudioData(await res.arrayBuffer());
+      normalizeBuffer(buffer, ACOUSTIC_LEVEL[voice] ?? 0.8);
+      return [voice, buffer] as const;
     }),
   )
-    .then((entries) => {
-      const byFile = new Map(entries);
+    .then((results) => {
       const map: DrumBuffers = new Map();
-      for (const [voiceId, fileKey] of Object.entries(ACOUSTIC_VOICE)) {
-        const buf = byFile.get(fileKey);
-        if (buf) map.set(voiceId, buf);
-      }
-      acousticBuffers = map;
+      for (const r of results) if (r.status === 'fulfilled') map.set(r.value[0], r.value[1]);
       acousticPending = null;
+      if (map.size === 0) throw new Error('acoustic kit: no samples could be loaded');
+      acousticBuffers = map;
       return map;
     })
     .catch((err) => {
@@ -145,7 +177,9 @@ function noise(ctx: BaseAudioContext, dest: AudioNode, start: number, type: Biqu
 export function triggerDrum(ctx: BaseAudioContext, dest: AudioNode, voiceId: string, start: number, level = 1, kit?: DrumBuffers | null): AudioScheduledSourceNode[] {
   const L = Math.max(0, level);
   const sampled = kit?.get(voiceId);
-  if (sampled) return [playBuffer(ctx, dest, sampled, start, 0.9 * L)];
+  // Samples are peak-normalized per voice at load time, so play them at the
+  // mixer level directly (no extra trim) for a presence close to the synth kit.
+  if (sampled) return [playBuffer(ctx, dest, sampled, start, L)];
   const out: AudioScheduledSourceNode[] = [];
   const push = (n: AudioScheduledSourceNode | null) => n && out.push(n);
   switch (voiceId) {
