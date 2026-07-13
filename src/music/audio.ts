@@ -73,7 +73,7 @@ export function playPreview(
   pitches: Pitch[],
   durSec = 0.5,
   sampler: Sampler | null = null,
-  opts: { gain?: number; transpose?: number } = {},
+  opts: { gain?: number; transpose?: number; drumBuffers?: DrumBuffers | null } = {},
 ): void {
   if (pitches.length === 0) return;
   const level = opts.gain ?? 1;
@@ -91,7 +91,7 @@ export function playPreview(
   master.connect(ctx.destination);
 
   for (const p of pitches) {
-    if (p.drum) triggerDrum(ctx, master, p.drum, t0, level); // percussion preview: the kit, no pitch
+    if (p.drum) triggerDrum(ctx, master, p.drum, t0, level, opts.drumBuffers); // percussion preview: the staff's kit, no pitch
     else startVoice(ctx, master, sampler, t0, durSec, pitchToFrequency(p) * Math.pow(2, t / 12), pitchToMidi(p) + t, level);
   }
 }

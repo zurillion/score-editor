@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { INSTRUMENTS } from '../music/instruments';
+import { ensureAcousticKit, getLoadedAcousticKit } from '../music/drumkit';
 import { PiecePlayback, StaffPlayback, defaultStaffPlayback } from '../music/playback';
 import { StaffDef } from '../music/types';
 import { staffLabel } from '../music/staves';
@@ -17,6 +18,32 @@ function MixerIcon() {
       <line x1="16.5" y1="6" x2="21.5" y2="6" />
     </svg>
   );
+}
+
+/**
+ * Load state of the acoustic drum samples, shown beside the kit selector so a
+ * missing kit is visible instead of a silent fallback to the synth. Mounting
+ * (re)triggers the load, so reopening the mixer retries after a failure.
+ */
+function AcousticKitStatus() {
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>(() => (getLoadedAcousticKit() ? 'ready' : 'loading'));
+  useEffect(() => {
+    let alive = true;
+    ensureAcousticKit()
+      .then(() => alive && setState('ready'))
+      .catch(() => alive && setState('error'));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (state === 'loading') return <span className="kit-status loading" title="Sto caricando i campioni acustici…">⏳</span>;
+  if (state === 'error')
+    return (
+      <span className="kit-status error" title="Campioni acustici non disponibili: suona il kit sintetico. Riapri il mixer per riprovare.">
+        ⚠ non disponibili
+      </span>
+    );
+  return <span className="kit-status ready" title="Campioni acustici caricati: la riproduzione usa i suoni reali.">✓</span>;
 }
 
 /**
@@ -128,6 +155,7 @@ export function MixerPanel({
               <option value="synth">Sintetico</option>
               <option value="acoustic">Acustico (campioni)</option>
             </select>
+            {def.drumKit === 'acoustic' && <AcousticKitStatus />}
           </label>
         ) : (
           <label>

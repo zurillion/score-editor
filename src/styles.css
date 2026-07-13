@@ -432,6 +432,17 @@ body {
 .mixer-slider input[type='number'] + .mixer-value {
   min-width: 0;
 }
+/* acoustic drum kit load state, next to the kit selector */
+.kit-status {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.kit-status.ready {
+  color: #2e7d32;
+}
+.kit-status.error {
+  color: #b26a00;
+}
 
 /* ---- Play-only page ---- */
 .play-page .play-toolbar {

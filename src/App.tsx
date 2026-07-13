@@ -394,17 +394,21 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   }, []);
 
   // preview with the staff's effective instrument (samples load in the
-  // background on selection; synth otherwise), honouring volume and transpose
+  // background on selection; synth otherwise), honouring volume and transpose.
+  // Percussion previews use the staff's kit: the acoustic samples when chosen
+  // (and loaded), the synth kit otherwise — same sound as the playback.
   const handlePreviewNote = useCallback(
     (pitches: Pitch[], staff?: Staff) => {
       if (pitches.length === 0) return;
+      const def = staff ? scoreStaves(score).find((d) => d.id === staff) : undefined;
       const id = staff ? effectiveInstrumentId(playback, staff) : playback.instrument || DEFAULT_INSTRUMENT_ID;
       playPreview(pitches, 0.5, isSynth(id) ? null : getLoadedSampler(id), {
         gain: staff ? staffGain(playback, staff) : 1,
         transpose: staff ? staffTranspose(playback, staff) : playback.transpose || 0,
+        drumBuffers: def?.clef === 'percussion' && def.drumKit === 'acoustic' ? getLoadedAcousticKit() : null,
       });
     },
-    [playback],
+    [playback, score],
   );
 
   // apply a loaded piece's playback block; a general "—" keeps the current instrument
