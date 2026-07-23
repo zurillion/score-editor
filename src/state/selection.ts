@@ -18,7 +18,14 @@ export interface ClipNote {
   arpeggio?: boolean;
 }
 
+/** A chord symbol inside the copied span, with its tick offset from the
+ *  earliest copied note (pasted alongside the notes). */
+export interface ClipChord {
+  offset: number;
+  text: string;
+}
+
 /** What a copy/cut put aside. */
 export type Clipboard =
   | { kind: 'measures'; measures: Measure[] }
-  | { kind: 'notes'; events: ClipNote[] };
+  | { kind: 'notes'; events: ClipNote[]; chords?: ClipChord[] };

@@ -4,7 +4,7 @@ import { effectiveTimeSignatureAt, scoreMeta } from '../music/meta';
 import { classifyNote, classifyRest, samePitch } from '../music/placement';
 import { defaultStaves, newGroupId, newStaffId, sanitizeStaves, scoreStaves } from '../music/staves';
 import { drumVoice } from '../music/drums';
-import { ClipNote } from './selection';
+import { ClipChord, ClipNote } from './selection';
 
 let idCounter = 0;
 const uid = (prefix: string): string => `${prefix}${++idCounter}`;
@@ -71,7 +71,7 @@ export type ScoreAction =
   | { type: 'TRANSPOSE_NOTES'; ids: string[]; delta: number }
   | { type: 'MOVE_NOTE'; measureIndex: number; eventId: string; fromDiatonic: number; toDiatonic: number }
   | { type: 'SET_NOTE_DRUM'; measureIndex: number; eventId: string; fromDrum: string; toDrum: string } // drag a drum notehead to another voice
-  | { type: 'PASTE_NOTES'; baseTick: number; events: ClipNote[] }
+  | { type: 'PASTE_NOTES'; baseTick: number; events: ClipNote[]; chords?: ClipChord[] }
   | { type: 'PASTE_MEASURES'; index: number; measures: Measure[] }
   | { type: 'SET_TIME_SIGNATURE_AT'; measureIndex: number; timeSignature: TimeSignature }
   | { type: 'SET_KEY_SIGNATURE_AT'; measureIndex: number; keySignature: number }
@@ -453,7 +453,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         list.push({ tick: local, staff: ev.staff, duration: ev.duration, pitches: ev.pitches, tuplet: ev.tuplet, tieToNext: ev.tieToNext, staccato: ev.staccato, arpeggio: ev.arpeggio });
         groups.set(mi, list);
       }
-      if (groups.size === 0) return state;
+      if (groups.size === 0 && !action.chords?.length) return state;
       // give every pasted tuplet a fresh id (so copies don't merge with the
       // original or with each other), preserving grouping within this paste
       const tupletRemap = new Map<string, Tuplet>();
@@ -467,7 +467,7 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         return nt;
       };
       const measures = state.measures.slice();
-      const maxMi = Math.max(...groups.keys());
+      const maxMi = groups.size ? Math.max(...groups.keys()) : -1;
       while (measures.length <= maxMi) measures.push(emptyMeasure());
       for (const [mi, items] of groups) {
         let events = measures[mi].events;
@@ -521,6 +521,17 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
           };
           measures[i] = { ...measures[i], events: measures[i].events.filter((e) => !overSet.has(e)) };
         }
+      }
+      // chord symbols copied with the notes land at the same offsets; a symbol
+      // already at the destination tick is replaced
+      for (const c of action.chords ?? []) {
+        const g = action.baseTick + c.offset;
+        if (g < 0) continue;
+        const { mi, local } = locate(g);
+        while (measures.length <= mi) measures.push(emptyMeasure());
+        const cur = measures[mi].chords ?? [];
+        const chords = [...cur.filter((x) => x.tick !== local), { tick: local, text: c.text }].sort((a, b) => a.tick - b.tick);
+        measures[mi] = { ...measures[mi], chords };
       }
       return { ...state, measures };
     }

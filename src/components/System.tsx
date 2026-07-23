@@ -252,12 +252,18 @@ function renderSystemTies(layout: SystemLayout, ties: TieConn[], ctx: RowCtx): J
     const pmTo = layout.measures.find((p) => p.index === t.toIndex);
     if (!pmFrom && !pmTo) return; // neither endpoint is on this line
     const y = diatonicToY(t.diatonic);
-    const x1 = pmFrom ? measureTickToX(pmFrom, t.fromTick) + NOTEHEAD_RX + 1.5 : leftEdge;
-    const x2 = pmTo ? measureTickToX(pmTo, t.toTick) - NOTEHEAD_RX - 1.5 : rightEdge;
-    if (x2 - x1 < 5) return;
+    let x1 = pmFrom ? measureTickToX(pmFrom, t.fromTick) + NOTEHEAD_RX + 1.5 : leftEdge;
+    let x2 = pmTo ? measureTickToX(pmTo, t.toTick) - NOTEHEAD_RX - 1.5 : rightEdge;
+    // notes so close that the gap between the heads vanishes (short values):
+    // draw a small arc centered in the gap instead of dropping the tie
+    if (x2 - x1 < 8) {
+      const mid = (x1 + x2) / 2;
+      x1 = mid - 4;
+      x2 = mid + 4;
+    }
     const dir = t.diatonic >= ctx.middleOf(t.staff) ? -1 : 1; // higher notes: arc above; lower: below
     const cx = (x1 + x2) / 2;
-    const bulge = 0.85 * STAFF_SPACE;
+    const bulge = Math.min(0.85 * STAFF_SPACE, 2.5 + (x2 - x1) * 0.3); // tiny ties get a shallower arc
     const d = `M ${x1} ${y} Q ${cx} ${y + dir * bulge} ${x2} ${y} Q ${cx} ${y + dir * (bulge - 2.4)} ${x1} ${y} Z`;
     els.push(<path key={`tie-${t.fromIndex}-${t.toIndex}-${t.diatonic}-${i}`} d={d} fill="#1a1a1a" pointerEvents="none" />);
   });
@@ -309,6 +315,7 @@ interface TargetHover {
   mode: 'target';
   measureIndex: number;
   eventId: string;
+  staff: Staff; // of the hit event (the accidental preview sounds with its instrument)
   diatonic: number | null;
   hx: number;
   hy: number;
@@ -560,7 +567,7 @@ export function System(props: SystemProps) {
 
   // nearest EXPLICIT rest to (x,y) — for the eraser (auto-derived rests aren't events)
   function pickRest(x: number, y: number) {
-    let best: { measureIndex: number; eventId: string; hx: number; hy: number; dist: number } | null = null;
+    let best: { measureIndex: number; eventId: string; staff: Staff; hx: number; hy: number; dist: number } | null = null;
     for (const pm of layout.measures) {
       for (const ev of pm.measure.events) {
         if (ev.kind !== 'rest' || !rowByStaff.has(ev.staff)) continue;
@@ -570,7 +577,7 @@ export function System(props: SystemProps) {
         const dyy = y - hy;
         if (Math.abs(dx) <= 11 && Math.abs(dyy) <= 2 * STAFF_SPACE) {
           const dist = Math.hypot(dx, dyy);
-          if (!best || dist < best.dist) best = { measureIndex: pm.index, eventId: ev.id, hx, hy, dist };
+          if (!best || dist < best.dist) best = { measureIndex: pm.index, eventId: ev.id, staff: ev.staff, hx, hy, dist };
         }
       }
     }
@@ -650,11 +657,11 @@ export function System(props: SystemProps) {
   // ---- modal tools (accidental / eraser): hit-test an existing notehead ----
   function computeTarget(x: number, y: number): TargetHover | null {
     const hit = pickNotehead(x, y, tool.kind === 'accidental' ? 20 : 0);
-    if (hit) return { mode: 'target', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic, hx: hit.hx, hy: hit.hy };
+    if (hit) return { mode: 'target', measureIndex: hit.measureIndex, eventId: hit.eventId, staff: hit.staff, diatonic: hit.diatonic, hx: hit.hx, hy: hit.hy };
     // the eraser also removes an explicit rest (no notehead there)
     if (tool.kind === 'eraser') {
       const r = pickRest(x, y);
-      if (r) return { mode: 'target', measureIndex: r.measureIndex, eventId: r.eventId, diatonic: null, hx: r.hx, hy: r.hy };
+      if (r) return { mode: 'target', measureIndex: r.measureIndex, eventId: r.eventId, staff: r.staff, diatonic: null, hx: r.hx, hy: r.hy };
     }
     return null;
   }
@@ -868,7 +875,8 @@ export function System(props: SystemProps) {
       if (hit.diatonic === null) return;
       onAction({ type: 'SET_ACCIDENTAL', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic, alter: tool.alter });
       // sound the note with its new alteration, like creating a note does
-      if (previewOnCreate) onPreviewNote([diatonicToPitch(hit.diatonic, tool.alter)]);
+      // (with the staff, so it uses that staff's instrument/volume/transpose)
+      if (previewOnCreate) onPreviewNote([diatonicToPitch(hit.diatonic, tool.alter)], hit.staff);
     } else if (tool.kind === 'eraser') {
       onAction({ type: 'ERASE', measureIndex: hit.measureIndex, eventId: hit.eventId, diatonic: hit.diatonic });
     } else if (tool.kind === 'dot') {

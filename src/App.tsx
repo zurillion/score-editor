@@ -9,12 +9,12 @@ import { PiecePlayback, defaultPlayback, effectiveInstrumentId, sanitizePlayback
 import { scoreStaves } from './music/staves';
 import { DEFAULT_DRUM_ID } from './music/drums';
 import { Staff } from './music/types';
-import { durationTicks } from './music/theory';
+import { durationTicks, eventTicks } from './music/theory';
 import { DEFAULT_ARPEGGIO_MS, DEFAULT_STACCATO_PCT, setArpeggioStepMs, setStaccatoPct } from './music/playbackPrefs';
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
 import { initialHistory, historyReducer } from './state/scoreReducer';
 import { Tool, NOTE_TOOL } from './state/tool';
-import { ClipNote, Clipboard, Selection } from './state/selection';
+import { ClipChord, ClipNote, Clipboard, Selection } from './state/selection';
 import { Toolbar } from './components/Toolbar';
 import { Score, SystemRange } from './components/Score';
 import { OptionsDialog } from './components/OptionsDialog';
@@ -576,7 +576,16 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         ...(e.staccato ? { staccato: true } : {}),
         ...(e.arpeggio ? { arpeggio: true } : {}),
       }));
-      return { kind: 'notes', events };
+      // chord symbols inside the copied span travel with the notes
+      const maxG = Math.max(...picked.map((p) => p.g + eventTicks(p.e)));
+      const chords: ClipChord[] = [];
+      score.measures.forEach((m, mi) =>
+        (m.chords ?? []).forEach((c) => {
+          const g = meta.measures[mi].startTick + c.tick;
+          if (g >= minG && g < maxG) chords.push({ offset: g - minG, text: c.text });
+        }),
+      );
+      return { kind: 'notes', events, ...(chords.length ? { chords } : {}) };
     };
     const deleteSelection = () => {
       if (!selection) return;
@@ -614,7 +623,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         if (!cb) return;
         if (cb.kind === 'notes') {
           if (cb.events.length === 0) return;
-          dispatch({ type: 'PASTE_NOTES', baseTick: Math.round(cursorTick), events: cb.events });
+          dispatch({ type: 'PASTE_NOTES', baseTick: Math.round(cursorTick), events: cb.events, chords: cb.chords });
         } else {
           if (cb.measures.length === 0) return;
           const idx = cursorTick >= meta.totalTicks ? score.measures.length : measureIndexAtTick(meta, cursorTick);
