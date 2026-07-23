@@ -251,17 +251,20 @@ function renderSystemTies(layout: SystemLayout, ties: TieConn[], ctx: RowCtx): J
     const pmFrom = layout.measures.find((p) => p.index === t.fromIndex);
     const pmTo = layout.measures.find((p) => p.index === t.toIndex);
     if (!pmFrom && !pmTo) return; // neither endpoint is on this line
-    const y = diatonicToY(t.diatonic);
-    let x1 = pmFrom ? measureTickToX(pmFrom, t.fromTick) + NOTEHEAD_RX + 1.5 : leftEdge;
-    let x2 = pmTo ? measureTickToX(pmTo, t.toTick) - NOTEHEAD_RX - 1.5 : rightEdge;
-    // notes so close that the gap between the heads vanishes (short values):
-    // draw a small arc centered in the gap instead of dropping the tie
-    if (x2 - x1 < 8) {
-      const mid = (x1 + x2) / 2;
-      x1 = mid - 4;
-      x2 = mid + 4;
-    }
+    let y = diatonicToY(t.diatonic);
+    const hx1 = pmFrom ? measureTickToX(pmFrom, t.fromTick) : leftEdge;
+    const hx2 = pmTo ? measureTickToX(pmTo, t.toTick) : rightEdge;
+    let x1 = pmFrom ? hx1 + NOTEHEAD_RX + 1.5 : leftEdge;
+    let x2 = pmTo ? hx2 - NOTEHEAD_RX - 1.5 : rightEdge;
     const dir = t.diatonic >= ctx.middleOf(t.staff) ? -1 : 1; // higher notes: arc above; lower: below
+    // notes so close that the gap between the heads vanishes (short values):
+    // an arc in the gap would hide behind the noteheads, so draw it head-center
+    // to head-center, shifted just past the heads (standard for tight ties)
+    if (x2 - x1 < 8) {
+      x1 = hx1 + 1;
+      x2 = hx2 - 1;
+      y += dir * 0.62 * STAFF_SPACE;
+    }
     const cx = (x1 + x2) / 2;
     const bulge = Math.min(0.85 * STAFF_SPACE, 2.5 + (x2 - x1) * 0.3); // tiny ties get a shallower arc
     const d = `M ${x1} ${y} Q ${cx} ${y + dir * bulge} ${x2} ${y} Q ${cx} ${y + dir * (bulge - 2.4)} ${x1} ${y} Z`;
