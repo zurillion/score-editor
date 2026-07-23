@@ -26,6 +26,30 @@ interface Entry extends PieceSummary {
 
 const KEY_STORAGE = 'admin.key';
 
+/** The remembered admin password: localStorage so it survives closing the
+ *  browser (it used to live in sessionStorage — migrate a leftover value). */
+function readStoredKey(): string | null {
+  try {
+    const k = localStorage.getItem(KEY_STORAGE) ?? sessionStorage.getItem(KEY_STORAGE);
+    if (k && !localStorage.getItem(KEY_STORAGE)) localStorage.setItem(KEY_STORAGE, k);
+    return k;
+  } catch {
+    return null;
+  }
+}
+function writeStoredKey(k: string | null): void {
+  try {
+    if (k === null) {
+      localStorage.removeItem(KEY_STORAGE);
+      sessionStorage.removeItem(KEY_STORAGE);
+    } else {
+      localStorage.setItem(KEY_STORAGE, k);
+    }
+  } catch {
+    /* private mode: the password just won't be remembered */
+  }
+}
+
 function downloadFile(filename: string, content: string, type: string): void {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement('a');
@@ -46,7 +70,7 @@ const safeName = (title: string) => title.replace(/[\\/:*?"<>|]+/g, '-').replace
  * rename, reorder, delete, import/export pieces and copy play-only links.
  */
 export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSnapshot | null> }) {
-  const [key, setKey] = useState<string | null>(() => sessionStorage.getItem(KEY_STORAGE));
+  const [key, setKey] = useState<string | null>(readStoredKey);
   const [authed, setAuthed] = useState<'checking' | 'yes' | 'no'>(key ? 'checking' : 'no');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -80,7 +104,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
       if (ok) {
         setAuthed('yes');
       } else {
-        sessionStorage.removeItem(KEY_STORAGE);
+        writeStoredKey(null);
         setKey(null);
         setAuthed('no');
       }
@@ -103,7 +127,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
       setLoginError('Password errata (o server non raggiungibile).');
       return;
     }
-    sessionStorage.setItem(KEY_STORAGE, password);
+    writeStoredKey(password);
     setKey(password);
     setAuthed('yes');
     setPassword('');
@@ -148,6 +172,21 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
         await createPiece(key, { title, bpm: s.bpm, score: s.score, playback: s.playback });
       }
       await refresh();
+    });
+
+  /** Replaces a listed piece's CONTENT with the editor's current piece: the id
+   *  (and so the shared play link) stays the same; the title is kept too —
+   *  renaming is its own button. */
+  const updateToCurrent = (entry: Entry) =>
+    run(async () => {
+      const s = editorRef.current;
+      if (!s || !key) return;
+      if (!window.confirm(`Sostituire il contenuto di "${entry.title}" con il brano corrente dell'editor?\nIl link di condivisione resta lo stesso.`)) return;
+      await updatePiece(key, entry.id, { bpm: s.bpm, score: s.score, playback: s.playback });
+      const updatedAt = new Date().toISOString();
+      setEntries((cur) =>
+        cur?.map((e) => (e.id === entry.id ? { ...e, piece: e.piece ? { ...e.piece, bpm: s.bpm, score: s.score, playback: s.playback, updatedAt } : null } : e)) ?? cur,
+      );
     });
 
   const remove = (entry: Entry) =>
@@ -364,13 +403,13 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
         <span className="spacer" />
         <button
           onClick={() => {
-            sessionStorage.removeItem(KEY_STORAGE);
+            writeStoredKey(null);
             setKey(null);
             setAuthed('no');
           }}
-          title="Dimentica la password su questo browser"
+          title="Logout: dimentica la password su questo browser"
         >
-          Esci
+          Logout
         </button>
       </div>
       <input
@@ -421,6 +460,9 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
               <button disabled={busy || i === 0} onClick={() => move(entry, -1)} title="Sposta su" aria-label="Sposta su">↑</button>
               <button disabled={busy || i === entries.length - 1} onClick={() => move(entry, 1)} title="Sposta giù" aria-label="Sposta giù">↓</button>
               <button onClick={() => openInEditor(entry)} title="Apri nell'editor">✎ Apri</button>
+              <button disabled={busy || !snap} onClick={() => updateToCurrent(entry)} title="Sostituisce il contenuto di questo brano con il brano corrente dell'editor: il link di condivisione resta lo stesso">
+                ⤴ Aggiorna
+              </button>
               <button onClick={() => copyLink(entry)} title="Copia il link alla versione solo ascolto">
                 {copiedId === entry.id ? '✓ Copiato' : '🔗 Condividi'}
               </button>

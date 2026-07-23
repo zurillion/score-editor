@@ -12,7 +12,7 @@ import { Staff } from './music/types';
 import { durationTicks, eventTicks } from './music/theory';
 import { DEFAULT_ARPEGGIO_MS, DEFAULT_STACCATO_PCT, setArpeggioStepMs, setStaccatoPct } from './music/playbackPrefs';
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
-import { initialHistory, historyReducer } from './state/scoreReducer';
+import { initialHistory, historyReducer, initialScore } from './state/scoreReducer';
 import { Tool, NOTE_TOOL } from './state/tool';
 import { ClipChord, ClipNote, Clipboard, Selection } from './state/selection';
 import { Toolbar } from './components/Toolbar';
@@ -25,6 +25,8 @@ import { ExportFormat } from './components/ExportMenuButton';
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 /** Editor state exposed to the admin page ("add current piece to the list"). */
+const AUTOSAVE_KEY = 'autosave.piece'; // the piece under edit, restored after an accidental close
+
 export interface EditorSnapshot {
   name: string;
   bpm: number;
@@ -189,6 +191,42 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   useEffect(() => {
     if (snapshotRef) snapshotRef.current = { name: pieceName, bpm, score, playback, sourceId };
   }, [snapshotRef, pieceName, bpm, score, playback, sourceId]);
+
+  // ---- autosave: the piece under edit survives an accidental close/reload ----
+  // Every change (debounced) is written to localStorage; on mount the last
+  // autosave is restored, unless the admin page queued a piece to open.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('pending.load')) return; // an explicit "Apri" wins
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      const loaded: ScoreState | undefined = obj?.score;
+      if (!loaded || !Array.isArray(loaded.measures) || !loaded.timeSignature) return;
+      dispatch({ type: 'LOAD', score: loaded });
+      if (typeof obj.bpm === 'number') setBpm(obj.bpm);
+      if (typeof obj.name === 'string') setPieceName(obj.name);
+      setSourceId(typeof obj.sourceId === 'string' ? obj.sourceId : null);
+      const pb = sanitizePlayback(obj.playback);
+      if (pb) setPlayback(pb);
+    } catch {
+      /* corrupted autosave: start fresh */
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          AUTOSAVE_KEY,
+          JSON.stringify({ format: 'score-composer', version: 1, name: pieceName, bpm, playback, score, sourceId, savedAt: new Date().toISOString() }),
+        );
+      } catch {
+        /* storage full or unavailable: autosave is best-effort */
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [score, bpm, pieceName, playback, sourceId]);
+
 
   // playback feel: arpeggio speed and staccato length (persisted, pushed into the schedulers)
   const [arpeggioMs, setArpeggioMs] = useState<number>(() => {
@@ -444,6 +482,24 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     sessionStorage.removeItem('pending.load');
     void handleLoadPiece(pending);
   }, [active, handleLoadPiece]);
+
+  // "Nuovo": close the current piece and start an empty one (undo can bring it back)
+  const handleNewPiece = useCallback(() => {
+    if (!window.confirm('Creare un nuovo brano vuoto?\nIl brano corrente viene tolto dall’editor (è comunque recuperabile con Annulla, finché non ricarichi la pagina).')) return;
+    handleStop();
+    setSelection(null);
+    setCursorTick(0);
+    dispatch({ type: 'LOAD', score: initialScore(4) });
+    setPieceName('');
+    setSourceId(null);
+    setBpm(96);
+    setPlayback((cur) => defaultPlayback(cur.instrument)); // keep the chosen general instrument, reset the mixer
+    try {
+      localStorage.removeItem(AUTOSAVE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, [handleStop]);
 
   const onSelectMeasures = useCallback((indices: number[]) => {
     setSelection(indices.length ? { kind: 'measures', indices } : null);
@@ -710,6 +766,9 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         <h1>Score Composer</h1>
         <span className="subtitle">endecalineo · composizione &amp; playback</span>
         {pieceName && <span className="piece-name" title="Brano corrente">{pieceName}</span>}
+        <button className="new-piece" onClick={handleNewPiece} title="Chiude il brano corrente e ne inizia uno nuovo vuoto (chiede conferma)">
+          ✚ Nuovo
+        </button>
         <a className="admin-link" href="#/admin" title="Gestione della lista dei brani (solo admin)">
           Gestione brani
         </a>

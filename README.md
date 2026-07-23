@@ -143,10 +143,17 @@ scritture sono disabilitate (le letture restano pubbliche).
   (i brani con il flag "nel menu"). Chiunque può aprire un brano,
   modificarlo in locale ed esportarlo in JSON; la lista sul server non
   cambia. Alla prima lettura lo store viene **seminato** con i brani di
-  esempio integrati.
-- `#/admin` — gestione della lista (con password): aggiungi il brano
-  corrente, importa/esporta JSON, rinomina, riordina, elimina, scegli se
-  un brano compare nel menu dell'editor, copia il link di ascolto.
+  esempio integrati. Il brano in lavorazione è **autosalvato** di continuo
+  nel localStorage del browser: chiudendo o ricaricando la pagina per
+  sbaglio si riparte da dove si era rimasti. Il pulsante **✚ Nuovo**
+  nell'intestazione chiude il brano corrente (con conferma) e ne inizia
+  uno vuoto.
+- `#/admin` — gestione della lista (con password, **ricordata** sul
+  browser finché non si preme Logout): aggiungi il brano corrente,
+  **⤴ Aggiorna** sostituisce il contenuto di un brano in lista con quello
+  corrente dell'editor mantenendo lo stesso link di condivisione,
+  importa/esporta JSON, rinomina, riordina, elimina, scegli se un brano
+  compare nel menu dell'editor, copia il link di ascolto.
 - `#/play/:id` — versione **solo ascolto** di un brano, pensata per essere
   condivisa: partitura e controlli di playback, nessuno strumento di
   modifica.
