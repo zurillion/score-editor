@@ -27,6 +27,7 @@ interface IndexEntry {
   id: string;
   title: string;
   inMenu: boolean; // shown in the editor's Libreria dropdown
+  inLibrary: boolean; // shown in the public library page (#/libreria)
 }
 
 // strong consistency: the admin page reads its own writes right away
@@ -56,13 +57,13 @@ const newId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12);
  */
 async function readIndex(): Promise<IndexEntry[]> {
   const raw = (await store().get('index', { type: 'json' })) as Partial<IndexEntry>[] | null;
-  if (raw) return raw.map((e) => ({ id: e.id!, title: e.title!, inMenu: e.inMenu !== false }));
+  if (raw) return raw.map((e) => ({ id: e.id!, title: e.title!, inMenu: e.inMenu !== false, inLibrary: e.inLibrary === true }));
   const index: IndexEntry[] = [];
   for (const piece of LIBRARY) {
     const id = newId();
     const title = `${piece.title} · ${piece.subtitle}`;
     await store().setJSON(`piece/${id}`, { id, title, bpm: piece.bpm, score: piece.score, updatedAt: new Date().toISOString() });
-    index.push({ id, title, inMenu: true });
+    index.push({ id, title, inMenu: true, inLibrary: false });
   }
   await store().setJSON('index', index);
   return index;
@@ -96,7 +97,7 @@ export default async (req: Request) => {
     const list: unknown[] = Array.isArray(body?.pieces) ? body.pieces : null!;
     if (!list) return fail(400, 'invalid library');
     const used = new Set<string>();
-    const incoming: { id: string; title: string; inMenu: boolean; bpm: number; score: unknown; updatedAt: string }[] = [];
+    const incoming: { id: string; title: string; inMenu: boolean; inLibrary: boolean; bpm: number; score: unknown; updatedAt: string }[] = [];
     for (const raw of list as Record<string, unknown>[]) {
       const title = typeof raw?.title === 'string' ? raw.title.trim() : '';
       if (!title || typeof raw.bpm !== 'number' || !validScore(raw.score)) return fail(400, `invalid piece: "${title || '?'}"`);
@@ -108,6 +109,7 @@ export default async (req: Request) => {
         id: pid,
         title,
         inMenu: raw.inMenu !== false,
+        inLibrary: raw.inLibrary === true,
         bpm: raw.bpm,
         score: raw.score,
         ...(raw.playback && typeof raw.playback === 'object' ? { playback: raw.playback } : {}),
@@ -118,7 +120,7 @@ export default async (req: Request) => {
     const current = ((await store().get('index', { type: 'json' })) as IndexEntry[] | null) ?? [];
     for (const e of current) if (!used.has(e.id)) await store().delete(`piece/${e.id}`);
     for (const p of incoming) await store().setJSON(`piece/${p.id}`, p);
-    await store().setJSON('index', incoming.map((p) => ({ id: p.id, title: p.title, inMenu: p.inMenu })));
+    await store().setJSON('index', incoming.map((p) => ({ id: p.id, title: p.title, inMenu: p.inMenu, inLibrary: p.inLibrary })));
     return json({ count: incoming.length });
   }
 
@@ -130,7 +132,7 @@ export default async (req: Request) => {
     const pieceId = newId();
     const playback = body.playback && typeof body.playback === 'object' ? { playback: body.playback } : {};
     await store().setJSON(`piece/${pieceId}`, { id: pieceId, title, bpm: body.bpm, score: body.score, ...playback, updatedAt: new Date().toISOString() });
-    index.push({ id: pieceId, title, inMenu: body.inMenu !== false });
+    index.push({ id: pieceId, title, inMenu: body.inMenu !== false, inLibrary: body.inLibrary === true });
     await store().setJSON('index', index);
     return json({ id: pieceId }, 201);
   }
@@ -166,11 +168,11 @@ export default async (req: Request) => {
     if (contentChanged) {
       await store().setJSON(`piece/${id}`, { ...cur, title, bpm, score, ...(playback !== undefined ? { playback } : {}), updatedAt: new Date().toISOString() });
     }
-    if (title !== cur.title || typeof body.inMenu === 'boolean') {
+    if (title !== cur.title || typeof body.inMenu === 'boolean' || typeof body.inLibrary === 'boolean') {
       const index = await readIndex();
       await store().setJSON(
         'index',
-        index.map((e) => (e.id === id ? { ...e, title, ...(typeof body.inMenu === 'boolean' ? { inMenu: body.inMenu } : {}) } : e)),
+        index.map((e) => (e.id === id ? { ...e, title, ...(typeof body.inMenu === 'boolean' ? { inMenu: body.inMenu } : {}), ...(typeof body.inLibrary === 'boolean' ? { inLibrary: body.inLibrary } : {}) } : e)),
       );
     }
     return done();

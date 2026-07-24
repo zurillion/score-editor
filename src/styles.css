@@ -156,6 +156,14 @@ body {
   color: var(--muted);
   font-size: 12.5px;
 }
+/* public library: the preview itself opens the player */
+.piece-preview.clickable {
+  cursor: pointer;
+}
+.piece-preview.clickable:hover .mini-score {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 
 .admin-actions {
   display: flex;

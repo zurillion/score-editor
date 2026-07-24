@@ -214,6 +214,13 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
       setEntries((cur) => cur?.map((e) => (e.id === entry.id ? { ...e, inMenu } : e)) ?? cur);
     });
 
+  const toggleLibrary = (entry: Entry, inLibrary: boolean) =>
+    run(async () => {
+      if (!key) return;
+      await updatePiece(key, entry.id, { inLibrary });
+      setEntries((cur) => cur?.map((e) => (e.id === entry.id ? { ...e, inLibrary } : e)) ?? cur);
+    });
+
   const rename = (entry: Entry) =>
     run(async () => {
       if (!key) return;
@@ -262,6 +269,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
         id: e.id, // published id: a restore keeps it, so shared play links stay valid
         title: e.title,
         inMenu: e.inMenu,
+        ...(e.inLibrary ? { inLibrary: true } : {}),
         bpm: full[i].bpm,
         score: full[i].score,
         ...(full[i].playback ? { playback: full[i].playback } : {}),
@@ -411,6 +419,9 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
         <button disabled={busy} onClick={() => libFileInputRef.current?.click()} title="Ripristina la libreria da un backup: quella attuale viene sostituita">
           ⤒ Importa libreria
         </button>
+        <a className="btn-link" href="#/libreria" target="_blank" rel="noreferrer" title="Apre la libreria pubblica: i brani con «Nella libreria pubblica» attivo, visibili a chiunque abbia il link">
+          🌐 Libreria pubblica
+        </a>
         <span className="spacer" />
         <button
           onClick={() => {
@@ -483,6 +494,10 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
               <label className="menu-toggle" title="Mostra questo brano nel menu Libreria dell'editor">
                 <input type="checkbox" checked={entry.inMenu} disabled={busy} onChange={(e) => toggleMenu(entry, e.target.checked)} />
                 Nel menu
+              </label>
+              <label className="menu-toggle" title="Mostra questo brano nella libreria pubblica (#/libreria), visibile a chiunque abbia il link">
+                <input type="checkbox" checked={!!entry.inLibrary} disabled={busy} onChange={(e) => toggleLibrary(entry, e.target.checked)} />
+                Nella libreria pubblica
               </label>
             </div>
             <div className="piece-buttons">

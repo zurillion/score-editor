@@ -2,6 +2,7 @@ import { StrictMode, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import App, { EditorSnapshot } from './App';
 import { AdminPage } from './components/AdminPage';
+import { LibraryPage } from './components/LibraryPage';
 import { PlayPage } from './components/PlayPage';
 import { useRoute } from './routes';
 import './styles.css';
@@ -10,8 +11,9 @@ function Root() {
   const route = useRoute();
   const editorRef = useRef<EditorSnapshot | null>(null);
 
-  // shared listen-only link: standalone page, no editor behind it
+  // shared listen-only link and public library: standalone pages, no editor behind
   if (route.page === 'play') return <PlayPage id={route.id} />;
+  if (route.page === 'library') return <LibraryPage />;
 
   // the editor stays mounted (hidden) under the admin page, so its piece
   // and undo history survive the round trip

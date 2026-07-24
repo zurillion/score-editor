@@ -170,6 +170,11 @@ scritture sono disabilitate (le letture restano pubbliche).
 - `#/play/:id` — versione **solo ascolto** di un brano, pensata per essere
   condivisa: partitura e controlli di playback, nessuno strumento di
   modifica. La scheda del browser prende il **titolo del brano**.
+- `#/libreria` — la **libreria pubblica**: una vetrina visibile a chiunque
+  abbia il link, con i brani che in Gestione brani hanno il flag «Nella
+  libreria pubblica» (checkbox accanto a «Nel menu»). Schede di sola
+  consultazione — anteprima (clic = ascolta), titolo, data di
+  aggiornamento, BPM, Prova e Condividi — più la ricerca per nome.
 - `/p/:id` — il **link di condivisione** che l'admin copia/mostra: una
   piccola pagina server (`netlify/functions/play.mts`) con `<title>` e tag
   **Open Graph** presi dal titolo del brano — così l'**anteprima** di

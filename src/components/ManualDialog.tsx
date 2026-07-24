@@ -191,11 +191,17 @@ export function ManualDialog({ open, onClose }: ManualDialogProps) {
               <li>L’<strong>autosalvataggio</strong> nel browser protegge il lavoro corrente; per archiviare o condividere usa Salva o la libreria.</li>
               <li>Il menu <strong>Libreria</strong> apre i brani pubblicati nella lista condivisa.</li>
               <li>
+                La <strong>libreria pubblica</strong> (#/libreria, link 🌐 in Gestione brani) è una vetrina visibile a chiunque abbia il
+                link: mostra i brani con il flag «Nella libreria pubblica», in schede di sola consultazione — anteprima (clic = ascolta),
+                titolo, data, BPM, Prova e Condividi — con la ricerca per nome.
+              </li>
+              <li>
                 La pagina <strong>Gestione brani</strong> (link in alto; richiede la password, ricordata sul browser fino al Logout)
                 permette di aggiungere il brano corrente, <strong>⤴ Aggiornare</strong> un brano esistente con la versione corrente
                 (il link di condivisione resta lo stesso), rinominare, riordinare, eliminare, importare/esportare singoli brani o
                 l’intera libreria e copiare il <strong>link di solo ascolto</strong>. Il campo <strong>🔍 Cerca</strong> filtra la lista
-                per nome in tempo reale (durante la ricerca il riordino ↑↓ è sospeso).
+                per nome in tempo reale (durante la ricerca il riordino ↑↓ è sospeso). Il checkbox «<strong>Nella libreria
+                pubblica</strong>» accanto a «Nel menu» pubblica il brano nella vetrina #/libreria.
               </li>
               <li>
                 La pagina di ascolto condivisa mostra partitura, trasporto e mixer audio, senza strumenti di modifica; la scheda del

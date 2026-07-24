@@ -8,6 +8,7 @@ export interface PieceSummary {
   id: string;
   title: string;
   inMenu: boolean; // shown in the editor's Libreria dropdown
+  inLibrary?: boolean; // shown in the public library page (#/libreria)
 }
 
 export interface StoredPiece {
@@ -58,7 +59,7 @@ export async function createPiece(key: string, piece: { title: string; bpm: numb
   return (await request<{ id: string }>('pieces', adminInit(key, 'POST', piece))).id;
 }
 
-export function updatePiece(key: string, id: string, patch: { title?: string; bpm?: number; score?: ScoreState; playback?: PiecePlayback; inMenu?: boolean }): Promise<void> {
+export function updatePiece(key: string, id: string, patch: { title?: string; bpm?: number; score?: ScoreState; playback?: PiecePlayback; inMenu?: boolean; inLibrary?: boolean }): Promise<void> {
   return request(`pieces/${id}`, adminInit(key, 'PUT', patch));
 }
 
@@ -74,6 +75,7 @@ export interface LibraryPieceExport {
   id: string;
   title: string;
   inMenu: boolean;
+  inLibrary?: boolean;
   bpm: number;
   score: ScoreState;
   playback?: PiecePlayback;
