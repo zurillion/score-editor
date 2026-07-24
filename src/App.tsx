@@ -483,12 +483,26 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     void handleLoadPiece(pending);
   }, [active, handleLoadPiece]);
 
-  // "Nuovo": close the current piece and start an empty one (undo can bring it back)
+  // "Nuovo": close the current piece and start an empty one (undo brings it
+  // back WHOLE: undo history only tracks the score, so the rest of the piece —
+  // title, bpm, mixer, source — is stashed here and restored when an undo
+  // lands back on the exact pre-Nuovo score (same object in the history).
+  const undoNewRef = useRef<{ score: ScoreState; name: string; bpm: number; playback: PiecePlayback; sourceId: string | null } | null>(null);
+  useEffect(() => {
+    const stash = undoNewRef.current;
+    if (!stash || score !== stash.score) return;
+    undoNewRef.current = null;
+    setPieceName(stash.name);
+    setBpm(stash.bpm);
+    setPlayback(stash.playback);
+    setSourceId(stash.sourceId);
+  }, [score]);
   const handleNewPiece = useCallback(() => {
     if (!window.confirm('Creare un nuovo brano vuoto?\nIl brano corrente viene tolto dall’editor (è comunque recuperabile con Annulla, finché non ricarichi la pagina).')) return;
     handleStop();
     setSelection(null);
     setCursorTick(0);
+    undoNewRef.current = { score, name: pieceName, bpm, playback, sourceId };
     dispatch({ type: 'LOAD', score: initialScore(4) });
     setPieceName('');
     setSourceId(null);
@@ -499,7 +513,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     } catch {
       /* ignore */
     }
-  }, [handleStop]);
+  }, [handleStop, score, pieceName, bpm, playback, sourceId]);
 
   const onSelectMeasures = useCallback((indices: number[]) => {
     setSelection(indices.length ? { kind: 'measures', indices } : null);
