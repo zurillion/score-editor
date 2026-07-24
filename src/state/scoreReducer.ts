@@ -644,7 +644,9 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
     case 'SET_TEXT': {
       const m = state.measures[action.index];
       if (!m) return state;
-      const text = action.text.trim();
+      // NO trim: leading spaces are a legitimate fine-alignment tool for
+      // left-anchored text (only an all-whitespace value counts as a delete)
+      const text = action.text.trim() ? action.text : '';
       const cur = m.texts ?? [];
       const hit = (t: TextItem) => t.tick === action.tick && t.staff === action.staff && !!t.above === action.above;
       const others = cur.filter((t) => !hit(t));

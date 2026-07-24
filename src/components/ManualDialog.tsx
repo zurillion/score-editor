@@ -104,8 +104,9 @@ export function ManualDialog({ open, onClose }: ManualDialogProps) {
               </li>
               <li>
                 <strong>Testo</strong> (T) — testo libero <em>sopra</em> un rigo (didascalie, in corsivo) o <em>sotto</em> (testo della
-                canzone): parte dal punto cliccato e si sviluppa verso destra. Se sotto lo stesso rigo ci sono anche gli accordi, questi
-                scendono <em>sotto</em> il testo.
+                canzone): parte dal punto cliccato e si sviluppa verso destra. Gli <strong>spazi iniziali sono conservati</strong>, utili
+                per l’allineamento fine delle sillabe. Se sotto lo stesso rigo ci sono anche gli accordi, questi scendono <em>sotto</em> il
+                testo.
               </li>
               <li><strong>Arpeggio</strong> — trascina in verticale sulle note da arpeggiare (anche su entrambi i righi: rullano insieme dal grave all’acuto); ripetere il gesto lo toglie.</li>
               <li><strong>Staccato</strong> — puntino di staccato su nota o accordo; suona una frazione della durata (regolabile nelle Opzioni).</li>
@@ -193,7 +194,8 @@ export function ManualDialog({ open, onClose }: ManualDialogProps) {
                 La pagina <strong>Gestione brani</strong> (link in alto; richiede la password, ricordata sul browser fino al Logout)
                 permette di aggiungere il brano corrente, <strong>⤴ Aggiornare</strong> un brano esistente con la versione corrente
                 (il link di condivisione resta lo stesso), rinominare, riordinare, eliminare, importare/esportare singoli brani o
-                l’intera libreria e copiare il <strong>link di solo ascolto</strong>.
+                l’intera libreria e copiare il <strong>link di solo ascolto</strong>. Il campo <strong>🔍 Cerca</strong> filtra la lista
+                per nome in tempo reale (durante la ricerca il riordino ↑↓ è sospeso).
               </li>
               <li>La pagina di ascolto condivisa mostra partitura, trasporto e mixer audio, senza strumenti di modifica.</li>
             </ul>

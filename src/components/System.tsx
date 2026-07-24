@@ -1436,6 +1436,7 @@ export function System(props: SystemProps) {
                 fontFamily="system-ui, sans-serif"
                 fill="#1a1a1a"
                 pointerEvents="none"
+                xmlSpace="preserve"
               >
                 {t.text}
               </text>

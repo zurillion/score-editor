@@ -98,10 +98,11 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   fisso) si scrive testo libero **sopra** un rigo (didascalie,
   istruzioni: in corsivo) o **sotto** (testo della canzone): si clicca
   nel punto voluto e il testo parte da lì sviluppandosi verso destra
-  (gli accordi invece sono centrati). Ogni rigo può avere le sue righe
-  di testo; quando sotto lo stesso rigo ci sono sia testo che accordi,
-  gli accordi scendono sotto il testo. Clic su un testo esistente per
-  modificarlo, testo vuoto per eliminarlo.
+  (gli accordi invece sono centrati); gli **spazi iniziali sono
+  conservati**, per l'allineamento fine delle sillabe. Ogni rigo può
+  avere le sue righe di testo; quando sotto lo stesso rigo ci sono sia
+  testo che accordi, gli accordi scendono sotto il testo. Clic su un
+  testo esistente per modificarlo, testo vuoto per eliminarlo.
 - **Staccato** — con lo strumento *Staccato* si clicca su una nota o un
   accordo per il puntino (sul lato opposto al gambo); nel playback suona
   una frazione della durata scritta (regolabile nelle Opzioni).
@@ -164,7 +165,8 @@ scritture sono disabilitate (le letture restano pubbliche).
   **⤴ Aggiorna** sostituisce il contenuto di un brano in lista con quello
   corrente dell'editor mantenendo lo stesso link di condivisione,
   importa/esporta JSON, rinomina, riordina, elimina, scegli se un brano
-  compare nel menu dell'editor, copia il link di ascolto.
+  compare nel menu dell'editor, copia il link di ascolto. Il campo
+  **🔍 Cerca** filtra la lista per nome in tempo reale.
 - `#/play/:id` — versione **solo ascolto** di un brano, pensata per essere
   condivisa: partitura e controlli di playback, nessuno strumento di
   modifica.

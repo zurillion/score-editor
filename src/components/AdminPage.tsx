@@ -76,6 +76,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const [entries, setEntries] = useState<Entry[] | null>(null);
+  const [query, setQuery] = useState(''); // real-time title filter
   const [banner, setBanner] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -148,6 +149,10 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
 
   const snap = editorRef.current;
   const snapSource = snap?.sourceId ? entries?.find((e) => e.id === snap.sourceId) ?? null : null;
+
+  // real-time title filter (case-insensitive); reordering is hidden while active
+  const needle = query.trim().toLowerCase();
+  const filtered = (entries ?? []).filter((e) => !needle || e.title.toLowerCase().includes(needle));
 
   function titleFor(snapName: string): string | null {
     let title = snapName.trim();
@@ -437,11 +442,29 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
 
       {banner && <div className="admin-banner">{banner}</div>}
 
+      {entries && entries.length > 0 && (
+        <div className="admin-search">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="🔍 Cerca un brano per nome…"
+            aria-label="Cerca brani"
+          />
+          {query && (
+            <span className="admin-search-count">
+              {filtered.length} su {entries.length}
+            </span>
+          )}
+        </div>
+      )}
+
       {!entries && <div className="page-message">Caricamento…</div>}
       {entries && entries.length === 0 && <div className="page-message">Nessun brano in lista: aggiungi quello corrente o importa un JSON.</div>}
+      {entries && entries.length > 0 && filtered.length === 0 && <div className="page-message">Nessun brano corrisponde alla ricerca.</div>}
 
       <div className="piece-list">
-        {entries?.map((entry, i) => (
+        {filtered.map((entry, i) => (
           <div className="piece-card" key={entry.id}>
             <div className="piece-preview">
               {entry.piece ? <MiniScore score={entry.piece.score} /> : <div className="preview-placeholder">…</div>}
@@ -457,8 +480,12 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
               </label>
             </div>
             <div className="piece-buttons">
-              <button disabled={busy || i === 0} onClick={() => move(entry, -1)} title="Sposta su" aria-label="Sposta su">↑</button>
-              <button disabled={busy || i === entries.length - 1} onClick={() => move(entry, 1)} title="Sposta giù" aria-label="Sposta giù">↓</button>
+              {!needle && (
+                <>
+                  <button disabled={busy || i === 0} onClick={() => move(entry, -1)} title="Sposta su" aria-label="Sposta su">↑</button>
+                  <button disabled={busy || i === filtered.length - 1} onClick={() => move(entry, 1)} title="Sposta giù" aria-label="Sposta giù">↓</button>
+                </>
+              )}
               <button onClick={() => openInEditor(entry)} title="Apri nell'editor">✎ Apri</button>
               <button disabled={busy || !snap} onClick={() => updateToCurrent(entry)} title="Sostituisce il contenuto di questo brano con il brano corrente dell'editor: il link di condivisione resta lo stesso">
                 ⤴ Aggiorna

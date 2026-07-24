@@ -134,6 +134,29 @@ body {
   color: #dc2626;
   font-size: 13px;
 }
+.admin-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 10px;
+}
+.admin-search input {
+  width: min(360px, 100%);
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: 400 13.5px system-ui, sans-serif;
+  background: var(--panel);
+}
+.admin-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.admin-search-count {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
 .admin-actions {
   display: flex;
   gap: 8px;
