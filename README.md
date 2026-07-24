@@ -169,8 +169,13 @@ scritture sono disabilitate (le letture restano pubbliche).
   **🔍 Cerca** filtra la lista per nome in tempo reale.
 - `#/play/:id` — versione **solo ascolto** di un brano, pensata per essere
   condivisa: partitura e controlli di playback, nessuno strumento di
-  modifica. La scheda del browser prende il **titolo del brano** (così il
-  link condiviso si presenta col nome della canzone).
+  modifica. La scheda del browser prende il **titolo del brano**.
+- `/p/:id` — il **link di condivisione** che l'admin copia/mostra: una
+  piccola pagina server (`netlify/functions/play.mts`) con `<title>` e tag
+  **Open Graph** presi dal titolo del brano — così l'**anteprima** di
+  WhatsApp/Telegram/social mostra il nome della canzone (i bot non
+  eseguono JS e non vedono i frammenti `#…`) — che poi inoltra il
+  visitatore a `#/play/:id`. I vecchi link `#/play/…` restano validi.
 
 ## Manuale integrato
 

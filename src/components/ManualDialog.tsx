@@ -199,7 +199,8 @@ export function ManualDialog({ open, onClose }: ManualDialogProps) {
               </li>
               <li>
                 La pagina di ascolto condivisa mostra partitura, trasporto e mixer audio, senza strumenti di modifica; la scheda del
-                browser prende il <strong>titolo del brano</strong> (come l’editor col brano corrente).
+                browser prende il <strong>titolo del brano</strong> (come l’editor col brano corrente). Il link di condivisione
+                (<code>/p/…</code>) incorpora il titolo anche nell’<strong>anteprima</strong> di WhatsApp, Telegram e social.
               </li>
             </ul>
           </details>

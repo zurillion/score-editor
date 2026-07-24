@@ -85,7 +85,9 @@ export async function replaceLibrary(key: string, pieces: LibraryPieceExport[]):
   return (await request<{ count: number }>('library', adminInit(key, 'PUT', { pieces }))).count;
 }
 
-/** Shareable play-only URL for a piece. */
+/** Shareable play-only URL for a piece: a real path (/p/:id), so link
+ *  previews (WhatsApp & co., which don't run JS and never see a #fragment)
+ *  get the song title from the server; the page then forwards to #/play. */
 export function playUrl(id: string): string {
-  return `${location.origin}${location.pathname}#/play/${id}`;
+  return `${location.origin}/p/${id}`;
 }

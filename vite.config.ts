@@ -7,5 +7,5 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   base: './',
-  server: process.env.API_PROXY ? { proxy: { '/api': process.env.API_PROXY } } : undefined,
+  server: process.env.API_PROXY ? { proxy: { '/api': process.env.API_PROXY, '/p': process.env.API_PROXY } } : undefined,
 });
