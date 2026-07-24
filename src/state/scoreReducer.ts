@@ -76,7 +76,7 @@ export type ScoreAction =
   | { type: 'SET_TIME_SIGNATURE_AT'; measureIndex: number; timeSignature: TimeSignature }
   | { type: 'SET_KEY_SIGNATURE_AT'; measureIndex: number; keySignature: number }
   | { type: 'SET_PICKUP'; on: boolean }
-  | { type: 'SET_CHORD'; index: number; tick: number; text: string } // empty text removes the chord at that tick
+  | { type: 'SET_CHORD'; index: number; tick: number; staff: Staff; text: string } // empty text removes the chord at that tick on that staff's line
   | { type: 'SET_REPEAT'; index: number; edge: 'start' | 'end'; on: boolean }
   | { type: 'SET_REPEAT_TIMES'; index: number; times: number } // coalesced (set by the count drag)
   | { type: 'ADD_STAFF'; where: 'above' | 'below'; clef: Clef; grand?: boolean } // a new staff (or grand pair) at the top/bottom
@@ -522,15 +522,18 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
           measures[i] = { ...measures[i], events: measures[i].events.filter((e) => !overSet.has(e)) };
         }
       }
-      // chord symbols copied with the notes land at the same offsets; a symbol
-      // already at the destination tick is replaced
+      // chord symbols copied with the notes land at the same offsets, each on
+      // its own staff's line; a symbol already at that tick+line is replaced
+      const bottomStaff = scoreStaves(state)[scoreStaves(state).length - 1].id;
       for (const c of action.chords ?? []) {
         const g = action.baseTick + c.offset;
-        if (g < 0) continue;
+        if (g < 0 || !validStaves.has(c.staff)) continue; // the staff was removed since the copy
         const { mi, local } = locate(g);
         while (measures.length <= mi) measures.push(emptyMeasure());
         const cur = measures[mi].chords ?? [];
-        const chords = [...cur.filter((x) => x.tick !== local), { tick: local, text: c.text }].sort((a, b) => a.tick - b.tick);
+        const chords = [...cur.filter((x) => !(x.tick === local && (x.staff ?? bottomStaff) === c.staff)), { tick: local, text: c.text, staff: c.staff }].sort(
+          (a, b) => a.tick - b.tick,
+        );
         measures[mi] = { ...measures[mi], chords };
       }
       return { ...state, measures };
@@ -606,14 +609,17 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       if (!m) return state;
       const text = action.text.trim();
       const cur = m.chords ?? [];
-      const others = cur.filter((c) => c.tick !== action.tick);
+      const bottom = scoreStaves(state)[scoreStaves(state).length - 1].id; // legacy entries without a staff live on the bottom line
+      const lineOf = (c: ChordSymbol): Staff => c.staff ?? bottom;
+      const hit = (c: ChordSymbol) => c.tick === action.tick && lineOf(c) === action.staff;
+      const others = cur.filter((c) => !hit(c));
       let chords: ChordSymbol[];
       if (!text) {
         if (others.length === cur.length) return state; // nothing to remove
         chords = others;
       } else {
-        if (cur.find((c) => c.tick === action.tick)?.text === text) return state;
-        chords = [...others, { tick: action.tick, text }].sort((a, b) => a.tick - b.tick);
+        if (cur.find(hit)?.text === text) return state;
+        chords = [...others, { tick: action.tick, text, staff: action.staff }].sort((a, b) => a.tick - b.tick);
       }
       const measures = state.measures.slice();
       const { chords: _drop, ...bare } = m;
@@ -666,10 +672,15 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const staves = scoreStaves(state);
       if (staves.length <= 1 || !staves.some((s) => s.id === action.id)) return state;
       const next = staves.filter((s) => s.id !== action.id);
-      // events on the removed staff go with it; later same-staff content is untouched
-      const measures = state.measures.map((m) =>
-        m.events.some((e) => e.staff === action.id) ? { ...m, events: m.events.filter((e) => e.staff !== action.id) } : m,
-      );
+      // events and chord names on the removed staff go with it
+      const measures = state.measures.map((m) => {
+        const dropEvents = m.events.some((e) => e.staff === action.id);
+        const dropChords = m.chords?.some((c) => c.staff === action.id);
+        if (!dropEvents && !dropChords) return m;
+        const chords = m.chords?.filter((c) => c.staff !== action.id);
+        const { chords: _old, ...bare } = m;
+        return { ...bare, events: dropEvents ? m.events.filter((e) => e.staff !== action.id) : m.events, ...(chords && chords.length ? { chords } : {}) };
+      });
       return { ...state, staves: next, measures };
     }
 
@@ -720,10 +731,21 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
     case 'CLEAR':
       return { ...state, measures: state.measures.map(() => emptyMeasure()) };
 
-    case 'LOAD':
+    case 'LOAD': {
       // normalize the staff list (older files have none: the classic grand staff)
       // and re-key every measure/event so a file's duplicate ids can't corrupt editing
-      return { ...action.score, staves: sanitizeStaves(action.score.staves) ?? defaultStaves(), measures: reidentify(action.score.measures) };
+      const staves = sanitizeStaves(action.score.staves) ?? defaultStaves();
+      // chord names from before the per-staff lines (or with a stale staff id)
+      // go to the bottom staff: under the classic grand staff, where they were
+      const ids = new Set(staves.map((s) => s.id));
+      const bottom = staves[staves.length - 1].id;
+      const measures = reidentify(action.score.measures).map((m) =>
+        m.chords?.some((c) => !c.staff || !ids.has(c.staff))
+          ? { ...m, chords: m.chords.map((c) => (c.staff && ids.has(c.staff) ? c : { ...c, staff: bottom })) }
+          : m,
+      );
+      return { ...action.score, staves, measures };
+    }
 
     default:
       return state;

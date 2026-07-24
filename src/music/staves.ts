@@ -126,13 +126,15 @@ export interface StavesLayout {
 const MARGIN_TOP_FIRST = STAFF_TOP; // 64: room for the repeat count, ties, high ledgers
 const MARGIN_TOP_NEXT = 46; // gap above every following row
 const MARGIN_BOTTOM = SYSTEM_HEIGHT - STAFF_TOP - (diatonicToY(18) - diatonicToY(38)); // 88: chords + low ledgers
+const CHORD_BAND = 26; // extra gap below a row that carries a chord line (last row: MARGIN_BOTTOM already has room)
 
 /**
  * Stacks the visible staves into rows. With the default staves this returns a
  * single grand row whose geometry (and total height) matches the historical
- * constants exactly.
+ * constants exactly. `chordBelow` lists the staves that carry a chord line:
+ * a non-last row containing one gets extra room underneath for the names.
  */
-export function layoutStaves(defs: StaffDef[]): StavesLayout {
+export function layoutStaves(defs: StaffDef[], chordBelow?: ReadonlySet<Staff>): StavesLayout {
   let visible = defs.filter((s) => !s.hidden);
   if (visible.length === 0) visible = defs.slice(0, 1); // never render an empty system
   // consecutive staves of the same group form one row
@@ -156,6 +158,7 @@ export function layoutStaves(defs: StaffDef[]): StavesLayout {
     const botY = dy + diatonicToY(botD);
     out.push({ staves, grand: staves.length === 2, dy, topD, botD, topY, botY, bandTop: 0, bandBottom: 0 });
     y = botY;
+    if (i < rows.length - 1 && chordBelow && staves.some((s) => chordBelow.has(s.def.id))) y += CHORD_BAND;
   }
   const height = y + MARGIN_BOTTOM;
   // hit-test bands: midway between adjacent rows

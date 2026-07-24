@@ -19,10 +19,11 @@ export interface ClipNote {
 }
 
 /** A chord symbol inside the copied span, with its tick offset from the
- *  earliest copied note (pasted alongside the notes). */
+ *  earliest copied note (pasted alongside the notes, on the same staff line). */
 export interface ClipChord {
   offset: number;
   text: string;
+  staff: Staff; // the staff whose chord line it sits under
 }
 
 /** What a copy/cut put aside. */

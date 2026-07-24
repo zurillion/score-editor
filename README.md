@@ -87,10 +87,13 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
   General-MIDI standard. Volume, mute/solo e trasposizione del rigo
   funzionano come per gli altri.
 - **Accordi** — con lo strumento *Accordo* (1 click: una volta · doppio:
-  fisso) si scrive il nome dell'accordo sotto i pentagrammi, agganciato a
-  una griglia di ottavi nel punto cliccato. Testo libero (nessun
-  controllo); clic su un accordo esistente per modificarlo, testo vuoto
-  per eliminarlo.
+  fisso) si scrive il nome dell'accordo sotto il pentagramma (o
+  endecalineo) su cui si clicca: ogni rigo può avere la propria linea di
+  accordi, che lo segue anche aggiungendo o riordinando altri righi.
+  Agganciato a una griglia di ottavi nel punto cliccato; testo libero
+  (nessun controllo); clic su un accordo esistente per modificarlo, testo
+  vuoto per eliminarlo. I file salvati prima di questa funzione mettono le
+  loro sigle sotto l'endecalineo classico, come erano.
 - **Staccato** — con lo strumento *Staccato* si clicca su una nota o un
   accordo per il puntino (sul lato opposto al gambo); nel playback suona
   una frazione della durata scritta (regolabile nelle Opzioni).

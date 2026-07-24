@@ -646,13 +646,24 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         ...(e.staccato ? { staccato: true } : {}),
         ...(e.arpeggio ? { arpeggio: true } : {}),
       }));
-      // chord symbols inside the copied span travel with the notes
+      // chord symbols inside the copied span travel with the notes, but only
+      // when their row (staff, or whole grand pair) has notes in the copy
       const maxG = Math.max(...picked.map((p) => p.g + eventTicks(p.e)));
+      const defs = scoreStaves(score);
+      const bottomStaff = defs[defs.length - 1].id;
+      const copiedStaves = new Set(picked.map((p) => p.e.staff));
+      const rowHasCopied = (staff: Staff): boolean => {
+        const def = defs.find((d) => d.id === staff);
+        return def?.group
+          ? defs.some((d) => d.group === def.group && copiedStaves.has(d.id)) // the endecalineo counts as one
+          : copiedStaves.has(staff);
+      };
       const chords: ClipChord[] = [];
       score.measures.forEach((m, mi) =>
         (m.chords ?? []).forEach((c) => {
           const g = meta.measures[mi].startTick + c.tick;
-          if (g >= minG && g < maxG) chords.push({ offset: g - minG, text: c.text });
+          const staff = c.staff ?? bottomStaff;
+          if (g >= minG && g < maxG && rowHasCopied(staff)) chords.push({ offset: g - minG, text: c.text, staff });
         }),
       );
       return { kind: 'notes', events, ...(chords.length ? { chords } : {}) };

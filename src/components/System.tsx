@@ -18,7 +18,7 @@ import {
   keySigWidth,
   REPEAT_START_PAD,
 } from '../music/layout';
-import { StavesLayout, RowSlot, rowAtY, rowClampD, rowLedgerLines, rowStaffForDiatonic, CLEFS } from '../music/staves';
+import { StavesLayout, RowSlot, rowAtY, rowClampD, rowLedgerLines, rowOfStaff, rowStaffForDiatonic, CLEFS } from '../music/staves';
 import { drumVoice, drumVoiceNearest } from '../music/drums';
 import { classifyNote, classifyRest, PlaceAction } from '../music/placement';
 import { measureRests } from '../music/rests';
@@ -331,6 +331,7 @@ interface RepeatHover {
 interface ChordHover {
   mode: 'chordsym';
   x: number; // snapped caret position
+  y: number; // chord line of the targeted row
 }
 type Hover = PlaceHover | TargetHover | RepeatHover | ChordHover;
 
@@ -422,8 +423,8 @@ export function System(props: SystemProps) {
   const movedRef = useRef(false);
   const suppressClickRef = useRef(false);
   const cursorDragRef = useRef(false); // a playhead-handle interaction is in progress
-  // chord-name editing (the chord tool): an inline input under the staves
-  const [chordEdit, setChordEdit] = useState<{ measureIndex: number; tick: number; x: number; value: string } | null>(null);
+  // chord-name editing (the chord tool): an inline input under the target row
+  const [chordEdit, setChordEdit] = useState<{ measureIndex: number; tick: number; staff: Staff; x: number; y: number; value: string } | null>(null);
   // arpeggio tool: vertical drag over the notes to include in the roll
   const [arpDrag, setArpDrag] = useState<{ measureIndex: number; tick: number; x: number; staffIds: Staff[]; startY: number; curY: number } | null>(null);
   // vertical drag on a |: sign to set the play count
@@ -432,8 +433,9 @@ export function System(props: SystemProps) {
   const lastRepeatInsertRef = useRef<{ key: string; t: number } | null>(null); // so a double-click on empty space doesn't insert+delete
   const CURSOR_GRID = Math.max(1, Math.round(TICKS_PER_QUARTER / 4)); // snap cursor to 16th-notes
 
-  // chord-name baseline: below the last row, pushed down by its lowest ledger note
-  // (uniform across the line so the names sit on one row)
+  // chord-name baselines: one line under each row that carries names. The last
+  // row keeps the historical placement (below its lowest ledger note); a row
+  // with others beneath uses the fixed band the layout reserved for it.
   const lastRow = sl.rows[sl.rows.length - 1];
   const lastRowStaves = new Set(lastRow.staves.map((s) => s.def.id));
   const lowestDiatonic = Math.min(
@@ -443,6 +445,9 @@ export function System(props: SystemProps) {
     ),
   );
   const chordY = lastRow.dy + Math.min(sl.height - lastRow.dy - 8, Math.max(diatonicToY(lastRow.botD) + 50, diatonicToY(lowestDiatonic) + 20));
+  const chordLineY = (row: RowSlot): number => (row === lastRow ? chordY : row.botY + 34);
+  /** Staff whose line a chord name sits on (legacy entries: the bottom staff). */
+  const chordStaffOf = (c: { staff?: Staff }): Staff => c.staff ?? lastRow.staves[lastRow.staves.length - 1].def.id;
 
   const placing = tool.kind === 'note' || tool.kind === 'rest';
   const modal = tool.kind === 'accidental' || tool.kind === 'eraser' || tool.kind === 'dot' || tool.kind === 'tuplet' || tool.kind === 'tie' || tool.kind === 'staccato';
@@ -587,17 +592,22 @@ export function System(props: SystemProps) {
     return best;
   }
 
-  // ---- chord tool: snapped position (or existing chord) a click would target ----
-  function chordTarget(x: number): { pm: PlacedMeasure; tick: number; existing?: { tick: number; text: string } } | null {
+  // ---- chord tool: snapped position (or existing chord) a click would target,
+  // on the chord line of the row under the pointer ----
+  function chordTarget(x: number, y: number): { pm: PlacedMeasure; tick: number; staff: Staff; y: number; existing?: { tick: number; text: string } } | null {
     const pm = measureAt(x);
     if (!pm || pm.total <= 0) return null;
-    // clicking near an existing chord name edits it
-    const existing = (pm.measure.chords ?? []).find((c) => Math.abs(measureTickToX(pm, c.tick) - x) < 24);
-    if (existing) return { pm, tick: existing.tick, existing };
+    const row = rowAtY(sl, y);
+    const staff = row.staves[row.staves.length - 1].def.id; // names sit under the row = its bottom staff
+    const lineY = chordLineY(row);
+    const onLine = (pm.measure.chords ?? []).filter((c) => chordStaffOf(c) === staff);
+    // clicking near an existing chord name (on this line) edits it
+    const existing = onLine.find((c) => Math.abs(measureTickToX(pm, c.tick) - x) < 24);
+    if (existing) return { pm, tick: existing.tick, staff, y: lineY, existing };
     const maxTick = Math.floor(Math.max(0, pm.total - 1) / CHORD_GRID) * CHORD_GRID;
     const tick = clamp(Math.round(measureXToTickRaw(pm, x) / CHORD_GRID) * CHORD_GRID, 0, maxTick);
-    const atTick = (pm.measure.chords ?? []).find((c) => c.tick === tick);
-    return { pm, tick, ...(atTick ? { existing: atTick } : {}) };
+    const atTick = onLine.find((c) => c.tick === tick);
+    return { pm, tick, staff, y: lineY, ...(atTick ? { existing: atTick } : {}) };
   }
 
   function commitChordEdit(save: boolean) {
@@ -605,7 +615,7 @@ export function System(props: SystemProps) {
     if (!ce) return;
     setChordEdit(null);
     if (!save) return;
-    onAction({ type: 'SET_CHORD', index: ce.measureIndex, tick: ce.tick, text: ce.value });
+    onAction({ type: 'SET_CHORD', index: ce.measureIndex, tick: ce.tick, staff: ce.staff, text: ce.value });
     onAfterApply(); // one-shot chord tool reverts to the note tool
   }
 
@@ -749,8 +759,8 @@ export function System(props: SystemProps) {
     else if (modal || tool.kind === 'pointer') setHoverState(computeTarget(pt.x, pt.y));
     else if (tool.kind === 'repeat') setHoverState(computeRepeatHover(pt.x));
     else if (tool.kind === 'chord') {
-      const t = chordTarget(pt.x);
-      setHoverState(t ? { mode: 'chordsym', x: measureTickToX(t.pm, t.tick) } : null);
+      const t = chordTarget(pt.x, pt.y);
+      setHoverState(t ? { mode: 'chordsym', x: measureTickToX(t.pm, t.tick), y: t.y } : null);
     } else setHoverState(null);
   }
 
@@ -837,9 +847,9 @@ export function System(props: SystemProps) {
     }
 
     if (tool.kind === 'chord') {
-      const t = chordTarget(pt.x);
+      const t = chordTarget(pt.x, pt.y);
       if (!t) return;
-      setChordEdit({ measureIndex: t.pm.index, tick: t.tick, x: measureTickToX(t.pm, t.tick), value: t.existing?.text ?? '' });
+      setChordEdit({ measureIndex: t.pm.index, tick: t.tick, staff: t.staff, x: measureTickToX(t.pm, t.tick), y: t.y, value: t.existing?.text ?? '' });
       return;
     }
 
@@ -935,11 +945,11 @@ export function System(props: SystemProps) {
         </g>
       );
   } else if (hover?.mode === 'chordsym') {
-    // text caret at the snapped eighth position
+    // text caret at the snapped eighth position, on the targeted row's line
     overlay = (
       <g pointerEvents="none" stroke="#2563eb" opacity={0.8}>
-        <line x1={hover.x} x2={hover.x} y1={chordY - 12} y2={chordY + 3} strokeWidth={1.6} />
-        <line x1={hover.x - 4.5} x2={hover.x + 4.5} y1={chordY + 3} y2={chordY + 3} strokeWidth={1.3} />
+        <line x1={hover.x} x2={hover.x} y1={hover.y - 12} y2={hover.y + 3} strokeWidth={1.6} />
+        <line x1={hover.x - 4.5} x2={hover.x + 4.5} y1={hover.y + 3} y2={hover.y + 3} strokeWidth={1.3} />
       </g>
     );
   } else if (hover?.mode === 'target') {
@@ -1360,12 +1370,16 @@ export function System(props: SystemProps) {
         <Fragment key={`sysm-${pm.measure.id}`}>
           {pm.measure.repeatStart && repeatCountEl(pm)}
           {repeatHitZones(pm)}
-          {pm.measure.chords?.map((c) =>
-            chordEdit && chordEdit.measureIndex === pm.index && chordEdit.tick === c.tick ? null : (
+          {pm.measure.chords?.map((c) => {
+            const staff = chordStaffOf(c);
+            const row = rowOfStaff(sl, staff);
+            if (!row) return null; // its staff is hidden: the chord line hides with it
+            if (chordEdit && chordEdit.measureIndex === pm.index && chordEdit.tick === c.tick && chordEdit.staff === staff) return null;
+            return (
               <text
-                key={`chs-${pm.index}-${c.tick}`}
+                key={`chs-${pm.index}-${staff}-${c.tick}`}
                 x={measureTickToX(pm, c.tick)}
-                y={chordY}
+                y={chordLineY(row)}
                 textAnchor="middle"
                 fontSize={14}
                 fontWeight={600}
@@ -1375,8 +1389,8 @@ export function System(props: SystemProps) {
               >
                 {c.text}
               </text>
-            ),
-          )}
+            );
+          })}
         </Fragment>
       ))}
 
@@ -1422,7 +1436,7 @@ export function System(props: SystemProps) {
 
       {/* inline editor for a chord name (chord tool) */}
       {chordEdit && (
-        <foreignObject x={chordEdit.x - 48} y={chordY - 16} width={96} height={26}>
+        <foreignObject x={chordEdit.x - 48} y={chordEdit.y - 16} width={96} height={26}>
           <input
             className="chord-input"
             autoFocus

@@ -76,16 +76,20 @@ export interface RestEvent {
 
 export type ScoreEvent = NoteEvent | RestEvent;
 
-/** A chord name written below the staves (free text, eighth-note grid). */
+/** A chord name written below a staff (free text, eighth-note grid). */
 export interface ChordSymbol {
   tick: number; // offset from the measure's start
   text: string;
+  /** Staff the name sits under (its row's chord line). Files from before this
+   *  field existed have none: the loader assigns them to the bottom staff, so
+   *  they stay under the classic grand staff even after adding staves below. */
+  staff?: Staff;
 }
 
 export interface Measure {
   id: string;
   events: ScoreEvent[];
-  chords?: ChordSymbol[]; // chord names shown under the grand staff, sorted by tick
+  chords?: ChordSymbol[]; // chord names, one line per staff that has them, sorted by tick
   timeSignature?: TimeSignature; // override that starts here and lasts until the next override
   keySignature?: number; // key-signature override that starts here and lasts until the next override
   pickup?: boolean; // anacrusis: an incomplete initial measure whose length follows its content

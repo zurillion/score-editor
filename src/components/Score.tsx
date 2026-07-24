@@ -88,7 +88,12 @@ export function Score({
   const meta = scoreMeta(state);
   const systems = layoutSystems(state.measures, meta.measures, mode, containerWidth);
   const ties = resolveTies(state, meta);
-  const stavesLayout = layoutStaves(scoreStaves(state));
+  // staves carrying a chord line (legacy entries without a staff = bottom staff):
+  // rows with one get extra room underneath
+  const defs = scoreStaves(state);
+  const chordStaves = new Set<Staff>();
+  for (const m of state.measures) for (const c of m.chords ?? []) chordStaves.add(c.staff ?? defs[defs.length - 1].id);
+  const stavesLayout = layoutStaves(defs, chordStaves);
   const STRIDE = stavesLayout.height + SYSTEM_GAP;
   // vertical shift of each staff's row (for the note lasso)
   const dyByStaff = new Map<Staff, number>();
