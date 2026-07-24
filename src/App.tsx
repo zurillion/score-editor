@@ -18,6 +18,7 @@ import { ClipChord, ClipNote, ClipText, Clipboard, Selection } from './state/sel
 import { Toolbar } from './components/Toolbar';
 import { Score, SystemRange } from './components/Score';
 import { OptionsDialog } from './components/OptionsDialog';
+import { ManualDialog } from './components/ManualDialog';
 import { PieceSummary, getPiece, listPieces } from './api';
 import { exportMusicXML, importMusicXML } from './music/musicxml';
 import { ExportFormat } from './components/ExportMenuButton';
@@ -63,6 +64,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
 
   // ---- application options (persisted) ----
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [diagonalBeams, setDiagonalBeams] = useState<boolean>(() => {
     try {
       const stored = localStorage.getItem('opt.diagonalBeams');
@@ -857,6 +859,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         onSaveFile={handleSaveFile}
         onLoadFile={handleRequestLoadFile}
         onOpenOptions={() => setOptionsOpen(true)}
+        onOpenManual={() => setManualOpen(true)}
       />
 
       <input
@@ -890,14 +893,14 @@ export default function App({ active = true, snapshotRef }: AppProps) {
       />
 
       <footer className="hint">
-        Palette: <strong>note</strong> sopra, <strong>pause</strong> sotto. Le pause riempiono automaticamente lo spazio
-        libero. Trascina una nota per spostarla; <kbd>Alt</kbd>+clic la cancella.{' '}
-        <strong>Alterazioni</strong>, <strong>punti</strong> e <strong>gomma</strong>: clic su una nota (1 = una volta, doppio = fisso).
-        <strong> Selezione</strong> battute o note (lazo): <kbd>⌘C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> · <kbd>Backspace</kbd>{' '}
-        elimina · <kbd>⌘Z</kbd> annulla. <kbd>← →</kbd> sposta cursore (<kbd>Alt</kbd> battuta, <kbd>Ctrl</kbd> rigo) ·{' '}
-        <kbd>↑ ↓</kbd> traspone le note selezionate. <kbd>1-6</kbd> durata · <kbd>.</kbd> punto · <kbd>E</kbd> gomma ·{' '}
-        <kbd>Esc</kbd> note · <kbd>Spazio</kbd> play/stop.
+        Trascina una nota per spostarla · <kbd>Alt</kbd>+clic la cancella · <kbd>Spazio</kbd> play/stop ·{' '}
+        <button className="hint-manual" onClick={() => setManualOpen(true)}>
+          ? Manuale
+        </button>{' '}
+        per tutte le funzionalità e le scorciatoie.
       </footer>
+
+      <ManualDialog open={manualOpen} onClose={() => setManualOpen(false)} />
 
       <OptionsDialog
         open={optionsOpen}

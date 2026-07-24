@@ -169,6 +169,14 @@ scritture sono disabilitate (le letture restano pubbliche).
   condivisa: partitura e controlli di playback, nessuno strumento di
   modifica.
 
+## Manuale integrato
+
+Il pulsante **«?»** accanto all'ingranaggio delle Opzioni (o il rimando nel
+footer) apre il **manuale completo** dell'app: tutte le funzionalità, gli
+strumenti della palette e le scorciatoie, organizzati in sezioni richiudibili.
+Il manuale vive in `src/components/ManualDialog.tsx` e va aggiornato insieme a
+ogni nuova funzionalità.
+
 ## Scorciatoie da tastiera
 
 | Tasto | Azione |

@@ -115,6 +115,7 @@ interface ToolbarProps {
   onSaveFile: (format: ExportFormat) => void;
   onLoadFile: () => void;
   onOpenOptions: () => void;
+  onOpenManual: () => void;
 }
 
 function GearIcon() {
@@ -184,6 +185,7 @@ export function Toolbar(props: ToolbarProps) {
     onSaveFile,
     onLoadFile,
     onOpenOptions,
+    onOpenManual,
   } = props;
 
   // Single click arms a modal tool for one use; double click makes it sticky.
@@ -248,6 +250,9 @@ export function Toolbar(props: ToolbarProps) {
     <div className="toolbar">
       <button className="gear-btn" onClick={onOpenOptions} title="Opzioni" aria-label="Opzioni">
         <GearIcon />
+      </button>
+      <button className="gear-btn help-btn" onClick={onOpenManual} title="Manuale — tutte le funzionalità e le scorciatoie" aria-label="Manuale">
+        ?
       </button>
       {/* fascia alta: playback, brano e impostazioni */}
       <div className="toolbar-row">

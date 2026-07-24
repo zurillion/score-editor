@@ -523,6 +523,73 @@ body {
   color: var(--text, #1a1a1a);
   border-color: var(--muted);
 }
+/* the "?" manual button, to the left of the options gear */
+.gear-btn.help-btn {
+  right: 50px;
+  font: 700 16px system-ui, sans-serif;
+}
+.hint-manual {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+  padding: 1px 7px;
+  font: 600 12px system-ui, sans-serif;
+  color: var(--muted);
+  cursor: pointer;
+}
+.hint-manual:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---- Manual dialog ---- */
+.modal.manual {
+  max-width: 720px;
+  width: min(720px, 94vw);
+}
+.manual-body {
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.manual-body details {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 0;
+}
+.manual-body summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 4px 0;
+}
+.manual-body p,
+.manual-body ul {
+  margin: 6px 0;
+}
+.manual-body ul {
+  padding-left: 20px;
+}
+.manual-body li {
+  margin: 3px 0;
+}
+.manual-body kbd {
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  font: 600 12px system-ui, sans-serif;
+  background: var(--panel);
+  white-space: nowrap;
+}
+.manual-shortcuts {
+  border-collapse: collapse;
+  margin: 6px 0;
+}
+.manual-shortcuts td {
+  padding: 3px 10px 3px 0;
+  vertical-align: top;
+}
 
 .group {
   border: 1px solid var(--line);
