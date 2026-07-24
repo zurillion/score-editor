@@ -126,15 +126,24 @@ export interface StavesLayout {
 const MARGIN_TOP_FIRST = STAFF_TOP; // 64: room for the repeat count, ties, high ledgers
 const MARGIN_TOP_NEXT = 46; // gap above every following row
 const MARGIN_BOTTOM = SYSTEM_HEIGHT - STAFF_TOP - (diatonicToY(18) - diatonicToY(38)); // 88: chords + low ledgers
-const CHORD_BAND = 26; // extra gap below a row that carries a chord line (last row: MARGIN_BOTTOM already has room)
+const CHORD_BAND = 26; // extra gap below a row that carries a chord or text line (last row: MARGIN_BOTTOM already has room)
+const TEXT_BAND = 22; // additional line when text AND chords share the space below a row, or for a text line above a row
+
+/** Which staves carry annotation lines, so the layout can reserve room. */
+export interface AnnotationBands {
+  chordBelow?: ReadonlySet<Staff>;
+  textBelow?: ReadonlySet<Staff>;
+  textAbove?: ReadonlySet<Staff>;
+}
 
 /**
  * Stacks the visible staves into rows. With the default staves this returns a
  * single grand row whose geometry (and total height) matches the historical
- * constants exactly. `chordBelow` lists the staves that carry a chord line:
- * a non-last row containing one gets extra room underneath for the names.
+ * constants exactly. `bands` lists the staves carrying annotation lines: a row
+ * gets extra room under it for a chord/text line (both: the chords move one
+ * line further down, below the text) and above it for a caption line.
  */
-export function layoutStaves(defs: StaffDef[], chordBelow?: ReadonlySet<Staff>): StavesLayout {
+export function layoutStaves(defs: StaffDef[], bands?: AnnotationBands): StavesLayout {
   let visible = defs.filter((s) => !s.hidden);
   if (visible.length === 0) visible = defs.slice(0, 1); // never render an empty system
   // consecutive staves of the same group form one row
@@ -146,21 +155,26 @@ export function layoutStaves(defs: StaffDef[], chordBelow?: ReadonlySet<Staff>):
     else rows.push([slot]);
   }
   const out: RowSlot[] = [];
+  const has = (set: ReadonlySet<Staff> | undefined, staves: StaffSlot[]) => !!set && staves.some((s) => set.has(s.def.id));
   let y = 0;
+  let lastBoth = false;
   for (let i = 0; i < rows.length; i++) {
     const staves = rows[i];
     const topD = staves[0].clef.lines[0];
     const lastLines = staves[staves.length - 1].clef.lines;
     const botD = lastLines[lastLines.length - 1];
-    const marginTop = i === 0 ? MARGIN_TOP_FIRST : MARGIN_TOP_NEXT;
+    const marginTop = (i === 0 ? MARGIN_TOP_FIRST : MARGIN_TOP_NEXT) + (has(bands?.textAbove, staves) ? TEXT_BAND : 0);
     const topY = y + marginTop;
     const dy = topY - diatonicToY(topD);
     const botY = dy + diatonicToY(botD);
     out.push({ staves, grand: staves.length === 2, dy, topD, botD, topY, botY, bandTop: 0, bandBottom: 0 });
     y = botY;
-    if (i < rows.length - 1 && chordBelow && staves.some((s) => chordBelow.has(s.def.id))) y += CHORD_BAND;
+    const chordsHere = has(bands?.chordBelow, staves);
+    const textHere = has(bands?.textBelow, staves);
+    lastBoth = chordsHere && textHere; // both lines: the chords sit one line below the text
+    if (i < rows.length - 1) y += (chordsHere || textHere ? CHORD_BAND : 0) + (lastBoth ? TEXT_BAND : 0);
   }
-  const height = y + MARGIN_BOTTOM;
+  const height = y + MARGIN_BOTTOM + (lastBoth ? TEXT_BAND : 0);
   // hit-test bands: midway between adjacent rows
   for (let i = 0; i < out.length; i++) {
     out[i].bandTop = i === 0 ? 0 : (out[i - 1].botY + out[i].topY) / 2;

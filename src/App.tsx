@@ -14,7 +14,7 @@ import { DEFAULT_ARPEGGIO_MS, DEFAULT_STACCATO_PCT, setArpeggioStepMs, setStacca
 import { MidiPlayer, requestMidiAccess, listOutputs, MidiOutputInfo } from './music/midi';
 import { initialHistory, historyReducer, initialScore } from './state/scoreReducer';
 import { Tool, NOTE_TOOL } from './state/tool';
-import { ClipChord, ClipNote, Clipboard, Selection } from './state/selection';
+import { ClipChord, ClipNote, ClipText, Clipboard, Selection } from './state/selection';
 import { Toolbar } from './components/Toolbar';
 import { Score, SystemRange } from './components/Score';
 import { OptionsDialog } from './components/OptionsDialog';
@@ -428,7 +428,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
 
   // After a one-shot accidental/eraser is applied, revert to the note tool.
   const handleAfterApply = useCallback(() => {
-    setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser' || t.kind === 'dot' || t.kind === 'tuplet' || t.kind === 'tie' || t.kind === 'chord' || t.kind === 'arpeggio' || t.kind === 'staccato') && !t.sticky ? NOTE_TOOL : t));
+    setTool((t) => ((t.kind === 'accidental' || t.kind === 'eraser' || t.kind === 'dot' || t.kind === 'tuplet' || t.kind === 'tie' || t.kind === 'chord' || t.kind === 'text' || t.kind === 'arpeggio' || t.kind === 'staccato') && !t.sticky ? NOTE_TOOL : t));
   }, []);
 
   // preview with the staff's effective instrument (samples load in the
@@ -659,14 +659,19 @@ export default function App({ active = true, snapshotRef }: AppProps) {
           : copiedStaves.has(staff);
       };
       const chords: ClipChord[] = [];
-      score.measures.forEach((m, mi) =>
+      const texts: ClipText[] = [];
+      score.measures.forEach((m, mi) => {
         (m.chords ?? []).forEach((c) => {
           const g = meta.measures[mi].startTick + c.tick;
           const staff = c.staff ?? bottomStaff;
           if (g >= minG && g < maxG && rowHasCopied(staff)) chords.push({ offset: g - minG, text: c.text, staff });
-        }),
-      );
-      return { kind: 'notes', events, ...(chords.length ? { chords } : {}) };
+        });
+        (m.texts ?? []).forEach((t) => {
+          const g = meta.measures[mi].startTick + t.tick;
+          if (g >= minG && g < maxG && rowHasCopied(t.staff)) texts.push({ offset: g - minG, text: t.text, staff: t.staff, ...(t.above ? { above: true } : {}) });
+        });
+      });
+      return { kind: 'notes', events, ...(chords.length ? { chords } : {}), ...(texts.length ? { texts } : {}) };
     };
     const deleteSelection = () => {
       if (!selection) return;
@@ -704,7 +709,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         if (!cb) return;
         if (cb.kind === 'notes') {
           if (cb.events.length === 0) return;
-          dispatch({ type: 'PASTE_NOTES', baseTick: Math.round(cursorTick), events: cb.events, chords: cb.chords });
+          dispatch({ type: 'PASTE_NOTES', baseTick: Math.round(cursorTick), events: cb.events, chords: cb.chords, texts: cb.texts });
         } else {
           if (cb.measures.length === 0) return;
           const idx = cursorTick >= meta.totalTicks ? score.measures.length : measureIndexAtTick(meta, cursorTick);

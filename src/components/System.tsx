@@ -338,6 +338,8 @@ type Hover = PlaceHover | TargetHover | RepeatHover | ChordHover;
 interface SystemProps {
   layout: SystemLayout;
   stavesLayout: StavesLayout;
+  /** Staves with a text line below (global, so lines sit uniformly): chords under those rows drop one line further down. */
+  textBelowStaves?: ReadonlySet<Staff>;
   headerTs: TimeSignature;
   headerKeySig: number;
   showTimeSig: boolean;
@@ -362,6 +364,7 @@ export function System(props: SystemProps) {
   const {
     layout,
     stavesLayout: sl,
+    textBelowStaves,
     headerTs,
     headerKeySig,
     showTimeSig,
@@ -425,6 +428,8 @@ export function System(props: SystemProps) {
   const cursorDragRef = useRef(false); // a playhead-handle interaction is in progress
   // chord-name editing (the chord tool): an inline input under the target row
   const [chordEdit, setChordEdit] = useState<{ measureIndex: number; tick: number; staff: Staff; x: number; y: number; value: string } | null>(null);
+  // free-text editing (the text tool): an inline input above/below the target row
+  const [textEdit, setTextEdit] = useState<{ measureIndex: number; tick: number; staff: Staff; above: boolean; x: number; y: number; value: string } | null>(null);
   // arpeggio tool: vertical drag over the notes to include in the roll
   const [arpDrag, setArpDrag] = useState<{ measureIndex: number; tick: number; x: number; staffIds: Staff[]; startY: number; curY: number } | null>(null);
   // vertical drag on a |: sign to set the play count
@@ -445,7 +450,13 @@ export function System(props: SystemProps) {
     ),
   );
   const chordY = lastRow.dy + Math.min(sl.height - lastRow.dy - 8, Math.max(diatonicToY(lastRow.botD) + 50, diatonicToY(lowestDiatonic) + 20));
-  const chordLineY = (row: RowSlot): number => (row === lastRow ? chordY : row.botY + 34);
+  /** First annotation line below a row (text when present, else the chords). */
+  const belowLineY = (row: RowSlot): number => (row === lastRow ? chordY : row.botY + 34);
+  const rowHasTextBelow = (row: RowSlot): boolean => !!textBelowStaves && row.staves.some((s) => textBelowStaves.has(s.def.id));
+  /** Chord line of a row: one line further down when the row also has text below. */
+  const chordLineY = (row: RowSlot): number => belowLineY(row) + (rowHasTextBelow(row) ? 22 : 0);
+  /** Text lines: below = first slot under the row; above = over the top line. */
+  const textLineY = (row: RowSlot, above: boolean): number => (above ? row.topY - 16 : belowLineY(row));
   /** Staff whose line a chord name sits on (legacy entries: the bottom staff). */
   const chordStaffOf = (c: { staff?: Staff }): Staff => c.staff ?? lastRow.staves[lastRow.staves.length - 1].def.id;
 
@@ -619,6 +630,36 @@ export function System(props: SystemProps) {
     onAfterApply(); // one-shot chord tool reverts to the note tool
   }
 
+  // ---- text tool: the free-text line (above/below the row under the pointer) a click would target ----
+  function textTarget(x: number, y: number): { pm: PlacedMeasure; tick: number; staff: Staff; above: boolean; y: number; existing?: { tick: number; text: string } } | null {
+    const pm = measureAt(x);
+    if (!pm || pm.total <= 0) return null;
+    const row = rowAtY(sl, y);
+    const above = y < (row.topY + row.botY) / 2; // upper half of the row (or higher) = the line above it
+    const staff = above ? row.staves[0].def.id : row.staves[row.staves.length - 1].def.id;
+    const lineY = textLineY(row, above);
+    const onLine = (pm.measure.texts ?? []).filter((t) => t.staff === staff && !!t.above === above);
+    // clicking on an existing text (left-anchored: from its start to its approximate end) edits it
+    const existing = onLine.find((t) => {
+      const tx = measureTickToX(pm, t.tick);
+      return x >= tx - 8 && x <= tx + Math.max(24, t.text.length * 7.5);
+    });
+    if (existing) return { pm, tick: existing.tick, staff, above, y: lineY, existing };
+    const maxTick = Math.floor(Math.max(0, pm.total - 1) / CHORD_GRID) * CHORD_GRID;
+    const tick = clamp(Math.round(measureXToTickRaw(pm, x) / CHORD_GRID) * CHORD_GRID, 0, maxTick);
+    const atTick = onLine.find((t) => t.tick === tick);
+    return { pm, tick, staff, above, y: lineY, ...(atTick ? { existing: atTick } : {}) };
+  }
+
+  function commitTextEdit(save: boolean) {
+    const te = textEdit;
+    if (!te) return;
+    setTextEdit(null);
+    if (!save) return;
+    onAction({ type: 'SET_TEXT', index: te.measureIndex, tick: te.tick, staff: te.staff, above: te.above, text: te.value });
+    onAfterApply(); // one-shot text tool reverts to the note tool
+  }
+
   // ---- arpeggio tool: the note column (measure + tick) nearest to x, within the row under y ----
   function arpColumnAt(x: number, y: number): { pm: PlacedMeasure; tick: number; x: number; staffIds: Staff[] } | null {
     const pm = measureAt(x);
@@ -761,6 +802,9 @@ export function System(props: SystemProps) {
     else if (tool.kind === 'chord') {
       const t = chordTarget(pt.x, pt.y);
       setHoverState(t ? { mode: 'chordsym', x: measureTickToX(t.pm, t.tick), y: t.y } : null);
+    } else if (tool.kind === 'text') {
+      const t = textTarget(pt.x, pt.y);
+      setHoverState(t ? { mode: 'chordsym', x: measureTickToX(t.pm, t.tick), y: t.y } : null);
     } else setHoverState(null);
   }
 
@@ -850,6 +894,13 @@ export function System(props: SystemProps) {
       const t = chordTarget(pt.x, pt.y);
       if (!t) return;
       setChordEdit({ measureIndex: t.pm.index, tick: t.tick, staff: t.staff, x: measureTickToX(t.pm, t.tick), y: t.y, value: t.existing?.text ?? '' });
+      return;
+    }
+
+    if (tool.kind === 'text') {
+      const t = textTarget(pt.x, pt.y);
+      if (!t) return;
+      setTextEdit({ measureIndex: t.pm.index, tick: t.existing?.tick ?? t.tick, staff: t.staff, above: t.above, x: measureTickToX(t.pm, t.existing?.tick ?? t.tick), y: t.y, value: t.existing?.text ?? '' });
       return;
     }
 
@@ -1370,6 +1421,26 @@ export function System(props: SystemProps) {
         <Fragment key={`sysm-${pm.measure.id}`}>
           {pm.measure.repeatStart && repeatCountEl(pm)}
           {repeatHitZones(pm)}
+          {pm.measure.texts?.map((t) => {
+            const row = rowOfStaff(sl, t.staff);
+            if (!row) return null; // its staff is hidden: the text line hides with it
+            if (textEdit && textEdit.measureIndex === pm.index && textEdit.tick === t.tick && textEdit.staff === t.staff && textEdit.above === !!t.above) return null;
+            return (
+              <text
+                key={`txt-${pm.index}-${t.staff}-${t.above ? 'a' : 'b'}-${t.tick}`}
+                x={measureTickToX(pm, t.tick)}
+                y={textLineY(row, !!t.above)}
+                textAnchor="start"
+                fontSize={13.5}
+                fontStyle={t.above ? 'italic' : 'normal'}
+                fontFamily="system-ui, sans-serif"
+                fill="#1a1a1a"
+                pointerEvents="none"
+              >
+                {t.text}
+              </text>
+            );
+          })}
           {pm.measure.chords?.map((c) => {
             const staff = chordStaffOf(c);
             const row = rowOfStaff(sl, staff);
@@ -1432,6 +1503,26 @@ export function System(props: SystemProps) {
             />
           )}
         </g>
+      )}
+
+      {/* inline editor for a free text line (text tool): left-anchored like the text itself */}
+      {textEdit && (
+        <foreignObject x={textEdit.x - 4} y={textEdit.y - 16} width={220} height={26}>
+          <input
+            className="chord-input text-input"
+            autoFocus
+            value={textEdit.value}
+            placeholder="testo…"
+            onChange={(e) => setTextEdit({ ...textEdit, value: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitTextEdit(true);
+              else if (e.key === 'Escape') commitTextEdit(false);
+            }}
+            onBlur={() => commitTextEdit(true)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </foreignObject>
       )}
 
       {/* inline editor for a chord name (chord tool) */}

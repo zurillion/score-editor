@@ -1,10 +1,10 @@
-import { Alter, ChordSymbol, Clef, Duration, DurationValue, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, Staff, StaffDef, ScoreState, TimeSignature, Tuplet } from '../music/types';
+import { Alter, ChordSymbol, Clef, Duration, DurationValue, Measure, NoteEvent, Pitch, RestEvent, ScoreEvent, Staff, StaffDef, ScoreState, TextItem, TimeSignature, Tuplet } from '../music/types';
 import { diatonicToPitch, durationTicks, eventTicks, measureTicks, pitchToDiatonic } from '../music/theory';
 import { effectiveTimeSignatureAt, scoreMeta } from '../music/meta';
 import { classifyNote, classifyRest, samePitch } from '../music/placement';
 import { defaultStaves, newGroupId, newStaffId, sanitizeStaves, scoreStaves } from '../music/staves';
 import { drumVoice } from '../music/drums';
-import { ClipChord, ClipNote } from './selection';
+import { ClipChord, ClipNote, ClipText } from './selection';
 
 let idCounter = 0;
 const uid = (prefix: string): string => `${prefix}${++idCounter}`;
@@ -71,12 +71,13 @@ export type ScoreAction =
   | { type: 'TRANSPOSE_NOTES'; ids: string[]; delta: number }
   | { type: 'MOVE_NOTE'; measureIndex: number; eventId: string; fromDiatonic: number; toDiatonic: number }
   | { type: 'SET_NOTE_DRUM'; measureIndex: number; eventId: string; fromDrum: string; toDrum: string } // drag a drum notehead to another voice
-  | { type: 'PASTE_NOTES'; baseTick: number; events: ClipNote[]; chords?: ClipChord[] }
+  | { type: 'PASTE_NOTES'; baseTick: number; events: ClipNote[]; chords?: ClipChord[]; texts?: ClipText[] }
   | { type: 'PASTE_MEASURES'; index: number; measures: Measure[] }
   | { type: 'SET_TIME_SIGNATURE_AT'; measureIndex: number; timeSignature: TimeSignature }
   | { type: 'SET_KEY_SIGNATURE_AT'; measureIndex: number; keySignature: number }
   | { type: 'SET_PICKUP'; on: boolean }
   | { type: 'SET_CHORD'; index: number; tick: number; staff: Staff; text: string } // empty text removes the chord at that tick on that staff's line
+  | { type: 'SET_TEXT'; index: number; tick: number; staff: Staff; above: boolean; text: string } // free text line above/below a staff; empty text removes it
   | { type: 'SET_REPEAT'; index: number; edge: 'start' | 'end'; on: boolean }
   | { type: 'SET_REPEAT_TIMES'; index: number; times: number } // coalesced (set by the count drag)
   | { type: 'ADD_STAFF'; where: 'above' | 'below'; clef: Clef; grand?: boolean } // a new staff (or grand pair) at the top/bottom
@@ -536,6 +537,19 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
         );
         measures[mi] = { ...measures[mi], chords };
       }
+      // free-text lines travel the same way (keyed by tick + staff + side)
+      for (const t of action.texts ?? []) {
+        const g = action.baseTick + t.offset;
+        if (g < 0 || !validStaves.has(t.staff)) continue;
+        const { mi, local } = locate(g);
+        while (measures.length <= mi) measures.push(emptyMeasure());
+        const cur = measures[mi].texts ?? [];
+        const texts = [
+          ...cur.filter((x) => !(x.tick === local && x.staff === t.staff && !!x.above === !!t.above)),
+          { tick: local, text: t.text, staff: t.staff, ...(t.above ? { above: true } : {}) },
+        ].sort((a, b) => a.tick - b.tick);
+        measures[mi] = { ...measures[mi], texts };
+      }
       return { ...state, measures };
     }
 
@@ -627,6 +641,27 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       return { ...state, measures };
     }
 
+    case 'SET_TEXT': {
+      const m = state.measures[action.index];
+      if (!m) return state;
+      const text = action.text.trim();
+      const cur = m.texts ?? [];
+      const hit = (t: TextItem) => t.tick === action.tick && t.staff === action.staff && !!t.above === action.above;
+      const others = cur.filter((t) => !hit(t));
+      let texts: TextItem[];
+      if (!text) {
+        if (others.length === cur.length) return state; // nothing to remove
+        texts = others;
+      } else {
+        if (cur.find(hit)?.text === text) return state;
+        texts = [...others, { tick: action.tick, text, staff: action.staff, ...(action.above ? { above: true } : {}) }].sort((a, b) => a.tick - b.tick);
+      }
+      const measures = state.measures.slice();
+      const { texts: _drop, ...bare } = m;
+      measures[action.index] = texts.length ? { ...m, texts } : bare;
+      return { ...state, measures };
+    }
+
     case 'SET_REPEAT': {
       const m = state.measures[action.index];
       if (!m) return state;
@@ -672,14 +707,21 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       const staves = scoreStaves(state);
       if (staves.length <= 1 || !staves.some((s) => s.id === action.id)) return state;
       const next = staves.filter((s) => s.id !== action.id);
-      // events and chord names on the removed staff go with it
+      // events, chord names and text lines on the removed staff go with it
       const measures = state.measures.map((m) => {
         const dropEvents = m.events.some((e) => e.staff === action.id);
         const dropChords = m.chords?.some((c) => c.staff === action.id);
-        if (!dropEvents && !dropChords) return m;
+        const dropTexts = m.texts?.some((t) => t.staff === action.id);
+        if (!dropEvents && !dropChords && !dropTexts) return m;
         const chords = m.chords?.filter((c) => c.staff !== action.id);
-        const { chords: _old, ...bare } = m;
-        return { ...bare, events: dropEvents ? m.events.filter((e) => e.staff !== action.id) : m.events, ...(chords && chords.length ? { chords } : {}) };
+        const texts = m.texts?.filter((t) => t.staff !== action.id);
+        const { chords: _oldChords, texts: _oldTexts, ...bare } = m;
+        return {
+          ...bare,
+          events: dropEvents ? m.events.filter((e) => e.staff !== action.id) : m.events,
+          ...(chords && chords.length ? { chords } : {}),
+          ...(texts && texts.length ? { texts } : {}),
+        };
       });
       return { ...state, staves: next, measures };
     }
@@ -739,11 +781,18 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       // go to the bottom staff: under the classic grand staff, where they were
       const ids = new Set(staves.map((s) => s.id));
       const bottom = staves[staves.length - 1].id;
-      const measures = reidentify(action.score.measures).map((m) =>
-        m.chords?.some((c) => !c.staff || !ids.has(c.staff))
-          ? { ...m, chords: m.chords.map((c) => (c.staff && ids.has(c.staff) ? c : { ...c, staff: bottom })) }
-          : m,
-      );
+      const measures = reidentify(action.score.measures).map((m) => {
+        const fixChords = m.chords?.some((c) => !c.staff || !ids.has(c.staff));
+        const badTexts = m.texts?.some((t) => !t.staff || !ids.has(t.staff)); // texts always carry a staff: drop stale ones
+        if (!fixChords && !badTexts) return m;
+        const texts = m.texts?.filter((t) => t.staff && ids.has(t.staff));
+        const { texts: _oldTexts, ...rest } = m;
+        return {
+          ...rest,
+          ...(m.chords ? { chords: m.chords.map((c) => (c.staff && ids.has(c.staff) ? c : { ...c, staff: bottom })) } : {}),
+          ...(texts && texts.length ? { texts } : {}),
+        };
+      });
       return { ...action.score, staves, measures };
     }
 

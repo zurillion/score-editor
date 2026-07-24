@@ -763,6 +763,11 @@ input[type='number'] {
   background: #fff;
   outline: none;
 }
+/* free-text line editor: left-anchored, like the text it writes */
+.chord-input.text-input {
+  text-align: left;
+  font-weight: 400;
+}
 
 /* |: glyph in the repeat-tool button (barline glyphs hang from the baseline) */
 .glyph-btn .bravura.repeat-glyph {

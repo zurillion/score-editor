@@ -86,10 +86,20 @@ export interface ChordSymbol {
   staff?: Staff;
 }
 
+/** Free text tied to a staff (captions/instructions above, lyrics below):
+ *  left-anchored at its tick, growing rightward (chord names are centered). */
+export interface TextItem {
+  tick: number; // offset from the measure's start
+  text: string;
+  staff: Staff;
+  above?: boolean; // above the staff's row (default: below it)
+}
+
 export interface Measure {
   id: string;
   events: ScoreEvent[];
   chords?: ChordSymbol[]; // chord names, one line per staff that has them, sorted by tick
+  texts?: TextItem[]; // free text lines per staff (above/below), sorted by tick
   timeSignature?: TimeSignature; // override that starts here and lasts until the next override
   keySignature?: number; // key-signature override that starts here and lasts until the next override
   pickup?: boolean; // anacrusis: an incomplete initial measure whose length follows its content

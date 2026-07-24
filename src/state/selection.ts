@@ -26,7 +26,15 @@ export interface ClipChord {
   staff: Staff; // the staff whose chord line it sits under
 }
 
+/** A free-text line inside the copied span (same offset semantics). */
+export interface ClipText {
+  offset: number;
+  text: string;
+  staff: Staff;
+  above?: boolean;
+}
+
 /** What a copy/cut put aside. */
 export type Clipboard =
   | { kind: 'measures'; measures: Measure[] }
-  | { kind: 'notes'; events: ClipNote[]; chords?: ClipChord[] };
+  | { kind: 'notes'; events: ClipNote[]; chords?: ClipChord[]; texts?: ClipText[] };

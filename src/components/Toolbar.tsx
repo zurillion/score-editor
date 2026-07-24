@@ -217,6 +217,11 @@ export function Toolbar(props: ToolbarProps) {
     else if (tool.kind === 'chord') setTool({ kind: 'note' });
     else setTool({ kind: 'chord', sticky: false });
   }
+  function clickText(detail: number) {
+    if (detail >= 2) setTool({ kind: 'text', sticky: true });
+    else if (tool.kind === 'text') setTool({ kind: 'note' });
+    else setTool({ kind: 'text', sticky: false });
+  }
   function clickArpeggio(detail: number) {
     if (detail >= 2) setTool({ kind: 'arpeggio', sticky: true });
     else if (tool.kind === 'arpeggio') setTool({ kind: 'note' });
@@ -230,6 +235,7 @@ export function Toolbar(props: ToolbarProps) {
 
   const eraserClass = tool.kind === 'eraser' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const chordClass = tool.kind === 'chord' ? (tool.sticky ? 'on sticky' : 'on') : '';
+  const textClass = tool.kind === 'text' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const arpClass = tool.kind === 'arpeggio' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const tupletClass = tool.kind === 'tuplet' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const tieClass = tool.kind === 'tie' ? (tool.sticky ? 'on sticky' : 'on') : '';
@@ -593,6 +599,13 @@ export function Toolbar(props: ToolbarProps) {
                   title="Accordo — clicca sotto il rigo per scrivere il nome dell'accordo (testo libero, griglia di ottavi). Clic su un accordo esistente per modificarlo; testo vuoto lo elimina. 1 click: una volta · doppio click: fissa."
                 >
                   C⁷ Accordo
+                </button>
+                <button
+                  className={textClass}
+                  onClick={(e) => clickText(e.detail)}
+                  title="Testo — clicca sopra un rigo (didascalie, istruzioni) o sotto (testo della canzone): il testo parte dal punto cliccato e si sviluppa verso destra. Se sotto il rigo ci sono anche gli accordi, questi scendono sotto il testo. Clic su un testo esistente per modificarlo; testo vuoto lo elimina. 1 click: una volta · doppio click: fissa."
+                >
+                  T Testo
                 </button>
                 <button
                   className={arpClass}

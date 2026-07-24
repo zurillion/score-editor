@@ -88,12 +88,17 @@ export function Score({
   const meta = scoreMeta(state);
   const systems = layoutSystems(state.measures, meta.measures, mode, containerWidth);
   const ties = resolveTies(state, meta);
-  // staves carrying a chord line (legacy entries without a staff = bottom staff):
-  // rows with one get extra room underneath
+  // staves carrying annotation lines (legacy chords without a staff = bottom
+  // staff): their rows get extra room; chords drop below the text when both
   const defs = scoreStaves(state);
   const chordStaves = new Set<Staff>();
-  for (const m of state.measures) for (const c of m.chords ?? []) chordStaves.add(c.staff ?? defs[defs.length - 1].id);
-  const stavesLayout = layoutStaves(defs, chordStaves);
+  const textBelowStaves = new Set<Staff>();
+  const textAboveStaves = new Set<Staff>();
+  for (const m of state.measures) {
+    for (const c of m.chords ?? []) chordStaves.add(c.staff ?? defs[defs.length - 1].id);
+    for (const t of m.texts ?? []) (t.above ? textAboveStaves : textBelowStaves).add(t.staff);
+  }
+  const stavesLayout = layoutStaves(defs, { chordBelow: chordStaves, textBelow: textBelowStaves, textAbove: textAboveStaves });
   const STRIDE = stavesLayout.height + SYSTEM_GAP;
   // vertical shift of each staff's row (for the note lasso)
   const dyByStaff = new Map<Staff, number>();
@@ -260,6 +265,7 @@ export function Score({
             key={i}
             layout={sys}
             stavesLayout={stavesLayout}
+            textBelowStaves={textBelowStaves}
             headerTs={sys.headerTs}
             headerKeySig={sys.headerKeySig}
             showTimeSig={i === 0 || sys.headerTsChanged}
