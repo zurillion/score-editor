@@ -197,7 +197,10 @@ export function ManualDialog({ open, onClose }: ManualDialogProps) {
                 l’intera libreria e copiare il <strong>link di solo ascolto</strong>. Il campo <strong>🔍 Cerca</strong> filtra la lista
                 per nome in tempo reale (durante la ricerca il riordino ↑↓ è sospeso).
               </li>
-              <li>La pagina di ascolto condivisa mostra partitura, trasporto e mixer audio, senza strumenti di modifica.</li>
+              <li>
+                La pagina di ascolto condivisa mostra partitura, trasporto e mixer audio, senza strumenti di modifica; la scheda del
+                browser prende il <strong>titolo del brano</strong> (come l’editor col brano corrente).
+              </li>
             </ul>
           </details>
 

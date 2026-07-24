@@ -169,7 +169,8 @@ scritture sono disabilitate (le letture restano pubbliche).
   **🔍 Cerca** filtra la lista per nome in tempo reale.
 - `#/play/:id` — versione **solo ascolto** di un brano, pensata per essere
   condivisa: partitura e controlli di playback, nessuno strumento di
-  modifica.
+  modifica. La scheda del browser prende il **titolo del brano** (così il
+  link condiviso si presenta col nome della canzone).
 
 ## Manuale integrato
 

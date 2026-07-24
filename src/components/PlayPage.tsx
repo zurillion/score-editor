@@ -4,6 +4,7 @@ import { Player } from '../music/audio';
 import { DEFAULT_INSTRUMENT_ID, INSTRUMENTS, ensureInstrument, getLoadedSampler, isSynth } from '../music/instruments';
 import { ensureAcousticKit, getLoadedAcousticKit } from '../music/drumkit';
 import { PiecePlayback, defaultPlayback, effectiveInstrumentId, sanitizePlayback, staffGain, staffTranspose } from '../music/playback';
+import { setPageTitle } from '../pageTitle';
 import { scoreStaves } from '../music/staves';
 import { InstrumentIcon } from './InstrumentIcon';
 import { MixerPanel } from './MixerPanel';
@@ -72,6 +73,12 @@ export function PlayPage({ id }: { id: string }) {
   useEffect(() => {
     if (playerRef.current?.playing) playerRef.current.setBpm(bpm);
   }, [bpm]);
+
+  // the shared page's tab is named after the song
+  useEffect(() => {
+    if (piece) setPageTitle(piece.title);
+    return () => setPageTitle();
+  }, [piece]);
 
   // push mixer changes (volume, M/S, transpose, instrument) into a running player
   const [samplersReady, setSamplersReady] = useState(0);

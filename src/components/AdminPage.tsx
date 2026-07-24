@@ -1,4 +1,5 @@
 import { MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { setPageTitle } from '../pageTitle';
 import { ScoreState } from '../music/types';
 import {
   LibraryPieceExport,
@@ -84,6 +85,11 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
   const libFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const showError = (message: string) => setBanner(message);
+
+  // name the tab while the admin page is in front (the editor renames it back)
+  useEffect(() => {
+    setPageTitle('Gestione brani');
+  }, []);
 
   const refresh = useCallback(async () => {
     const summaries = await listPieces();

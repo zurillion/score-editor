@@ -19,6 +19,7 @@ import { Toolbar } from './components/Toolbar';
 import { Score, SystemRange } from './components/Score';
 import { OptionsDialog } from './components/OptionsDialog';
 import { ManualDialog } from './components/ManualDialog';
+import { setPageTitle } from './pageTitle';
 import { PieceSummary, getPiece, listPieces } from './api';
 import { exportMusicXML, importMusicXML } from './music/musicxml';
 import { ExportFormat } from './components/ExportMenuButton';
@@ -193,6 +194,11 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   useEffect(() => {
     if (snapshotRef) snapshotRef.current = { name: pieceName, bpm, score, playback, sourceId };
   }, [snapshotRef, pieceName, bpm, score, playback, sourceId]);
+
+  // the tab is named after the piece under edit (when the editor is in front)
+  useEffect(() => {
+    if (active) setPageTitle(pieceName);
+  }, [active, pieceName]);
 
   // ---- autosave: the piece under edit survives an accidental close/reload ----
   // Every change (debounced) is written to localStorage; on mount the last
