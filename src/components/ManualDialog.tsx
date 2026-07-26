@@ -25,6 +25,7 @@ const SHORTCUTS: [string, string][] = [
   ['⌘/Ctrl + V', 'incolla al punto di inserimento'],
   ['Backspace / Canc', 'elimina la selezione'],
   ['⌘/Ctrl + Z', 'annulla (anche il «✚ Nuovo»: recupera il brano intero)'],
+  ['⌘/Ctrl + ⇧ + Z · Ctrl + Y', 'ripristina (redo): rifà l’azione appena annullata'],
   ['Alt + clic su una nota', 'la elimina (con qualunque strumento)'],
 ];
 
@@ -180,7 +181,10 @@ export function ManualDialog({ open, onClose }: ManualDialogProps) {
                 che c’è già, e porta con sé <strong>sigle e testi</strong> delle righe comprese nella selezione (l’endecalineo conta come
                 una riga sola).
               </li>
-              <li><kbd>⌘Z</kbd> annulla qualunque modifica allo spartito, sigle e testi compresi.</li>
+              <li>
+                <kbd>⌘Z</kbd> annulla qualunque modifica allo spartito, sigle e testi compresi; <kbd>⌘⇧Z</kbd> (o <kbd>Ctrl+Y</kbd>)
+                <strong> ripristina</strong> l’azione annullata. Una nuova modifica dopo un annulla cancella ciò che era rifattibile.
+              </li>
             </ul>
           </details>
 

@@ -89,6 +89,7 @@ export type ScoreAction =
   | { type: 'CLEAR' }
   | { type: 'LOAD'; score: ScoreState }
   | { type: 'UNDO' } // handled by the history wrapper
+  | { type: 'REDO' } // handled by the history wrapper (undo of the undo)
   | { type: 'COMMIT' }; // close the current coalescing group (e.g. end of a drag)
 
 function withMeasureEvents(state: ScoreState, index: number, events: ScoreEvent[]): ScoreState {
@@ -803,19 +804,21 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
   }
 }
 
-// ---- Undo history ----
+// ---- Undo/redo history ----
 // Wraps scoreReducer so that *every* action that actually changes the score is
 // pushed onto an undo stack. Rapid same-target actions (a note drag) coalesce
-// into a single undo step; a COMMIT closes the current group.
+// into a single undo step; a COMMIT closes the current group. UNDO moves the
+// present onto the redo stack; a new change clears it (standard semantics).
 
 export interface HistoryState {
   present: ScoreState;
   past: ScoreState[];
+  future: ScoreState[]; // states undone and re-doable, most recent first
   coalesce: string | null; // key of the in-progress coalescing group
 }
 
 export function initialHistory(measureCount = 4): HistoryState {
-  return { present: initialScore(measureCount), past: [], coalesce: null };
+  return { present: initialScore(measureCount), past: [], future: [], coalesce: null };
 }
 
 const UNDO_LIMIT = 100;
@@ -831,7 +834,21 @@ function coalesceKey(action: ScoreAction): string | null {
 export function historyReducer(state: HistoryState, action: ScoreAction): HistoryState {
   if (action.type === 'UNDO') {
     if (state.past.length === 0) return state;
-    return { present: state.past[state.past.length - 1], past: state.past.slice(0, -1), coalesce: null };
+    return {
+      present: state.past[state.past.length - 1],
+      past: state.past.slice(0, -1),
+      future: [state.present, ...state.future].slice(0, UNDO_LIMIT),
+      coalesce: null,
+    };
+  }
+  if (action.type === 'REDO') {
+    if (state.future.length === 0) return state;
+    return {
+      present: state.future[0],
+      past: [...state.past, state.present].slice(-UNDO_LIMIT),
+      future: state.future.slice(1),
+      coalesce: null,
+    };
   }
   if (action.type === 'COMMIT') {
     return state.coalesce === null ? state : { ...state, coalesce: null };
@@ -843,6 +860,7 @@ export function historyReducer(state: HistoryState, action: ScoreAction): Histor
   return {
     present: next,
     past: merge ? state.past : [...state.past, state.present].slice(-UNDO_LIMIT),
+    future: [], // a fresh change invalidates the redo stack
     coalesce: key,
   };
 }

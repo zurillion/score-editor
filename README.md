@@ -198,6 +198,8 @@ ogni nuova funzionalità.
 | `.` | cicla i punti di valore |
 | `R` | alterna Note / Pause |
 | `Spazio` | play / stop |
+| `⌘/Ctrl+Z` | annulla |
+| `⌘/Ctrl+⇧+Z` (o `Ctrl+Y`) | ripristina (redo) |
 
 ## Come funziona (architettura)
 

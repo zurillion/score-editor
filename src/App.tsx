@@ -491,26 +491,40 @@ export default function App({ active = true, snapshotRef }: AppProps) {
     void handleLoadPiece(pending);
   }, [active, handleLoadPiece]);
 
-  // "Nuovo": close the current piece and start an empty one (undo brings it
-  // back WHOLE: undo history only tracks the score, so the rest of the piece —
-  // title, bpm, mixer, source — is stashed here and restored when an undo
-  // lands back on the exact pre-Nuovo score (same object in the history).
-  const undoNewRef = useRef<{ score: ScoreState; name: string; bpm: number; playback: PiecePlayback; sourceId: string | null } | null>(null);
+  // "Nuovo": close the current piece and start an empty one. Undo brings the
+  // old piece back WHOLE and redo empties it again: undo history only tracks
+  // the score, so the rest of the piece — title, bpm, mixer, source — is
+  // stashed here for both sides and applied when the history lands back on the
+  // exact pre-Nuovo (or post-Nuovo) score object.
+  const newPieceRef = useRef<{ old: { score: ScoreState; name: string; bpm: number; playback: PiecePlayback; sourceId: string | null }; fresh: ScoreState | null } | null>(null);
   useEffect(() => {
-    const stash = undoNewRef.current;
-    if (!stash || score !== stash.score) return;
-    undoNewRef.current = null;
-    setPieceName(stash.name);
-    setBpm(stash.bpm);
-    setPlayback(stash.playback);
-    setSourceId(stash.sourceId);
+    const np = newPieceRef.current;
+    if (!np) return;
+    if (np.fresh === null) {
+      // first render after Nuovo: remember the fresh score object the LOAD produced
+      if (score !== np.old.score) np.fresh = score;
+      return;
+    }
+    if (score === np.old.score) {
+      // undo landed on the pre-Nuovo piece: bring back its side state too
+      setPieceName(np.old.name);
+      setBpm(np.old.bpm);
+      setPlayback(np.old.playback);
+      setSourceId(np.old.sourceId);
+    } else if (score === np.fresh) {
+      // redo landed on the fresh empty piece: reset the side state again
+      setPieceName('');
+      setBpm(96);
+      setPlayback((cur) => defaultPlayback(cur.instrument));
+      setSourceId(null);
+    }
   }, [score]);
   const handleNewPiece = useCallback(() => {
     if (!window.confirm('Creare un nuovo brano vuoto?\nIl brano corrente viene tolto dall’editor (è comunque recuperabile con Annulla, finché non ricarichi la pagina).')) return;
     handleStop();
     setSelection(null);
     setCursorTick(0);
-    undoNewRef.current = { score, name: pieceName, bpm, playback, sourceId };
+    newPieceRef.current = { old: { score, name: pieceName, bpm, playback, sourceId }, fresh: null };
     dispatch({ type: 'LOAD', score: initialScore(4) });
     setPieceName('');
     setSourceId(null);
@@ -694,7 +708,13 @@ export default function App({ active = true, snapshotRef }: AppProps) {
 
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 'z') {
-        dispatch({ type: 'UNDO' });
+        dispatch({ type: e.shiftKey ? 'REDO' : 'UNDO' }); // ⌘Z annulla · ⌘⇧Z ripristina
+        setSelection(null);
+        e.preventDefault();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'y') {
+        dispatch({ type: 'REDO' }); // Ctrl+Y: il redo classico di Windows
         setSelection(null);
         e.preventDefault();
         return;
