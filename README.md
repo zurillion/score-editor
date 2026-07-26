@@ -35,6 +35,12 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
 - **Freccia** — lo strumento puntatore (icona della freccia del mouse) non
   crea note: trascinando una nota la si alza/abbassa di intonazione, un clic
   in un punto vuoto sposta l'indicatore di playback/inserimento.
+- **Toolbar compatta e richiudibile** — il toggle **▲/▼** a destra della
+  riga del playback (o il tasto `H`) nasconde fascia brano e palette
+  lasciando solo il playback, con un riassunto dello strumento attivo
+  (clic per riaprire). Il chip **«▸ Brano»** apre/chiude la fascia con
+  tempo, armatura, vista, file e libreria (chiusa di default). Entrambe
+  le scelte sono ricordate tra le sessioni.
 - **Due viste**
   - **Orizzontale**: la partitura è un unico rigo che scorre a sinistra/destra
     (anche automaticamente durante il playback).
@@ -198,6 +204,7 @@ ogni nuova funzionalità.
 | `.` | cicla i punti di valore |
 | `R` | alterna Note / Pause |
 | `Spazio` | play / stop |
+| `H` | mostra/nasconde fascia brano e palette |
 | `⌘/Ctrl+Z` | annulla |
 | `⌘/Ctrl+⇧+Z` (o `Ctrl+Y`) | ripristina (redo) |
 

@@ -503,18 +503,76 @@ body {
 
 /* ---- Toolbar: two bands — settings/transport on top, editing palette
    at the bottom, next to the score ---- */
+/* compatta: spaziature ridotte, la fascia brano e le palette sono richiudibili */
 .toolbar {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 48px 10px 16px;
+  gap: 5px;
+  padding: 5px 92px 7px 12px; /* right: room for the ? and gear buttons */
+  font-size: 13.5px;
 }
 .toolbar-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: flex-end;
+}
+.toolbar .group {
+  padding: 2px 5px 5px;
+}
+.toolbar .group legend {
+  font-size: 10px;
+  letter-spacing: 0.4px;
+}
+.toolbar button {
+  padding: 5px 7px;
+}
+/* riga playback: chip «Brano», riassunto e toggle delle palette */
+.playback-row {
+  align-items: center;
+}
+.playback-row .row-spacer {
+  flex: 1;
+}
+.top-toggle {
+  align-self: center;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.top-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.panel-toggle {
+  align-self: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 5px 9px;
+}
+.panel-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.tool-summary {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tool-summary:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.tool-summary .bravura.note {
+  font-family: Bravura, serif;
+  font-size: 15px;
+  line-height: 0.5;
 }
 /* the palette band aligns to the top (Note/Pause is the tall reference) */
 .palette-band {

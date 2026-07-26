@@ -16,6 +16,25 @@ import { ExportFormat, ExportMenuButton } from './ExportMenuButton';
 
 const DURATIONS: DurationValue[] = [1, 2, 4, 8, 16, 32];
 
+/** Etichetta dello strumento attivo, mostrata nella barra quando le palette sono nascoste. */
+const TOOL_LABELS: Record<Tool['kind'], string> = {
+  note: 'Nota',
+  rest: 'Pausa',
+  pointer: 'Freccia',
+  accidental: 'Alterazione',
+  eraser: 'Gomma',
+  dot: 'Punto',
+  tuplet: 'Terzina',
+  tie: 'Legatura',
+  chord: 'Accordo',
+  text: 'Testo',
+  arpeggio: 'Arpeggio',
+  staccato: 'Staccato',
+  repeat: 'Ritornello',
+  'select-measures': 'Sel. battute',
+  'select-notes': 'Lazo note',
+};
+
 const TIME_PRESETS: TimeSignature[] = [
   { numerator: 2, denominator: 4 },
   { numerator: 3, denominator: 4 },
@@ -116,6 +135,9 @@ interface ToolbarProps {
   onLoadFile: () => void;
   onOpenOptions: () => void;
   onOpenManual: () => void;
+  /** Palette e fascia brano visibili; il toggle (o il tasto H) le nasconde lasciando solo il playback. */
+  paletteOpen: boolean;
+  onTogglePalette: () => void;
 }
 
 function GearIcon() {
@@ -186,6 +208,8 @@ export function Toolbar(props: ToolbarProps) {
     onLoadFile,
     onOpenOptions,
     onOpenManual,
+    paletteOpen,
+    onTogglePalette,
   } = props;
 
   // Single click arms a modal tool for one use; double click makes it sticky.
@@ -243,6 +267,23 @@ export function Toolbar(props: ToolbarProps) {
   const tieClass = tool.kind === 'tie' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const staccatoClass = tool.kind === 'staccato' ? (tool.sticky ? 'on sticky' : 'on') : '';
   const [mixerOpen, setMixerOpen] = useState(false);
+  // fascia brano (Tempo/Armatura/Vista/File/Libreria): chiusa di default, si apre col chip «Brano»
+  const [topOpen, setTopOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('ui.topBand') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleTop = () =>
+    setTopOpen((v) => {
+      try {
+        localStorage.setItem('ui.topBand', v ? '0' : '1');
+      } catch {
+        /* ignore */
+      }
+      return !v;
+    });
   // every staff has its own instrument in the mixer: the general one has no effect
   const generalUnused = staves.every((s) => playback.staves[s.id]?.instrument);
 
@@ -254,8 +295,9 @@ export function Toolbar(props: ToolbarProps) {
       <button className="gear-btn help-btn" onClick={onOpenManual} title="Manuale — tutte le funzionalità e le scorciatoie" aria-label="Manuale">
         ?
       </button>
-      {/* fascia alta: playback, brano e impostazioni */}
-      <div className="toolbar-row">
+      {/* fascia brano (richiudibile, chiusa di default): tempo, armatura, vista, file, libreria */}
+      {paletteOpen && topOpen && (
+      <div className="toolbar-row top-band">
         <fieldset className="group">
           <legend>Tempo · {measureLabel}</legend>
           <select
@@ -334,6 +376,16 @@ export function Toolbar(props: ToolbarProps) {
             ))}
           </select>
         </fieldset>
+      </div>
+      )}
+
+      {/* riga playback: sempre visibile, con il chip «Brano» e il toggle delle palette */}
+      <div className="toolbar-row playback-row">
+        {paletteOpen && (
+          <button className="top-toggle" onClick={toggleTop} title="Mostra/nasconde tempo, armatura, vista, file e libreria">
+            {topOpen ? '▾' : '▸'} Brano
+          </button>
+        )}
         <fieldset className="group transport">
           <legend>Playback{instrumentLoading ? ' · carico strumento…' : ''}</legend>
           <div className="btn-row">
@@ -446,9 +498,25 @@ export function Toolbar(props: ToolbarProps) {
             )}
           </div>
         </fieldset>
+        <span className="row-spacer" />
+        {!paletteOpen && (
+          <button className="tool-summary" onClick={onTogglePalette} title="Palette nascoste — clic (o tasto H) per riaprirle">
+            {tool.kind === 'note' && <span className="bravura note">{SMUFL.paletteNotes[duration.value]}</span>}
+            {TOOL_LABELS[tool.kind]} · {timeSignature.numerator}/{timeSignature.denominator}
+          </button>
+        )}
+        <button
+          className="panel-toggle"
+          onClick={onTogglePalette}
+          title={paletteOpen ? 'Riduci: nasconde fascia brano e palette, resta solo il playback (H)' : 'Mostra fascia brano e palette (H)'}
+          aria-label={paletteOpen ? 'Riduci le palette' : 'Mostra le palette'}
+        >
+          {paletteOpen ? '▲' : '▼'}
+        </button>
       </div>
 
       {/* fascia bassa (vicino allo spartito): palette di inserimento e strumenti */}
+      {paletteOpen && (
       <div className="toolbar-row palette-band">
         <fieldset className="group">
           <legend>Note / Pause</legend>
@@ -680,6 +748,7 @@ export function Toolbar(props: ToolbarProps) {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

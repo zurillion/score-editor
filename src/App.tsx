@@ -66,6 +66,24 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   // ---- application options (persisted) ----
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  // palette e fascia brano visibili (toggle in toolbar o tasto H); scelta ricordata
+  const [paletteOpen, setPaletteOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('ui.palette') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const togglePalette = useCallback(() => {
+    setPaletteOpen((v) => {
+      try {
+        localStorage.setItem('ui.palette', v ? '0' : '1');
+      } catch {
+        /* ignore */
+      }
+      return !v;
+    });
+  }, []);
   const [diagonalBeams, setDiagonalBeams] = useState<boolean>(() => {
     try {
       const stored = localStorage.getItem('opt.diagonalBeams');
@@ -798,13 +816,15 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         setTool((t) => (t.kind === 'dot' && t.dots === 1 ? NOTE_TOOL : { kind: 'dot', dots: 1, sticky: false }));
       } else if (e.key.toLowerCase() === 'e') {
         setTool((t) => (t.kind === 'eraser' ? NOTE_TOOL : { kind: 'eraser', sticky: false }));
+      } else if (e.key.toLowerCase() === 'h') {
+        togglePalette(); // mostra/nasconde fascia brano e palette
       } else if (e.key === 'Escape') {
         setTool(NOTE_TOOL);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, isPlaying, handlePlay, handleStop, selection, score, cursorTick, duration]);
+  }, [active, isPlaying, handlePlay, handleStop, selection, score, cursorTick, duration, togglePalette]);
 
   // time/key shown in the tools follow the measure under the playhead (or the cursor)
   const meta = scoreMeta(score);
@@ -886,6 +906,8 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         onLoadFile={handleRequestLoadFile}
         onOpenOptions={() => setOptionsOpen(true)}
         onOpenManual={() => setManualOpen(true)}
+        paletteOpen={paletteOpen}
+        onTogglePalette={togglePalette}
       />
 
       <input

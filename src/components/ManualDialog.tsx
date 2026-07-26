@@ -17,6 +17,7 @@ const SHORTCUTS: [string, string][] = [
   ['R', 'alterna Note / Pause'],
   ['E', 'gomma (ripremere per tornare alle note)'],
   ['Esc', 'torna allo strumento Note / chiude l’input di accordi e testi'],
+  ['H', 'mostra/nasconde fascia brano e palette (resta solo il playback)'],
   ['Spazio', 'play / stop'],
   ['← →', 'sposta il cursore di un sedicesimo · con Alt: di una battuta · con Ctrl: di un rigo di sistema'],
   ['↑ ↓', 'traspone le note selezionate di un semitono'],
@@ -53,6 +54,12 @@ export function ManualDialog({ open, onClose }: ManualDialogProps) {
               Il brano in lavorazione è <strong>salvato di continuo nel browser</strong>: chiudendo o ricaricando la pagina si riparte da
               dove si era. Il pulsante <strong>✚ Nuovo</strong> nell’intestazione chiude il brano corrente (con conferma) e ne inizia uno
               vuoto; un <kbd>⌘Z</kbd> subito dopo lo recupera per intero (note, titolo, BPM, mixer).
+            </p>
+            <p>
+              La toolbar è <strong>richiudibile</strong>: il toggle <strong>▲/▼</strong> a destra (o il tasto <kbd>H</kbd>) nasconde
+              fascia brano e palette lasciando solo il playback, con un <strong>riassunto</strong> dello strumento attivo (clic per
+              riaprire). Il chip <strong>«▸ Brano»</strong> apre/chiude la fascia con tempo, armatura, vista, file e libreria (chiusa di
+              default). Entrambe le scelte sono ricordate.
             </p>
           </details>
 
