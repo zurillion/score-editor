@@ -211,7 +211,8 @@ export function ManualDialog({ open, onClose }: ManualDialogProps) {
                 <strong>⤓ Salva</strong> scarica il brano in <strong>JSON</strong> (tutto compreso: righi, mixer, sigle, testi) o in
                 <strong> MusicXML</strong>; <strong>⤒ Carica</strong> riapre entrambi. Tenendo premuto (o clic destro) c’è anche
                 <strong> PDF (stampa)</strong>: si apre il dialogo di stampa del browser — scegli «Salva come PDF» — con lo spartito
-                impaginato in A4, titolo in testa e senza cursore; ogni sistema resta intero nella pagina.
+                impaginato in A4 a <strong>densità da carta</strong> (pentagramma ~6mm: molte più battute per rigo e righi per pagina
+                rispetto allo schermo), titolo in testa e senza cursore; ogni sistema resta intero nella pagina.
               </li>
               <li>L’<strong>autosalvataggio</strong> nel browser protegge il lavoro corrente; per archiviare o condividere usa Salva o la libreria.</li>
               <li>Il menu <strong>Libreria</strong> apre i brani pubblicati nella lista condivisa.</li>

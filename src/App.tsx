@@ -983,6 +983,9 @@ export default function App({ active = true, snapshotRef }: AppProps) {
             {pieceName || 'Senza titolo'}
             <span className="print-meta">{bpm} BPM</span>
           </div>
+          {/* impaginato largo e ridotto col CSS zoom: densità da spartito stampato
+              (pentagramma ~6mm), non la taglia comoda dello schermo */}
+          <div className="print-score">
           <Score
             state={score}
             mode="page"
@@ -1005,6 +1008,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
             onLayout={printNoop}
             drumVoiceId={drumVoiceId}
           />
+          </div>
         </div>
       )}
 

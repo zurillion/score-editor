@@ -650,6 +650,14 @@ body {
   width: 700px; /* ~A4 verticale con margini di 12mm a 96dpi */
   background: #fff;
 }
+/* densità da carta: impaginato a 1400px e ridotto al 50% (pentagramma ~6mm,
+   il doppio di battute per rigo e di sistemi per pagina). `zoom` — a
+   differenza di transform — partecipa al layout, quindi la paginazione e i
+   break-inside funzionano normalmente. */
+.print-view .print-score {
+  width: 1400px;
+  zoom: 0.5;
+}
 .print-view .cursor-ui {
   display: none; /* niente cursore di playback sul PDF */
 }
