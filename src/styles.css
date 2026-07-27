@@ -528,6 +528,15 @@ body {
 .toolbar button {
   padding: 5px 7px;
 }
+.stretch-row input[type='range'] {
+  width: 90px;
+}
+.stretch-row .stretch-value {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 38px;
+  font-variant-numeric: tabular-nums;
+}
 /* riga playback: chip «Brano», riassunto e toggle delle palette */
 .playback-row {
   align-items: center;

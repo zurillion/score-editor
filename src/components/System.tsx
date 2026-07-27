@@ -76,40 +76,77 @@ function computeMeasureBeams(pm: PlacedMeasure, diagonal: boolean, ctx: RowCtx):
   for (const staff of ctx.staffIds) {
     for (const group of beamGroups(pm.measure.events, staff, pm.ts)) {
       const allDs = group.flatMap((ev) => ev.pitches.map(pitchToDiatonic));
-      const stemUp = stemUpForChord(allDs, ctx.middleOf(staff));
-      const dir = stemUp ? 1 : -1; // +1 = beam above the noteheads (smaller y)
-      const items = group.map((ev) => {
-        const x = measureTickToX(pm, ev.startTick);
-        const headHW = noteheadHalfWidth(ev.duration.value);
-        const ds = ev.pitches.map(pitchToDiatonic);
-        const outerY = stemUp ? diatonicToY(Math.max(...ds)) : diatonicToY(Math.min(...ds));
-        return {
-          ev,
-          stemX: stemUp ? x + headHW - STEM_INSET : x - headHW + STEM_INSET,
-          outerY,
-          tipBase: outerY - dir * STEM_LENGTH, // ideal beam y giving a standard-length stem
-          count: beamCount(ev.duration.value),
-        };
-      });
 
-      // beam line  y = m*x + b
-      let m = 0;
-      let b: number;
-      if (diagonal && items.length >= 2) {
-        const x0 = items[0].stemX;
-        const xN = items[items.length - 1].stemX;
-        const span = xN - x0 || 1;
-        let rise = items[items.length - 1].tipBase - items[0].tipBase;
-        rise = Math.max(-BEAM_MAX_RISE, Math.min(BEAM_MAX_RISE, rise));
-        m = Math.max(-BEAM_MAX_SLOPE, Math.min(BEAM_MAX_SLOPE, rise / span));
-        b = items[0].tipBase - m * x0;
-        // keep the shortest stem from clipping into the noteheads
-        let worst = Infinity;
-        for (const it of items) worst = Math.min(worst, dir * (it.outerY - (m * it.stemX + b)));
-        if (worst < BEAM_MIN_CLEAR) b -= dir * (BEAM_MIN_CLEAR - worst);
-      } else {
-        b = stemUp ? Math.min(...items.map((it) => it.tipBase)) : Math.max(...items.map((it) => it.tipBase));
+      /** Beam geometry for a given stem direction: items + line y = m·x + b. */
+      const build = (up: boolean) => {
+        const d = up ? 1 : -1; // +1 = beam above the noteheads (smaller y)
+        const its = group.map((ev) => {
+          const x = measureTickToX(pm, ev.startTick);
+          const headHW = noteheadHalfWidth(ev.duration.value);
+          const ds = ev.pitches.map(pitchToDiatonic);
+          const outerY = up ? diatonicToY(Math.max(...ds)) : diatonicToY(Math.min(...ds));
+          return {
+            ev,
+            stemX: up ? x + headHW - STEM_INSET : x - headHW + STEM_INSET,
+            outerY,
+            tipBase: outerY - d * STEM_LENGTH, // ideal beam y giving a standard-length stem
+            count: beamCount(ev.duration.value),
+          };
+        });
+        let mm = 0;
+        let bb: number;
+        if (diagonal && its.length >= 2) {
+          const x0 = its[0].stemX;
+          const xN = its[its.length - 1].stemX;
+          const span = xN - x0 || 1;
+          let rise = its[its.length - 1].tipBase - its[0].tipBase;
+          rise = Math.max(-BEAM_MAX_RISE, Math.min(BEAM_MAX_RISE, rise));
+          mm = Math.max(-BEAM_MAX_SLOPE, Math.min(BEAM_MAX_SLOPE, rise / span));
+          bb = its[0].tipBase - mm * x0;
+          // keep the shortest stem from clipping into the noteheads
+          let worst = Infinity;
+          for (const it of its) worst = Math.min(worst, d * (it.outerY - (mm * it.stemX + bb)));
+          if (worst < BEAM_MIN_CLEAR) bb -= d * (BEAM_MIN_CLEAR - worst);
+        } else {
+          bb = up ? Math.min(...its.map((it) => it.tipBase)) : Math.max(...its.map((it) => it.tipBase));
+        }
+        return { up, dir: d, items: its, m: mm, b: bb };
+      };
+
+      let g = build(stemUpForChord(allDs, ctx.middleOf(staff)));
+
+      // In a grand row the two staves are close: a beam that would trespass on
+      // the OTHER staff first gets its stems shortened toward the boundary and,
+      // if they'd become too short, is flipped to the opposite side.
+      if (ctx.staffIds.length === 2) {
+        const si = ctx.staffIds.indexOf(staff);
+        const levels = Math.max(...g.items.map((it) => it.count));
+        const extent = (levels - 1) * (BEAM_THICK + BEAM_GAP) + BEAM_THICK / 2; // beam stack thickness
+        const MIN_SHORT = 1.7 * STAFF_SPACE; // stems may shrink this far before we flip
+        if (si === 0 && !g.up) {
+          const limit = diatonicToY(26) - 2; // stay above the lower staff's top line
+          const lowest = Math.max(...g.items.map((it) => g.m * it.stemX + g.b)) + extent;
+          if (lowest > limit) {
+            const over = lowest - limit;
+            let worst = Infinity;
+            for (const it of g.items) worst = Math.min(worst, g.m * it.stemX + g.b - over - it.outerY);
+            if (worst >= MIN_SHORT) g.b -= over;
+            else g = build(true); // flip the stems up, into the staff's own space
+          }
+        } else if (si === 1 && g.up) {
+          const limit = diatonicToY(30) + 2; // stay below the upper staff's bottom line
+          const highest = Math.min(...g.items.map((it) => g.m * it.stemX + g.b)) - extent;
+          if (highest < limit) {
+            const over = limit - highest;
+            let worst = Infinity;
+            for (const it of g.items) worst = Math.min(worst, it.outerY - (g.m * it.stemX + g.b + over));
+            if (worst >= MIN_SHORT) g.b += over;
+            else g = build(false); // flip the stems down
+          }
+        }
       }
+
+      const { up: stemUp, dir, items, m, b } = g;
       const lineY = (x: number) => m * x + b;
       for (const it of items) beamProps.set(it.ev.id, { stemUp, tipY: lineY(it.stemX) });
 

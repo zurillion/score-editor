@@ -117,4 +117,7 @@ export interface ScoreState {
   keySignature: number; // + = sharps, − = flats (−7..7)
   staves?: StaffDef[]; // top-to-bottom; missing = the classic grand staff (see scoreStaves)
   measures: Measure[];
+  /** User-chosen measure widening (1–2, missing = 1): multiplies the automatic
+   *  density scale, for pieces too dense to read. Saved with the piece. */
+  stretch?: number;
 }

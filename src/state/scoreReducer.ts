@@ -80,6 +80,7 @@ export type ScoreAction =
   | { type: 'SET_TEXT'; index: number; tick: number; staff: Staff; above: boolean; text: string } // free text line above/below a staff; empty text removes it
   | { type: 'SET_REPEAT'; index: number; edge: 'start' | 'end'; on: boolean }
   | { type: 'SET_REPEAT_TIMES'; index: number; times: number } // coalesced (set by the count drag)
+  | { type: 'SET_STRETCH'; value: number } // measure widening slider (coalesced), saved in the score
   | { type: 'ADD_STAFF'; where: 'above' | 'below'; clef: Clef; grand?: boolean } // a new staff (or grand pair) at the top/bottom
   | { type: 'REMOVE_STAFF'; id: Staff } // drops the staff and every event on it
   | { type: 'UPDATE_STAFF'; id: Staff; patch: Partial<Pick<StaffDef, 'clef' | 'key' | 'hidden' | 'name' | 'drumKit'>> }
@@ -691,6 +692,13 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
       return { ...state, measures };
     }
 
+    case 'SET_STRETCH': {
+      const v = Math.max(1, Math.min(2, Math.round(action.value * 20) / 20));
+      if (v === (state.stretch ?? 1)) return state;
+      const { stretch: _drop, ...bare } = state;
+      return v === 1 ? bare : { ...state, stretch: v };
+    }
+
     case 'ADD_STAFF': {
       const staves = scoreStaves(state).slice();
       const add: StaffDef[] = [];
@@ -796,7 +804,10 @@ export function scoreReducer(state: ScoreState, action: ScoreAction): ScoreState
           ...(texts && texts.length ? { texts } : {}),
         };
       });
-      return { ...action.score, staves, measures };
+      const rawStretch = (action.score as { stretch?: unknown }).stretch;
+      const stretch = typeof rawStretch === 'number' && rawStretch > 1 && rawStretch <= 2 ? Math.round(rawStretch * 20) / 20 : undefined;
+      const { stretch: _oldStretch, ...base } = action.score;
+      return { ...base, ...(stretch ? { stretch } : {}), staves, measures };
     }
 
     default:
@@ -828,6 +839,7 @@ function coalesceKey(action: ScoreAction): string | null {
   if (action.type === 'MOVE_NOTE') return `move:${action.eventId}`;
   if (action.type === 'SET_NOTE_DRUM') return `drum:${action.eventId}`;
   if (action.type === 'SET_REPEAT_TIMES') return `rpt:${action.index}`;
+  if (action.type === 'SET_STRETCH') return 'stretch'; // slider drags = one undo step
   return null;
 }
 

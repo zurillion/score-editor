@@ -86,7 +86,7 @@ export function Score({
   }, []);
 
   const meta = scoreMeta(state);
-  const systems = layoutSystems(state.measures, meta.measures, mode, containerWidth);
+  const systems = layoutSystems(state.measures, meta.measures, mode, containerWidth, state.stretch ?? 1);
   const ties = resolveTies(state, meta);
   // staves carrying annotation lines (legacy chords without a staff = bottom
   // staff): their rows get extra room; chords drop below the text when both

@@ -138,6 +138,8 @@ interface ToolbarProps {
   /** Palette e fascia brano visibili; il toggle (o il tasto H) le nasconde lasciando solo il playback. */
   paletteOpen: boolean;
   onTogglePalette: () => void;
+  /** Allargamento delle battute scelto dall'utente (score.stretch, 1–2). */
+  stretch: number;
 }
 
 function GearIcon() {
@@ -210,6 +212,7 @@ export function Toolbar(props: ToolbarProps) {
     onOpenManual,
     paletteOpen,
     onTogglePalette,
+    stretch,
   } = props;
 
   // Single click arms a modal tool for one use; double click makes it sticky.
@@ -347,6 +350,25 @@ export function Toolbar(props: ToolbarProps) {
             <button className={mode === 'page' ? 'on' : ''} onClick={() => setMode('page')}>
               Pagina
             </button>
+          </div>
+        </fieldset>
+        <fieldset className="group">
+          <legend>Larghezza battute</legend>
+          <div className="btn-row stretch-row" title="Allarga le battute quando le note sono troppo fitte (salvato con il brano)">
+            <input
+              type="range"
+              min={100}
+              max={200}
+              step={5}
+              value={Math.round(stretch * 100)}
+              onChange={(e) => onScoreAction({ type: 'SET_STRETCH', value: Number(e.target.value) / 100 })}
+              onMouseUp={(e) => {
+                onScoreAction({ type: 'COMMIT' }); // chiude il gruppo di undo dello slider
+                e.currentTarget.blur();
+              }}
+              aria-label="Larghezza battute"
+            />
+            <span className="stretch-value">{Math.round(stretch * 100)}%</span>
           </div>
         </fieldset>
         <fieldset className="group">

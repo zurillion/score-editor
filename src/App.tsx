@@ -221,7 +221,10 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   // ---- autosave: the piece under edit survives an accidental close/reload ----
   // Every change (debounced) is written to localStorage; on mount the last
   // autosave is restored, unless the admin page queued a piece to open.
+  const restoredRef = useRef(false); // StrictMode double-mount: restore (and push history) only once
   useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
     try {
       if (sessionStorage.getItem('pending.load')) return; // an explicit "Apri" wins
       const raw = localStorage.getItem(AUTOSAVE_KEY);
@@ -908,6 +911,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         onOpenManual={() => setManualOpen(true)}
         paletteOpen={paletteOpen}
         onTogglePalette={togglePalette}
+        stretch={score.stretch ?? 1}
       />
 
       <input

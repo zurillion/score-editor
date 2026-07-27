@@ -35,6 +35,11 @@ Un'app **React** per **comporre e suonare** una partitura musicale su
 - **Freccia** — lo strumento puntatore (icona della freccia del mouse) non
   crea note: trascinando una nota la si alza/abbassa di intonazione, un clic
   in un punto vuoto sposta l'indicatore di playback/inserimento.
+- **Larghezza battute** — slider 100–200% nella fascia «Brano»: allarga
+  tutte le battute per i brani troppo densi di note; salvato con il brano
+  (vale anche nella pagina di ascolto), si somma all'allargamento
+  automatico delle battute più fitte. Nelle righe a doppio rigo le
+  travature che invaderebbero l'altro rigo vengono accorciate o ribaltate.
 - **Toolbar compatta e richiudibile** — il toggle **▲/▼** a destra della
   riga del playback (o il tasto `H`) nasconde fascia brano e palette
   lasciando solo il playback, con un riassunto dello strumento attivo

@@ -82,6 +82,15 @@ export function ManualDialog({ open, onClose }: ManualDialogProps) {
               <li>Con lo strumento pausa, il clic su una nota di pari valore la sostituisce; la gomma cancella anche le pause inserite.</li>
               <li>Trascina una nota in verticale per cambiarne l’altezza; <kbd>Alt</kbd>+clic la elimina al volo.</li>
               <li>
+                <strong>Larghezza battute</strong> (fascia «Brano»): uno slider 100–200% allarga tutte le battute quando le note sono
+                troppo fitte per essere lette; il valore è <strong>salvato con il brano</strong> e vale anche nella pagina di ascolto.
+                Si somma all’allargamento automatico delle battute più dense.
+              </li>
+              <li>
+                Nelle righe a doppio rigo (endecalineo) le travature che invaderebbero l’altro rigo vengono <strong>accorciate</strong> o,
+                se non basta, <strong>ribaltate</strong> dall’altra parte, così le crome del violino non cozzano con le note del basso.
+              </li>
+              <li>
                 <strong>Battute</strong>: «+» aggiunge in coda, il pulsante «+▤» inserisce N battute vuote al punto di inserimento;
                 divisione (2/4 … 12/8), tonalità e <strong>anacrusi</strong> (battuta in levare) si impostano dalla toolbar e valgono dal
                 punto attivo in poi.

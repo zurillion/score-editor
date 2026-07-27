@@ -167,6 +167,7 @@ function buildSystem(
   metas: MeasureMeta[],
   from: number,
   to: number, // exclusive
+  stretch = 1, // user-chosen widening (score.stretch), on top of the automatic density scale
 ): SystemLayout {
   const headerKeySig = metas[from].keySig;
   const header = headerWidthFor(headerKeySig);
@@ -177,7 +178,7 @@ function buildSystem(
     const firstInSystem = i === from;
     const leftInset = firstInSystem ? 0 : changeInsetWidth(mm); // line starts show the key in the header
     const pads = repeatPads(measures[i]);
-    const contentW = measureWidth(mm, densityScale(measures[i])) + leftInset + pads.left + pads.right;
+    const contentW = measureWidth(mm, densityScale(measures[i]) * stretch) + leftInset + pads.left + pads.right;
     const noteLeft = x + MEASURE_PAD + leftInset + pads.left;
     const noteSpan = contentW - 2 * MEASURE_PAD - leftInset - pads.left - pads.right;
     placed.push({
@@ -223,13 +224,14 @@ export function layoutSystems(
   metas: MeasureMeta[],
   mode: LayoutMode,
   availableWidth: number,
+  stretch = 1, // user-chosen widening (score.stretch), on top of the automatic density scale
 ): SystemLayout[] {
   if (measures.length === 0) {
     return [{ measures: [], width: HEADER_WIDTH + 150, header: HEADER_WIDTH, headerKeySig: 0, headerTs: { numerator: 4, denominator: 4 }, headerTsChanged: false }];
   }
 
   if (mode === 'horizontal') {
-    return [buildSystem(measures, metas, 0, measures.length)];
+    return [buildSystem(measures, metas, 0, measures.length, stretch)];
   }
 
   // page mode: greedily pack measures into systems by their individual widths
@@ -243,12 +245,12 @@ export function layoutSystems(
     while (j < measures.length) {
       const inset = j !== i && (metas[j].keyChanged || metas[j].tsChanged) ? changeInsetWidth(metas[j]) : 0;
       const pads = repeatPads(measures[j]);
-      const w = measureWidth(metas[j], densityScale(measures[j])) + inset + pads.left + pads.right;
+      const w = measureWidth(metas[j], densityScale(measures[j]) * stretch) + inset + pads.left + pads.right;
       if (j > i && sum + w > usable) break;
       sum += w;
       j++;
     }
-    systems.push(buildSystem(measures, metas, i, j));
+    systems.push(buildSystem(measures, metas, i, j, stretch));
     i = j;
   }
   applyTrailingKey(systems, metas);
