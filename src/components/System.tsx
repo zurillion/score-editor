@@ -1521,7 +1521,7 @@ export function System(props: SystemProps) {
 
       {/* playback / cursor bar (+ drag handle when not playing) */}
       {playheadX !== null && (
-        <g>
+        <g className="cursor-ui">
           <g pointerEvents="none">
             <rect x={playheadX - 6} y={sl.topY - 10} width={12} height={sl.botY - sl.topY + 20} fill="rgba(56,132,255,0.16)" />
             <line x1={playheadX} x2={playheadX} y1={sl.topY - 16} y2={sl.botY + 10} stroke="rgba(56,132,255,0.9)" strokeWidth={1.5} />

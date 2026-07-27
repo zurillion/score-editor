@@ -66,6 +66,24 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   // ---- application options (persisted) ----
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  // export PDF: monta la vista di stampa nascosta, apre il dialogo del browser
+  // («Salva come PDF») e la smonta alla chiusura del dialogo
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    if (!printing) return;
+    let cancelled = false;
+    const done = () => {
+      if (!cancelled) setPrinting(false);
+    };
+    window.addEventListener('afterprint', done, { once: true });
+    const t = window.setTimeout(() => window.print(), 150); // un attimo per il layout della vista di stampa
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+      window.removeEventListener('afterprint', done);
+    };
+  }, [printing]);
+
   // palette e fascia brano visibili (toggle in toolbar o tasto H); scelta ricordata
   const [paletteOpen, setPaletteOpen] = useState<boolean>(() => {
     try {
@@ -447,6 +465,7 @@ export default function App({ active = true, snapshotRef }: AppProps) {
   }, [bpm, score, midiOn, midiChannel, loopSkipAnacrusis, cursorTick, playback, neededInstruments]);
 
   const handleToStart = useCallback(() => setCursorTick(0), []);
+  const printNoop = useCallback(() => {}, []); // print view: read-only render, no interactions
 
   const handleSetLoop = useCallback((v: boolean) => {
     setLoop(v);
@@ -579,6 +598,12 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         if (name === null) return; // cancelled
         title = name.trim();
         setPieceName(title);
+      }
+      if (format === 'pdf') {
+        // print flow: a hidden A4 page-mode render + the browser's print dialog
+        // ("Salva come PDF") — vector output with the music font embedded
+        setPrinting(true);
+        return;
       }
       const safe = title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'brano';
       const [content, filename, type] =
@@ -951,6 +976,37 @@ export default function App({ active = true, snapshotRef }: AppProps) {
         </button>{' '}
         per tutte le funzionalità e le scorciatoie.
       </footer>
+
+      {printing && (
+        <div className="print-view">
+          <div className="print-title">
+            {pieceName || 'Senza titolo'}
+            <span className="print-meta">{bpm} BPM</span>
+          </div>
+          <Score
+            state={score}
+            mode="page"
+            tool={{ kind: 'select-measures' }}
+            duration={duration}
+            diagonalBeams={diagonalBeams}
+            previewOnCreate={false}
+            selection={null}
+            playheadTick={null}
+            cursorTick={0}
+            playOnly
+            onAction={printNoop}
+            onAfterApply={printNoop}
+            onPreviewNote={printNoop}
+            onSelectMeasures={printNoop}
+            onSelectNotes={printNoop}
+            onClearSelection={printNoop}
+            onSetCursor={printNoop}
+            onHoverNote={printNoop}
+            onLayout={printNoop}
+            drumVoiceId={drumVoiceId}
+          />
+        </div>
+      )}
 
       <ManualDialog open={manualOpen} onClose={() => setManualOpen(false)} />
 

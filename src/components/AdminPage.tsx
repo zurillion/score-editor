@@ -517,7 +517,7 @@ export function AdminPage({ editorRef }: { editorRef: MutableRefObject<EditorSna
               <a className="btn-link" href={playUrl(entry.id)} target="_blank" rel="noreferrer" title="Apri la versione solo ascolto">
                 ▶ Prova
               </a>
-              <ExportMenuButton label="⤓ JSON" title="Scarica il brano come file .json." onExport={(f) => void exportPiece(entry, f)} />
+              <ExportMenuButton label="⤓ JSON" title="Scarica il brano come file .json." formats={['json', 'musicxml']} onExport={(f) => void exportPiece(entry, f)} />
               <button disabled={busy} onClick={() => rename(entry)} title="Rinomina">Rinomina</button>
               <button disabled={busy} className="danger" onClick={() => remove(entry)} title="Elimina dalla lista">Elimina</button>
             </div>

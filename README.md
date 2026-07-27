@@ -260,6 +260,11 @@ alterazioni, code e cifre di tempo usano i glifi del font musicale **Bravura**
 - Niente armatura di chiave; le alterazioni sono per singola nota.
 - Le note contemporanee sono modellate come accordi (stessa durata), non come
   voci indipendenti.
+- Export **PDF**: nel menu del pulsante Salva (tieni premuto o clic
+  destro), «PDF (stampa)» apre il dialogo di stampa del browser («Salva
+  come PDF») su una vista dedicata: impaginazione A4 in modalità Pagina,
+  titolo in testa, niente cursore, sistemi mai spezzati tra le pagine,
+  font musicale incorporato (output vettoriale).
 - Export/import **MusicXML** (`.musicxml`): i pulsanti di export (Salva
   nell'editor, JSON nella pagina admin) esportano in JSON al clic e aprono
   un menu JSON/MusicXML tenendoli premuti; Carica/Importa accettano anche

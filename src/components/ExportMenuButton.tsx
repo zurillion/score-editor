@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 
-export type ExportFormat = 'json' | 'musicxml';
+export type ExportFormat = 'json' | 'musicxml' | 'pdf';
 
 /**
  * Export button with a press-and-hold menu: a plain click exports JSON,
@@ -11,11 +11,13 @@ export function ExportMenuButton({
   title,
   disabled,
   onExport,
+  formats = ['json', 'musicxml', 'pdf'],
 }: {
   label: string;
   title?: string;
   disabled?: boolean;
   onExport: (format: ExportFormat) => void;
+  formats?: ExportFormat[]; // menu entries (a plain click always exports JSON)
 }) {
   const [open, setOpen] = useState(false);
   const timerRef = useRef(0);
@@ -39,7 +41,7 @@ export function ExportMenuButton({
     <span className="export-split">
       <button
         disabled={disabled}
-        title={`${title ? `${title}\n` : ''}Tieni premuto (o clic destro) per scegliere il formato: JSON o MusicXML.`}
+        title={`${title ? `${title}\n` : ''}Tieni premuto (o clic destro) per scegliere il formato: JSON, MusicXML o PDF.`}
         onMouseDown={arm}
         onMouseUp={disarm}
         onMouseLeave={disarm}
@@ -68,6 +70,11 @@ export function ExportMenuButton({
             <button role="menuitem" onClick={() => pick('musicxml')}>
               MusicXML
             </button>
+            {formats.includes('pdf') && (
+              <button role="menuitem" onClick={() => pick('pdf')}>
+                PDF (stampa)
+              </button>
+            )}
           </div>
         </>
       )}

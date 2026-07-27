@@ -640,6 +640,54 @@ body {
   border-color: var(--accent);
 }
 
+/* ---- Vista di stampa (export PDF via dialogo del browser) ---- */
+/* montata fuori schermo (deve avere layout per misurare la larghezza);
+   in stampa diventa l'unico contenuto visibile */
+.print-view {
+  position: fixed;
+  left: -20000px;
+  top: 0;
+  width: 700px; /* ~A4 verticale con margini di 12mm a 96dpi */
+  background: #fff;
+}
+.print-view .cursor-ui {
+  display: none; /* niente cursore di playback sul PDF */
+}
+.print-view .score-scroll {
+  overflow: visible;
+  height: auto;
+}
+.print-title {
+  font: 700 20px system-ui, sans-serif;
+  margin: 0 0 6px;
+  color: #111;
+}
+.print-title .print-meta {
+  font: 400 12px system-ui, sans-serif;
+  color: #555;
+  margin-left: 10px;
+}
+@media print {
+  @page {
+    margin: 12mm;
+  }
+  body {
+    background: #fff;
+  }
+  .app > *:not(.print-view),
+  .admin-page {
+    display: none !important;
+  }
+  .print-view {
+    position: static !important;
+    width: auto;
+  }
+  .print-view svg.system {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
 /* ---- Manual dialog ---- */
 .modal.manual {
   max-width: 720px;
